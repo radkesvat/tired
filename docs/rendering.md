@@ -27,3 +27,28 @@ Native tests exercise expansion characters, controls, empty strings, semicolons,
 special-prefix arguments, invalid text, and buffer boundaries. The completed unit
 renderer still needs real systemd execution round-trip evidence. Syntax details
 follow the [baseline systemd syntax documentation](https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.syntax.xml).
+
+## Unit serialization
+
+The renderer emits a validated ownership identifier, then Unit, Service, and Install
+sections. Within sections it follows the registry's stable field-ID order. Unordered
+list values are sorted; argument and external environment-file order is preserved.
+The managed environment revision is emitted after all external environment files.
+Credentials are references only; no environment or credential values enter unit text.
+
+A proposal must contain its name, absolute executable, working directory, original
+argv, type, scope, and resolved enablement target. System scope additionally requires
+an explicit run-as user and group. User units omit identity-switching directives.
+The executable replaces original argv[0], and ExecStart uses the `:` prefix with
+quoted, specifier-escaped tokens. Soft/hard NOFILE fields become one directive.
+Resource values use exact numeric forms; durations are emitted in microseconds.
+
+Rendering changes no files or manager state. Failed rendering preserves the previous
+output. The complete file is bounded at 4 MiB and each physical line below 1 MiB.
+No raw directive/hook insertion is supported. Host capabilities, identities, drop-ins,
+path accessibility, ownership, and post-install runtime state still require validation.
+
+The generated native fixture passed systemd 249.11 `systemd-analyze verify --man=no`
+on the development host. The verifier also warned about an existing host snapd
+unit's unsupported RestartMode key. This is syntax evidence only; actual workload
+argument/environment round trips remain part of isolated integration qualification.

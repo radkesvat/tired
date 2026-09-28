@@ -331,6 +331,14 @@ bool tired_spec_choice_is(const TiredServiceSpec *spec, TiredFieldId id, const c
 bool tired_spec_validate_scalars(const TiredServiceSpec *spec, TiredError *error)
 {
     assert(spec != NULL);
+    if (tired_spec_choice_is(spec, TIRED_FIELD_RETRY_POLICY, "limited") &&
+        (!has_value(&spec->fields[TIRED_FIELD_START_LIMIT_INTERVAL]) ||
+         spec->fields[TIRED_FIELD_START_LIMIT_INTERVAL].value.microseconds == 0 ||
+         !has_value(&spec->fields[TIRED_FIELD_START_LIMIT_BURST]) ||
+         spec->fields[TIRED_FIELD_START_LIMIT_BURST].value.integer <= 0))
+        return tired_error_set(
+            error, TIRED_INVALID, "limited-rate-limit",
+            "Limited retries require a positive interval and burst; resolve defaults first.", 0);
     if (has_value(&spec->fields[TIRED_FIELD_WANTED_BY]) &&
         ((tired_spec_choice_is(spec, TIRED_FIELD_SCOPE, "user") &&
           !tired_spec_choice_is(spec, TIRED_FIELD_WANTED_BY, "default.target")) ||
