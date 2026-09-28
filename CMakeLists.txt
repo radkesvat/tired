@@ -72,11 +72,16 @@ include(CTest)
 
 option(TIRED_WARNINGS_AS_ERRORS "Treat first-party compiler warnings as errors" ON)
 add_executable(tired src/main.c)
-target_compile_options(tired PRIVATE
+add_library(tired_build_options INTERFACE)
+target_compile_options(tired_build_options INTERFACE
     -Wall -Wextra -Wpedantic -Wformat=2 -Wformat-security
     -Wstrict-prototypes -Wmissing-prototypes
     "$<$<BOOL:${TIRED_WARNINGS_AS_ERRORS}>:-Werror>"
 )
+add_library(tired_core STATIC src/util/value.c)
+target_include_directories(tired_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(tired_core PRIVATE tired_build_options)
+target_link_libraries(tired PRIVATE tired_core tired_build_options)
 
 add_custom_command(TARGET tired POST_BUILD
     COMMAND "${CMAKE_COMMAND}"
@@ -88,6 +93,10 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_value_test tests/unit/value_test.c)
+    target_link_libraries(tired_value_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.value COMMAND tired_value_test)
+    set_tests_properties(tired.value PROPERTIES LABELS unit)
     add_test(NAME tired.smoke COMMAND tired)
     set_tests_properties(tired.smoke PROPERTIES
         LABELS smoke
