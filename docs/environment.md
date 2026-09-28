@@ -27,8 +27,36 @@ only, never read contents, and never alter command arguments. At most 256 refere
 and 1 MiB are retained. Source permissions, application compatibility, host credential
 support, and secure rendering must be validated later.
 
-Environment-file import, owned private-file encoding/storage, CLI integration,
-redacted JSON, and private export remain under implementation. The records alone
+Bounded file I/O, private-file storage, CLI integration, redacted JSON, and private
+export remain under implementation. The records and in-memory codecs alone
 must not be presented as completed secret handling. The baseline
 [execution documentation](https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.exec.xml)
 describes environment-file ordering and credential facilities.
+
+## Supported import grammar
+
+The in-memory importer accepts UTF-8 assignment files up to 2 MiB, with a decoded
+collection still bounded by 1 MiB. This allows escaping to expand an encoded file
+without shrinking the usable environment budget. Reject NUL, invalid variable names,
+missing `=`, unclosed quotes, and dangling backslashes. A failed import changes no
+existing assignment, including assignments parsed before the failure.
+
+Blank lines and lines beginning with `#` or `;` after whitespace are comments.
+A backslash in a comment escapes the next character, including a newline. Horizontal
+space around names and before values is ignored. Unquoted values preserve internal
+space and trim unescaped trailing space. Backslash quotes the next character;
+backslash-newline continues the value without a newline.
+
+A value beginning with a single or double quote must end with the matching quote,
+followed only by horizontal space and newline/EOF. Quoted values may span lines.
+Single quotes preserve all enclosed bytes. In double quotes, backslash removes the
+special meaning of quote, backslash, dollar, or backtick; backslash-newline is removed.
+Other backslashes remain literal. Quote concatenation is not supported. Shell
+`export` prefixes are rejected. No variable or command substitution occurs.
+
+The encoder sorts names bytewise and always double-quotes values, preserving literal
+newlines and escaping quote, backslash, dollar, and backtick. It returns private
+contents including sensitive values, never a display view. The format was checked
+against the [baseline parser behavior](https://github.com/systemd/systemd/blob/v249/src/basic/env-file.c).
+Native encoder/import round trips are tested; real manager execution qualification
+remains required. Bounded file I/O and private persistence are separate pending work.

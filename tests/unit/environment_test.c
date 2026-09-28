@@ -67,6 +67,42 @@ int main(void)
     CHECK(tired_credentials_add(&credentials, "token=/nonexistent/private file",
                                 strlen("token=/nonexistent/private file"), &error));
     CHECK(credentials.count == 1);
+    const char *file = "# comment\n; comment\n A = unquoted words  \nB=' literal $HOME\nline '\n"
+                       "C=\"quote\\\" backslash\\\\ dollar\\$ tick\\` unknown\\q\"\n"
+                       "D=con\\\ntinued\nE=trailing\\ \nEMPTY=\nX=imported\n";
+    CHECK(tired_environment_import(&env, file, strlen(file), &error));
+    CHECK(strcmp(tired_environment_find(&env, "A", 1)->value.data, "unquoted words") == 0);
+    CHECK(strcmp(tired_environment_find(&env, "B", 1)->value.data, " literal $HOME\nline ") == 0);
+    CHECK(strcmp(tired_environment_find(&env, "C", 1)->value.data,
+                 "quote\" backslash\\ dollar$ tick` unknown\\q") == 0);
+    CHECK(strcmp(tired_environment_find(&env, "D", 1)->value.data, "continued") == 0);
+    CHECK(strcmp(tired_environment_find(&env, "E", 1)->value.data, "trailing ") == 0);
+    CHECK(strcmp(tired_environment_find(&env, "X", 1)->value.data, "") == 0);
+    CHECK(!tired_environment_import(&env, "A=changed\nBROKEN='", strlen("A=changed\nBROKEN='"),
+                                    &error));
+    CHECK(strcmp(tired_environment_find(&env, "A", 1)->value.data, "unquoted words") == 0);
+    const char *malformed[] = {"export A=x",   "MISSING",   "A=\"unterminated",
+                               "A=trailing\\", "A='x'junk", "1A=x"};
+    for (size_t i = 0; i < sizeof(malformed) / sizeof(malformed[0]); ++i)
+        CHECK(!tired_environment_import(&env, malformed[i], strlen(malformed[i]), &error));
+    TiredText encoded = {0};
+    TiredEnvironment decoded = {0};
+    CHECK(tired_environment_encode(&env, &encoded, &error));
+    CHECK(tired_environment_import(&decoded, encoded.data, encoded.length, &error));
+    CHECK(decoded.count == env.count);
+    for (size_t i = 0; i < env.count; ++i)
+    {
+        const TiredEnvironmentEntry *entry =
+            tired_environment_find(&decoded, env.items[i].name.data, env.items[i].name.length);
+        CHECK(entry != NULL && entry->value.length == env.items[i].value.length);
+        CHECK(memcmp(entry->value.data, env.items[i].value.data, entry->value.length) == 0);
+    }
+    TiredText second = {0};
+    CHECK(tired_environment_encode(&decoded, &second, &error));
+    CHECK(second.length == encoded.length && memcmp(second.data, encoded.data, second.length) == 0);
+    tired_text_destroy(&encoded);
+    tired_text_destroy(&second);
+    tired_environment_destroy(&decoded);
     CHECK(!tired_credentials_add(&credentials, "token=/another", 14, &error));
     CHECK(!tired_credentials_add(&credentials, "other=relative", 14, &error));
     CHECK(!tired_credentials_add(&credentials, "../token=/path", 14, &error));

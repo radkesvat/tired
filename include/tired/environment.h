@@ -3,6 +3,7 @@
 #include "tired/value.h"
 
 #define TIRED_ENVIRONMENT_COUNT_LIMIT 1024U
+#define TIRED_ENVIRONMENT_FILE_LIMIT (2U * TIRED_INPUT_LIMIT)
 
 typedef enum
 {
@@ -45,6 +46,14 @@ const TiredEnvironmentEntry *tired_environment_find(const TiredEnvironment *envi
  * accessor to serialize a private environment file. */
 const char *tired_environment_display(const TiredEnvironmentEntry *entry);
 void tired_environment_destroy(TiredEnvironment *environment);
+/* Import a bounded in-memory file transactionally. Supported grammar is
+ * documented in docs/environment.md; no shell evaluation or file I/O occurs. */
+bool tired_environment_import(TiredEnvironment *environment, const char *data, size_t length,
+                              TiredError *error);
+/* Deterministic private-file contents, including sensitive values. Caller must
+ * protect persistence and never send this directly to ordinary display output. */
+bool tired_environment_encode(const TiredEnvironment *environment, TiredText *output,
+                              TiredError *error);
 
 typedef struct
 {
