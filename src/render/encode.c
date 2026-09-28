@@ -101,7 +101,7 @@ static bool encode(const char *data, size_t length, Encoding context, TiredText 
             if (!tired_buffer_append(&result, escaped, sizeof(escaped), error))
                 goto fail;
         }
-        else if (context == DISPLAY && c == 0xc2 && i + 1 < length &&
+        else if (context != DIRECTIVE && c == 0xc2 && i + 1 < length &&
                  (unsigned char)data[i + 1] >= 0x80 && (unsigned char)data[i + 1] <= 0x9f)
         {
             /* C1 controls may be interpreted by terminal emulators as controls. */

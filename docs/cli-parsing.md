@@ -22,10 +22,11 @@ Working-directory and file arguments are retained for resolution against capture
 context later. Parsing never captures `--pass-env` values or reads import files.
 `create --dry-run` becomes a plan request. Offline mode is limited to plans; unit
 and JSON output modes conflict. Sensitive export requires an output destination,
-with risk acknowledgment enforced by the later policy layer.
+with sensitive-export acknowledgment enforced by the frontend.
 
 The parser currently covers creation options, common flags, reserved dispatch, and
 basic management operand counts. Command-specific management filters/actions and
-nested profile/config command validation remain under implementation. Runtime CLI
-handlers are not yet connected to the executable; this document describes parser
-behavior, not a claim that all public commands are available.
+nested profile/config command validation remain under implementation. The executable
+currently exposes help/version and generic offline planning with `--profile none`.
+Other commands fail explicitly as unavailable. Successful parse recognition does
+not imply that a corresponding service-management handler is complete.

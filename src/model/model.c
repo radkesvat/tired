@@ -591,3 +591,43 @@ bool tired_spec_resolve_scope(TiredServiceSpec *spec, TiredError *error)
     tired_error_clear(error);
     return true;
 }
+
+bool tired_spec_copy_field(TiredServiceSpec *destination, const TiredServiceSpec *source,
+                           TiredFieldId id, TiredError *error)
+{
+    assert(destination != NULL && source != NULL);
+    const TiredField *field = tired_field_get(id);
+    if (field == NULL)
+        return tired_error_set(error, TIRED_INVALID, "field", "Unknown field.", 0);
+    TiredFieldValue next = source->fields[id];
+    if (has_value(&next) && field->kind == TIRED_FIELD_TEXT)
+    {
+        next.value.text = (TiredText){0};
+        const TiredText *text = &source->fields[id].value.text;
+        if (!tired_text_set(&next.value.text, text->data, text->length, TIRED_INPUT_LIMIT, error))
+            return false;
+    }
+    else if (has_value(&next) && field->kind == TIRED_FIELD_LIST)
+    {
+        next.value.list = (TiredTextList){0};
+        const TiredTextList *list = &source->fields[id].value.list;
+        for (size_t i = 0; i < list->count; ++i)
+            if (!tired_text_list_append(&next.value.list, list->items[i].data,
+                                        list->items[i].length, TIRED_ARGUMENT_LIMIT,
+                                        TIRED_INPUT_LIMIT, error))
+            {
+                tired_text_list_destroy(&next.value.list);
+                return false;
+            }
+    }
+    if (has_value(&destination->fields[id]))
+    {
+        if (field->kind == TIRED_FIELD_TEXT)
+            tired_text_destroy(&destination->fields[id].value.text);
+        if (field->kind == TIRED_FIELD_LIST)
+            tired_text_list_destroy(&destination->fields[id].value.list);
+    }
+    destination->fields[id] = next;
+    tired_error_clear(error);
+    return true;
+}

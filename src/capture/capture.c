@@ -52,6 +52,10 @@ bool tired_validate_text(const char *data, size_t length, bool path, TiredError 
         }
         if (scalar < minimum || scalar > 0x10ffff || (scalar >= 0xd800 && scalar <= 0xdfff))
             goto invalid;
+        if (path && scalar >= 0x80 && scalar <= 0x9f)
+            return tired_error_set(error, TIRED_INVALID, "text-control",
+                                   "Path or scalar text contains an unsupported control character.",
+                                   0);
     }
     tired_error_clear(error);
     return true;

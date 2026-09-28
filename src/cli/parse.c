@@ -117,10 +117,13 @@ static const char *option_value(int argc, const char *const *argv, int *position
     return argv[++*position];
 }
 
-bool tired_cli_parse(int argc, const char *const *argv, TiredRequest *request, TiredError *error)
+bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *request,
+                            bool *json_requested, TiredError *error)
 {
     assert(argc >= 0 && (argv != NULL || argc == 0) && request != NULL);
     TiredRequest parsed = {0};
+    if (json_requested != NULL)
+        *json_requested = false;
     bool selected = false, creation_options = false;
     size_t input_bytes = 0;
     if (argc > (int)TIRED_ARGUMENT_LIMIT + 1)
@@ -381,6 +384,8 @@ bool tired_cli_parse(int argc, const char *const *argv, TiredRequest *request, T
             goto fail;
         }
     }
+    if (json_requested != NULL)
+        *json_requested = parsed.json;
     tired_request_destroy(request);
     *request = parsed;
     tired_error_clear(error);
@@ -397,6 +402,13 @@ inappropriate:
     tired_error_set(error, TIRED_INVALID, "option-context",
                     "Option is incompatible with this command or another option.", 0);
 fail:
+    if (json_requested != NULL)
+        *json_requested = parsed.json;
     tired_request_destroy(&parsed);
     return false;
+}
+
+bool tired_cli_parse(int argc, const char *const *argv, TiredRequest *request, TiredError *error)
+{
+    return tired_cli_parse_format(argc, argv, request, NULL, error);
 }

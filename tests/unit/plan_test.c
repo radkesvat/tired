@@ -1,0 +1,78 @@
+#include "tired/json.h"
+#include "tired/plan_output.h"
+#include <stdio.h>
+#include <string.h>
+#define CHECK(expression)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(expression))                                                                         \
+        {                                                                                          \
+            fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #expression);                       \
+            return 1;                                                                              \
+        }                                                                                          \
+    } while (0)
+int main(void)
+{
+    const char *args[] = {"tired",
+                          "plan",
+                          "--offline",
+                          "--profile",
+                          "none",
+                          "--name",
+                          "custom",
+                          "--retry-policy",
+                          "limited",
+                          "--working-directory",
+                          ".",
+                          "--env",
+                          "API_TOKEN=environment-secret",
+                          "--credential",
+                          "token=private-source",
+                          "--env-file",
+                          "external-file",
+                          "--",
+                          "/proc/self/exe",
+                          "--password",
+                          "command-secret",
+                          "--token=attached-secret",
+                          "",
+                          "\xc2\x9b"};
+    TiredRequest request = {0};
+    TiredPlan plan = {0};
+    TiredError error = {0};
+    TiredText output = {0};
+    struct json_object *json = NULL;
+    CHECK(tired_cli_parse((int)(sizeof(args) / sizeof(args[0])), args, &request, &error));
+    CHECK(tired_plan_prepare(&request, &plan, &error));
+    CHECK(strcmp(plan.spec.fields[TIRED_FIELD_NAME].value.text.data, "custom") == 0);
+    CHECK(strcmp(plan.spec.fields[TIRED_FIELD_DESCRIPTION].value.text.data,
+                 "custom (managed by tired)") == 0);
+    CHECK(plan.spec.fields[TIRED_FIELD_START_LIMIT_INTERVAL].value.microseconds == 300000000);
+    CHECK(plan.managed_environment.data != NULL &&
+          strstr(plan.managed_environment.data, plan.uuid) != NULL);
+    CHECK(plan.credentials.count == 1 && plan.credentials.items[0].path.data[0] == '/');
+    CHECK(tired_plan_output(&plan, true, false, false, &output, &error));
+    CHECK(strstr(output.data, "environment-secret") == NULL &&
+          strstr(output.data, "command-secret") == NULL &&
+          strstr(output.data, "attached-secret") == NULL);
+    CHECK(strstr(output.data, "\\u009b") != NULL);
+    CHECK(strstr(output.data, "\xc2\x9b") == NULL);
+    /* Output may exceed generic input limit in general; this fixture is small. */
+    CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &json, &error));
+    struct json_object *flag = NULL;
+    CHECK(json_object_object_get_ex(json, "replayable", &flag) && !json_object_get_boolean(flag));
+    CHECK(json_object_object_get_ex(json, "unit_redacted", &flag) && json_object_get_boolean(flag));
+    CHECK(tired_plan_output(&plan, false, true, false, &output, &error));
+    CHECK(strstr(output.data, "Redacted non-installable") != NULL &&
+          strstr(output.data, "command-secret") == NULL);
+    CHECK(tired_plan_output(&plan, true, false, true, &output, &error));
+    CHECK(strstr(output.data, "environment-secret") != NULL &&
+          strstr(output.data, "command-secret") != NULL);
+    CHECK(strstr(plan.spec.fields[TIRED_FIELD_ARGV].value.list.items[2].data, "command-secret") !=
+          NULL);
+    json_object_put(json);
+    tired_text_destroy(&output);
+    tired_plan_destroy(&plan);
+    tired_request_destroy(&request);
+    return 0;
+}

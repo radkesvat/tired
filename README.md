@@ -1,7 +1,18 @@
 # tired
 
-C17 project scaffold. The executable prints a scaffold message; the application
-is not implemented yet.
+C17 service-management project under implementation. Generic offline planning is
+available; service installation, live validation, profile matching, and lifecycle
+management are not implemented yet. No public release is available.
+
+```sh
+./build/linux-clang-x64-debug/tired plan --offline --profile none -- /usr/bin/sleep 60
+./build/linux-clang-x64-debug/tired plan --offline --profile none --json -- /usr/bin/sleep 60
+```
+
+Plans perform no service changes and do not execute the workload. Names remain
+tentative; live validation is explicitly marked as not performed. Use `--help` for
+available planning options. Default output redacts recognized secret-bearing flags
+and environment values; classification cannot identify every possible secret.
 
 ## Build
 

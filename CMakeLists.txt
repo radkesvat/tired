@@ -72,6 +72,7 @@ include(CTest)
 
 option(TIRED_WARNINGS_AS_ERRORS "Treat first-party compiler warnings as errors" ON)
 add_executable(tired src/main.c)
+target_compile_definitions(tired PRIVATE TIRED_VERSION="${PROJECT_VERSION}")
 add_library(tired_build_options INTERFACE)
 target_compile_options(tired_build_options INTERFACE
     -Wall -Wextra -Wpedantic -Wformat=2 -Wformat-security
@@ -81,6 +82,7 @@ target_compile_options(tired_build_options INTERFACE
 add_library(tired_core STATIC src/util/value.c src/model/name.c src/model/model.c src/model/limit.c src/model/process_value.c src/model/environment.c src/model/environment_file.c src/model/proposal.c src/capture/capture.c src/capture/identity.c src/render/encode.c src/render/unit.c src/cli/parse.c)
 target_sources(tired_core PRIVATE src/util/json.c)
 target_sources(tired_core PRIVATE src/storage/io.c)
+target_sources(tired_core PRIVATE src/cli/plan.c src/cli/plan_output.c)
 target_compile_definitions(tired_core PRIVATE _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 target_include_directories(tired_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c)
@@ -96,6 +98,10 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_plan_test tests/unit/plan_test.c)
+    target_link_libraries(tired_plan_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.plan COMMAND tired_plan_test)
+    set_tests_properties(tired.plan PROPERTIES LABELS unit)
     add_executable(tired_io_test tests/unit/io_test.c)
     target_compile_definitions(tired_io_test PRIVATE _POSIX_C_SOURCE=200809L)
     target_link_libraries(tired_io_test PRIVATE tired_core tired_build_options)
@@ -143,11 +149,14 @@ if(BUILD_TESTING)
     target_link_libraries(tired_value_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.value COMMAND tired_value_test)
     set_tests_properties(tired.value PROPERTIES LABELS unit)
-    add_test(NAME tired.smoke COMMAND tired)
+    add_test(NAME tired.smoke COMMAND tired --version)
     set_tests_properties(tired.smoke PROPERTIES
         LABELS smoke
-        PASS_REGULAR_EXPRESSION "tired: build scaffold; application not implemented yet."
+        PASS_REGULAR_EXPRESSION "tired 0.1.0"
     )
+    add_test(NAME tired.offline_plan COMMAND tired plan --offline --profile none --json -- /usr/bin/true --token=fixture-secret)
+    set_tests_properties(tired.offline_plan PROPERTIES LABELS integration
+        PASS_REGULAR_EXPRESSION "not_performed" FAIL_REGULAR_EXPRESSION "fixture-secret" TIMEOUT 10)
 endif()
 
 install(TARGETS tired RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")

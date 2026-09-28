@@ -136,6 +136,9 @@ bool tired_parse_duration(const char *text, size_t length, uint64_t *microsecond
 bool tired_spec_set(TiredServiceSpec *spec, TiredFieldId id, const char *text, size_t length,
                     TiredFieldOrigin origin, bool replace, TiredError *error);
 bool tired_spec_defaults(TiredServiceSpec *spec, TiredError *error);
+/* Deep-copy one API-validated field, including origin and explicit empty state. */
+bool tired_spec_copy_field(TiredServiceSpec *destination, const TiredServiceSpec *source,
+                           TiredFieldId id, TiredError *error);
 /* Lists are ordered, bounded, and copied. Append does not split whitespace or
  * interpret shell quoting. Clear records an explicit empty list, not inheritance. */
 bool tired_spec_append(TiredServiceSpec *spec, TiredFieldId id, const char *text, size_t length,

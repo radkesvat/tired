@@ -43,6 +43,9 @@ typedef struct
 /* Parse argv including the frontend executable. No filesystem, environment,
  * manager, or workload access. Output is atomic and owns copies. */
 bool tired_cli_parse(int argc, const char *const *argv, TiredRequest *request, TiredError *error);
+/* Reports a recognized --json flag even when later parsing fails. */
+bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *request,
+                            bool *json_requested, TiredError *error);
 const char *tired_command_name(TiredCommand command);
 void tired_request_destroy(TiredRequest *request);
 #endif
