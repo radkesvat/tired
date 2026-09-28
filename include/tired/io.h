@@ -6,6 +6,8 @@
  * rejected without blocking on open. Enforce limit before and during reads.
  * Failure preserves the previous owned output. No privileged trust is inferred. */
 bool tired_read_file(const char *path, size_t limit, TiredText *output, TiredError *error);
+/* Borrow an already-open regular descriptor at its current offset; never closes it. */
+bool tired_read_fd(int fd, size_t limit, TiredText *output, TiredError *error);
 /* Create a new private output; refuses existing files/symlinks. Never overwrites.
  * A write/fsync/close failure may leave a partial private file at the requested
  * path. Do not unlink by pathname after failure, as it might have been replaced. */

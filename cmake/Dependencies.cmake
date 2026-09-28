@@ -9,6 +9,9 @@ else()
 endif()
 set(_tired_saved_suffixes ${CMAKE_FIND_LIBRARY_SUFFIXES})
 set(CMAKE_FIND_LIBRARY_SUFFIXES ${_tired_json_suffixes})
+pkg_check_modules(CRYPTO REQUIRED libcrypto>=3.0)
+find_library(TIRED_CRYPTO_${TIRED_DEPENDENCY_MODE}_LIBRARY NAMES crypto
+    HINTS ${CRYPTO_LIBRARY_DIRS} REQUIRED)
 find_library(TIRED_JSON_C_${TIRED_DEPENDENCY_MODE}_LIBRARY NAMES json-c
     HINTS ${JSON_C_LIBRARY_DIRS} REQUIRED)
 set(CMAKE_FIND_LIBRARY_SUFFIXES ${_tired_saved_suffixes})
@@ -17,6 +20,12 @@ set_target_properties(tired_json_c PROPERTIES
     IMPORTED_LOCATION "${TIRED_JSON_C_${TIRED_DEPENDENCY_MODE}_LIBRARY}"
     INTERFACE_INCLUDE_DIRECTORIES "${JSON_C_INCLUDE_DIRS}"
     INTERFACE_COMPILE_OPTIONS "${JSON_C_CFLAGS_OTHER}")
+find_package(Threads REQUIRED)
+add_library(tired_crypto UNKNOWN IMPORTED)
+set_target_properties(tired_crypto PROPERTIES
+    IMPORTED_LOCATION "${TIRED_CRYPTO_${TIRED_DEPENDENCY_MODE}_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${CRYPTO_INCLUDE_DIRS}"
+    INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS};Threads::Threads")
 
 if(TIRED_DEPENDENCY_MODE STREQUAL "DISTRIBUTION")
     # Distribution builds resolve installed libraries only and never load CPM.

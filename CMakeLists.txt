@@ -85,9 +85,10 @@ target_sources(tired_core PRIVATE src/storage/io.c)
 target_sources(tired_core PRIVATE src/cli/plan.c src/cli/plan_output.c)
 target_sources(tired_core PRIVATE src/profiles/profile.c)
 target_sources(tired_core PRIVATE src/profiles/merge.c)
+target_sources(tired_core PRIVATE src/profiles/catalog.c)
 target_compile_definitions(tired_core PRIVATE _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 target_include_directories(tired_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c)
+target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c tired_crypto)
 target_link_libraries(tired PRIVATE tired_core tired_build_options)
 
 add_custom_command(TARGET tired POST_BUILD
@@ -100,6 +101,11 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_catalog_test tests/unit/catalog_test.c)
+    target_compile_definitions(tired_catalog_test PRIVATE _POSIX_C_SOURCE=200809L)
+    target_link_libraries(tired_catalog_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.catalog COMMAND tired_catalog_test "${CMAKE_CURRENT_SOURCE_DIR}/profiles")
+    set_tests_properties(tired.catalog PROPERTIES LABELS unit)
     add_executable(tired_bundled_profiles_test tests/unit/bundled_profiles_test.c)
     target_link_libraries(tired_bundled_profiles_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.bundled_profiles COMMAND tired_bundled_profiles_test

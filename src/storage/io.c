@@ -42,17 +42,33 @@ bool tired_read_file(const char *path, size_t limit, TiredText *output, TiredErr
     if (fd < 0)
         return tired_error_set(error, TIRED_INVALID, "input-open",
                                "Cannot open the requested input file.", errno);
+    TiredText staged = {0};
+    bool ok = tired_read_fd(fd, limit, &staged, error);
+    if (close(fd) != 0 && ok)
+        ok =
+            tired_error_set(error, TIRED_INVALID, "input-close", "Cannot close input file.", errno);
+    if (ok)
+    {
+        tired_text_destroy(output);
+        *output = staged;
+    }
+    else
+        tired_text_destroy(&staged);
+    return ok;
+}
+
+bool tired_read_fd(int fd, size_t limit, TiredText *output, TiredError *error)
+{
+    assert(fd >= 0 && output != NULL && limit < SIZE_MAX);
     struct stat before;
     if (fstat(fd, &before) != 0)
     {
         int saved_errno = errno;
-        (void)close(fd);
         return tired_error_set(error, TIRED_INVALID, "input-stat", "Cannot inspect input file.",
                                saved_errno);
     }
     if (!S_ISREG(before.st_mode) || before.st_size < 0 || (uintmax_t)before.st_size > limit)
     {
-        (void)close(fd);
         return tired_error_set(error, TIRED_INVALID, "input-file",
                                "Input must be a regular file within the byte limit.", 0);
     }
@@ -91,9 +107,6 @@ bool tired_read_file(const char *path, size_t limit, TiredText *output, TiredErr
                before.st_ctim.tv_nsec != after.st_ctim.tv_nsec))
         ok = tired_error_set(error, TIRED_CONFLICT, "input-changed",
                              "Input file changed while being read; retry with a stable file.", 0);
-    if (close(fd) != 0 && ok)
-        ok =
-            tired_error_set(error, TIRED_INVALID, "input-close", "Cannot close input file.", errno);
     if (ok)
         ok = tired_buffer_take(&buffer, output, error);
     tired_buffer_destroy(&buffer);

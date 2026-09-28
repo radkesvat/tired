@@ -88,3 +88,26 @@ retain configuration argv, preserve user choices, suppress system network advice
 user scope, and exercise unknown/insufficient/sufficient descriptor capacity. They do
 not execute the target. CLI discovery/application and real-host qualification remain
 separate work; installing the data files alone does not enable automatic matching.
+
+## Catalog trust and selection
+
+The directory loader accepts only an explicitly supplied absolute directory and
+never searches the working directory. It walks ancestors through directory file
+descriptors with no symlink following. Every component must be owned by root or the
+specified trusted owner and must not be group/other writable. Files must be regular,
+have one link, and pass the same owner/write checks. Trusted-root selection is the
+caller's responsibility; a bundled label alone is not proof of root ownership.
+
+Files are opened relative to the retained directory descriptor, read within the
+profile limit, validated, and hashed with OpenSSL EVP SHA-256. The digest identifies
+content, not publisher authenticity. Catalog records retain path, origin, and trusted
+owner. Directory order is deterministic; scans stop at 4096 entries and catalogs at
+256 profiles. On failure newly appended entries are removed and previous entries
+remain. Borrowed record pointers must not survive an append attempt.
+
+Explicit ID selection supports renamed workloads. Automatic matching returns an
+ambiguous result when multiple non-generic profiles match, with no arbitrary winner.
+Generic is used only as fallback. User-origin entries are excluded in system scope.
+Duplicate IDs currently fail closed; the explicit replacement installation workflow
+is not yet implemented. Production frontend discovery and explanation output must
+still supply the configured directories and display all ambiguity candidates.

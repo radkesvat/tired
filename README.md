@@ -25,7 +25,7 @@ On Ubuntu/Debian, install the build tools (CMake 3.22 or newer):
 
 ```sh
 sudo apt-get update
-sudo apt-get install clang llvm lld cmake ninja-build binutils pkg-config libjson-c-dev
+sudo apt-get install clang llvm lld cmake ninja-build binutils pkg-config libjson-c-dev libssl-dev
 ```
 
 Run from this directory:
@@ -65,7 +65,7 @@ cpack -G TGZ
 
 [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) 0.42.0 is vendored, including its
 license, and loaded in direct mode through `cmake/Dependencies.cmake`. The core uses
-json-c 0.15 or newer, discovered locally through pkg-config. Builds configure offline
+json-c 0.15+ and OpenSSL libcrypto 3.0+, discovered locally through pkg-config. Builds configure offline
 when development packages are installed. Future source dependencies must use pinned
 commits or archive hashes and explicit static-library options.
 Direct builds use `$XDG_CACHE_HOME/tired/cpm` (or `$HOME/.cache/tired/cpm`);
@@ -84,8 +84,8 @@ The default `-DTIRED_DEPENDENCY_MODE=DIRECT` requires static dependency archives
 Use `-DTIRED_DEPENDENCY_MODE=DISTRIBUTION` for Debian/PPA builds using installed
 shared libraries. Distribution mode bypasses CPM entirely. Neither mode downloads
 runtime dependencies automatically or switches to the other linkage mode.
-Direct mode requires a local json-c static archive; distribution mode uses its shared
-library. Missing development libraries fail configuration without downloading them.
+Direct mode requires local json-c and libcrypto static archives; distribution mode
+uses shared libraries. Missing development libraries fail configuration without downloading them.
 
 For example, configure a separate distribution build without changing a preset tree:
 
