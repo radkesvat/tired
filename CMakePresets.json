@@ -1,0 +1,121 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "linux-clang",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/install/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "BUILD_TESTING": true,
+        "TIRED_WARNINGS_AS_ERRORS": true,
+        "TIRED_DEPENDENCY_MODE": "DIRECT"
+      }
+    },
+    {
+      "name": "linux-clang-x64-debug",
+      "inherits": "linux-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "TIRED_TARGET_ARCH": "x64"
+      }
+    },
+    {
+      "name": "linux-clang-x64-release",
+      "inherits": "linux-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "TIRED_TARGET_ARCH": "x64"
+      }
+    },
+    {
+      "name": "linux-clang-arm64-debug",
+      "inherits": "linux-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "TIRED_TARGET_ARCH": "arm64"
+      }
+    },
+    {
+      "name": "linux-clang-arm64-release",
+      "inherits": "linux-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "TIRED_TARGET_ARCH": "arm64"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-clang-x64-debug",
+      "configurePreset": "linux-clang-x64-debug"
+    },
+    {
+      "name": "linux-clang-x64-release",
+      "configurePreset": "linux-clang-x64-release"
+    },
+    {
+      "name": "linux-clang-arm64-debug",
+      "configurePreset": "linux-clang-arm64-debug"
+    },
+    {
+      "name": "linux-clang-arm64-release",
+      "configurePreset": "linux-clang-arm64-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "linux-clang-x64-debug",
+      "configurePreset": "linux-clang-x64-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-clang-x64-release",
+      "configurePreset": "linux-clang-x64-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-clang-arm64-debug",
+      "configurePreset": "linux-clang-arm64-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-clang-arm64-release",
+      "configurePreset": "linux-clang-arm64-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    }
+  ]
+}
