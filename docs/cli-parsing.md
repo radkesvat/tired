@@ -27,6 +27,7 @@ with sensitive-export acknowledgment enforced by the frontend.
 The parser currently covers creation options, common flags, reserved dispatch, and
 basic management operand counts. Command-specific management filters/actions and
 nested profile/config command validation remain under implementation. The executable
-currently exposes help/version and generic offline planning with `--profile none`.
+currently exposes help/version, offline planning with profile selection, and
+profiles list/show/validate.
 Other commands fail explicitly as unavailable. Successful parse recognition does
 not imply that a corresponding service-management handler is complete.

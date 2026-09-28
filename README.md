@@ -1,15 +1,19 @@
 # tired
 
-C17 service-management project under implementation. Generic offline planning is
-available; service installation, live validation, profile matching, and lifecycle
+C17 service-management project under implementation. Offline planning and profile
+inspection are available; service installation, live validation, and lifecycle
 management are not implemented yet. No public release is available.
 
 ```sh
 ./build/linux-clang-x64-debug/tired plan --offline --profile none -- /usr/bin/sleep 60
 ./build/linux-clang-x64-debug/tired plan --offline --profile none --json -- /usr/bin/sleep 60
+cmake --install build/linux-clang-x64-debug
+./build/linux-clang-x64-debug/tired profiles list
 ```
 
-Plans perform no service changes and do not execute the workload. Names remain
+Plans perform no service changes and do not execute the workload. After staging
+installation, omit `--profile none` to use installed
+profiles automatically, or use `--profile ID` for an explicit selection. Names remain
 tentative; live validation is explicitly marked as not performed. Use `--help` for
 available planning options. Default output redacts recognized secret-bearing flags
 and environment values; classification cannot identify every possible secret.

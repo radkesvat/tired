@@ -2,6 +2,7 @@
 #include "tired/plan_output.h"
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #define CHECK(expression)                                                                          \
     do                                                                                             \
     {                                                                                              \
@@ -11,7 +12,7 @@
             return 1;                                                                              \
         }                                                                                          \
     } while (0)
-int main(void)
+int main(int argc, char **argv)
 {
     const char *args[] = {"tired",
                           "plan",
@@ -70,6 +71,25 @@ int main(void)
           strstr(output.data, "command-secret") != NULL);
     CHECK(strstr(plan.spec.fields[TIRED_FIELD_ARGV].value.list.items[2].data, "command-secret") !=
           NULL);
+    CHECK(argc == 2);
+    TiredProfileCatalog catalog = {0};
+    TiredProfileContext context = {.systemd_version = 249};
+    CHECK(tired_catalog_add_directory(&catalog, argv[1], TIRED_PROFILE_BUNDLED, getuid(), false,
+                                      &error));
+    CHECK(tired_plan_apply_profiles(&plan, &catalog, "backhaul", &context, &error));
+    tired_catalog_destroy(&catalog);
+    CHECK(strcmp(plan.profile.id, "backhaul") == 0 && strlen(plan.profile_digest) == 64);
+    CHECK(plan.profile_decisions[2] == TIRED_RECOMMENDATION_CONDITION_UNKNOWN);
+    CHECK(tired_plan_output(&plan, true, false, false, &output, &error));
+    CHECK(strstr(output.data, "profile_snapshot") != NULL &&
+          strstr(output.data, "condition-unknown") != NULL);
+    CHECK(strstr(output.data, "command-secret") == NULL);
+    CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &json, &error));
+    CHECK(json_object_object_get_ex(json, "profile", &flag) &&
+          strcmp(json_object_get_string(flag), "backhaul") == 0);
+    CHECK(tired_plan_output(&plan, false, false, false, &output, &error));
+    CHECK(strstr(output.data, "Profile: Backhaul") != NULL &&
+          strstr(output.data, "Evidence:") != NULL);
     json_object_put(json);
     tired_text_destroy(&output);
     tired_plan_destroy(&plan);

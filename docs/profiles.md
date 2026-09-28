@@ -32,8 +32,8 @@ list is suitable for a generic profile. No executable probing occurs.
 The loader owns its parsed document and typed recommendation values; metadata views
 remain valid until profile destruction. Failed parses preserve the previous profile.
 This layer does not establish trust in profile file locations or apply advice.
-Discovery, trust checks, ambiguity handling, merge provenance, bundled evidence,
-profile commands, and profile refresh remain under implementation.
+The catalog and merger provide the discovery and decision layers described below.
+Profile installation, replacement, and installed-service refresh remain unfinished.
 
 ## Recommendation evaluation
 
@@ -58,8 +58,8 @@ The merger builds a separate owned model, resolves dependent retry/scope default
 and performs current semantic checks before publication. Failures preserve previous
 outputs. It does not authorize capabilities, certify profile-file trust, validate
 host resource ceilings, or implement installed-service refresh by itself. Condition
-evaluation and merge are now implemented; discovery, per-file trust/digests, ambiguity
-across profiles, explicit-inherit UI state, and end-user provenance views remain.
+evaluation and merge feed the offline frontend's provenance views. Explicit-inherit
+UI state and full host/risk validation remain unfinished.
 
 ## Bundled profile evidence
 
@@ -86,8 +86,8 @@ The profile prose summarizes facts and decisions rather than copying upstream co
 Native bundle tests load all four actual files, check matching/nonmatching names,
 retain configuration argv, preserve user choices, suppress system network advice in
 user scope, and exercise unknown/insufficient/sufficient descriptor capacity. They do
-not execute the target. CLI discovery/application and real-host qualification remain
-separate work; installing the data files alone does not enable automatic matching.
+not execute the target. Offline CLI discovery/application is available after staging
+the bundled data; real-host qualification remains separate work.
 
 ## Catalog trust and selection
 
@@ -109,5 +109,31 @@ Explicit ID selection supports renamed workloads. Automatic matching returns an
 ambiguous result when multiple non-generic profiles match, with no arbitrary winner.
 Generic is used only as fallback. User-origin entries are excluded in system scope.
 Duplicate IDs currently fail closed; the explicit replacement installation workflow
-is not yet implemented. Production frontend discovery and explanation output must
-still supply the configured directories and display all ambiguity candidates.
+is not yet implemented. Frontend discovery uses the configured installation data
+directory, administrator directory, and user configuration directory in user scope.
+Offline output lists ambiguity candidates instead of selecting a winner.
+
+## Read-only profile commands and plans
+
+`profiles list` displays available IDs and names; JSON includes source paths, origins,
+and content digests. `profiles show ID` displays the selected document. `profiles
+validate FILE` validates an explicitly selected file without a manager or catalog
+trust claim. The current implementation does not install, remove, or refresh profiles.
+
+Offline planning defaults to auto matching after generic capture and explicit
+selection. `--profile none` skips discovery. A selected profile is independently
+snapshotted into the plan, so its reasons and source metadata survive catalog cleanup.
+JSON output includes the snapshot, digest, source, origin, and each recommendation's
+disposition. Text output explains recommendations and cites evidence. Changing profile
+selection requires rebuilding the input proposal to avoid retaining stale advice.
+
+Offline evaluation declares systemd 249 as the target baseline; this is not an observed
+host version. Features, application versions, and usable NOFILE ceilings remain unknown
+unless independently supplied by a validated context. Conditional advice stays visible
+but is suppressed when its evidence is unknown. No manager queries or target probing
+are performed by this path.
+
+Development binaries use their configured install prefix for bundled data. Run
+`cmake --install build/<preset>` to stage the executable and profiles. No source-tree
+or current-directory fallback is compiled into production. `profiles validate FILE`
+and `plan --profile none` work without installed bundled data.

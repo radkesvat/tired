@@ -263,7 +263,8 @@ bool tired_profile_parse(const char *data, size_t length, TiredProfile *profile,
     parsed.id = text(root, "id", 80);
     parsed.name = text(root, "name", 256);
     parsed.summary = text(root, "summary", 4096);
-    if (!identifier(parsed.id) || parsed.name == NULL || parsed.summary == NULL)
+    if (!identifier(parsed.id) || strcmp(parsed.id, "auto") == 0 ||
+        strcmp(parsed.id, "none") == 0 || parsed.name == NULL || parsed.summary == NULL)
         goto schema_fail;
     struct json_object *replacement = NULL;
     if (json_object_object_get_ex(root, "replaces", &replacement) &&

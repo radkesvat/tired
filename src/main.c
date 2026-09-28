@@ -1,5 +1,6 @@
 #include "tired/io.h"
 #include "tired/plan_output.h"
+#include "tired/profile_frontend.h"
 #include <json-c/json.h>
 #include <signal.h>
 #include <stdio.h>
@@ -78,6 +79,7 @@ int main(int argc, char **argv)
     (void)signal(SIGPIPE, SIG_IGN);
     TiredRequest request = {0};
     TiredPlan plan = {0};
+    TiredProfileCatalog catalog = {0};
     TiredText output = {0};
     TiredError error = {0};
     bool json = false;
@@ -86,10 +88,11 @@ int main(int argc, char **argv)
         goto failed;
     if (request.help)
     {
-        fputs("Usage: tired plan --offline --profile none [options] -- COMMAND [ARG...]\n"
+        fputs("Usage: tired plan --offline [--profile auto|none|ID] [options] -- COMMAND [ARG...]\n"
+              "       tired profiles list | show ID | validate FILE [--json]\n"
               "       tired --help | --version\n\n"
-              "Offline generic planning is implemented. Service installation, live validation,\n"
-              "profile matching, and management commands are still under implementation.\n"
+              "Offline planning and profile inspection are implemented. Service installation,\n"
+              "live validation, and management commands are still under implementation.\n"
               "Options: --user, --name NAME, --run-as USER, --group GROUP,\n"
               "  --working-directory PATH, --type TYPE, --restart POLICY, --restart-sec TIME,\n"
               "  --retry-policy persistent|limited, --nofile SOFT:HARD, --set FIELD=VALUE,\n"
@@ -108,17 +111,22 @@ int main(int argc, char **argv)
     }
     if (request.command != TIRED_COMMAND_PLAN || !request.offline)
     {
+        if (request.command == TIRED_COMMAND_PROFILES)
+        {
+            if (!tired_profiles_command(&request, TIRED_BUNDLED_PROFILE_DIRECTORY, &output, &error))
+                goto failed;
+            if (fwrite(output.data, 1, output.length, stdout) != output.length)
+            {
+                json = false;
+                tired_error_set(&error, TIRED_INTERNAL, "output-write",
+                                "Cannot write profile output.", 0);
+                goto failed;
+            }
+            goto done;
+        }
         tired_error_set(&error, TIRED_UNSUPPORTED, "implementation-incomplete",
                         "This build currently supports offline planning only; use plan --offline "
                         "--profile none.",
-                        0);
-        goto failed;
-    }
-    if (request.profile.data == NULL || strcmp(request.profile.data, "none") != 0)
-    {
-        tired_error_set(&error, TIRED_UNSUPPORTED, "profiles-pending",
-                        "Profile matching is not implemented yet; select --profile none for a "
-                        "generic offline proposal.",
                         0);
         goto failed;
     }
@@ -131,8 +139,18 @@ int main(int argc, char **argv)
                         0);
         goto failed;
     }
-    if (!tired_plan_prepare(&request, &plan, &error) ||
-        !tired_plan_output(&plan, request.json, request.unit, request.include_sensitive, &output,
+    if (!tired_plan_prepare(&request, &plan, &error))
+        goto failed;
+    if (request.profile.data == NULL || strcmp(request.profile.data, "none") != 0)
+    {
+        bool user = tired_spec_choice_is(&plan.spec, TIRED_FIELD_SCOPE, "user");
+        TiredProfileContext context = {
+            .systemd_version = 249}; /* Declared offline target, not a host observation. */
+        if (!tired_profiles_discover(TIRED_BUNDLED_PROFILE_DIRECTORY, user, &catalog, &error) ||
+            !tired_plan_apply_profiles(&plan, &catalog, request.profile.data, &context, &error))
+            goto failed;
+    }
+    if (!tired_plan_output(&plan, request.json, request.unit, request.include_sensitive, &output,
                            &error))
         goto failed;
     if (request.output.data != NULL)
@@ -160,6 +178,7 @@ failed:
 done:
     tired_text_destroy(&output);
     tired_plan_destroy(&plan);
+    tired_catalog_destroy(&catalog);
     tired_request_destroy(&request);
     if (fflush(stdout) != 0)
         return TIRED_INTERNAL;

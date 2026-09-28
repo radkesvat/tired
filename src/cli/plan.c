@@ -17,6 +17,10 @@ void tired_plan_destroy(TiredPlan *p)
     tired_environment_destroy(&p->environment);
     tired_credentials_destroy(&p->credentials);
     tired_text_destroy(&p->managed_environment);
+    tired_profile_destroy(&p->profile);
+    tired_text_destroy(&p->profile_path);
+    tired_text_list_destroy(&p->profile_candidates);
+    free(p->profile_decisions);
     *p = (TiredPlan){0};
 }
 static bool set_text(TiredServiceSpec *spec, TiredFieldId id, const TiredText *text,
@@ -148,8 +152,7 @@ bool tired_plan_prepare(const TiredRequest *request, TiredPlan *output, TiredErr
             goto fail;
     }
     if (!tired_spec_resolve_scope(&plan.spec, error) ||
-        !tired_spec_resolve_retry(&plan.spec, error) ||
-        !tired_spec_validate_scalars(&plan.spec, error) || !tired_uuid_create(plan.uuid, error))
+        !tired_spec_resolve_retry(&plan.spec, error) || !tired_uuid_create(plan.uuid, error))
         goto fail;
     if (plan.environment.count != 0)
     {
@@ -198,5 +201,85 @@ fail:
     tired_text_destroy(&contents);
     tired_buffer_destroy(&buffer);
     tired_plan_destroy(&plan);
+    return false;
+}
+
+bool tired_plan_apply_profiles(TiredPlan *plan, const TiredProfileCatalog *catalog,
+                               const char *selection, const TiredProfileContext *context,
+                               TiredError *error)
+{
+    assert(plan != NULL && catalog != NULL && context != NULL);
+    if (plan->profile_matching)
+        return tired_error_set(error, TIRED_CONFLICT, "profile-reselection",
+                               "Rebuild the input proposal before changing profile selection.", 0);
+    if (selection != NULL && strcmp(selection, "none") == 0)
+        return true;
+    const TiredProfileEntry *selected = NULL;
+    size_t count = 0;
+    bool user = tired_spec_choice_is(&plan->spec, TIRED_FIELD_SCOPE, "user");
+    if (!tired_catalog_select(catalog, &plan->invocation.executable, selection, user, &selected,
+                              &count, error))
+        return false;
+    TiredProfile snapshot = {0};
+    TiredProfileMerge merge = {0};
+    TiredText path = {0};
+    TiredTextList candidates = {0};
+    if (count > 1)
+    {
+        for (size_t i = 0; i < catalog->count; ++i)
+        {
+            const TiredProfileEntry *entry = &catalog->items[i];
+            if ((!user && entry->origin == TIRED_PROFILE_USER) ||
+                strcmp(entry->profile.id, "generic") == 0)
+                continue;
+            if (tired_profile_matches(&entry->profile, &plan->invocation.executable) &&
+                !tired_text_list_append(&candidates, entry->profile.id, strlen(entry->profile.id),
+                                        256, 65536, error))
+                goto fail;
+        }
+    }
+    if (selected != NULL)
+    {
+        const char *json =
+            json_object_to_json_string_ext(selected->profile.document, JSON_C_TO_STRING_PLAIN);
+        if (json == NULL)
+        {
+            tired_error_set(error, TIRED_INTERNAL, "allocation",
+                            "Cannot snapshot selected profile.", 0);
+            goto fail;
+        }
+        if (!tired_profile_parse(json, strlen(json), &snapshot, error) ||
+            !tired_text_set(&path, selected->path.data, selected->path.length, TIRED_INPUT_LIMIT,
+                            error) ||
+            !tired_profile_merge(&snapshot, &plan->spec, context, &merge, error))
+            goto fail;
+    }
+    tired_profile_destroy(&plan->profile);
+    plan->profile = snapshot;
+    tired_text_destroy(&plan->profile_path);
+    plan->profile_path = path;
+    tired_text_list_destroy(&plan->profile_candidates);
+    plan->profile_candidates = candidates;
+    free(plan->profile_decisions);
+    plan->profile_decisions = merge.decisions;
+    merge.decisions = NULL;
+    plan->profile_matching = true;
+    plan->profile_explicit = selection != NULL && strcmp(selection, "auto") != 0;
+    if (selected != NULL)
+    {
+        memcpy(plan->profile_digest, selected->digest, sizeof(plan->profile_digest));
+        plan->profile_origin = selected->origin;
+        tired_spec_destroy(&plan->spec);
+        plan->spec = merge.spec;
+        merge.spec = (TiredServiceSpec){0};
+    }
+    tired_profile_merge_destroy(&merge);
+    tired_error_clear(error);
+    return true;
+fail:
+    tired_profile_destroy(&snapshot);
+    tired_profile_merge_destroy(&merge);
+    tired_text_destroy(&path);
+    tired_text_list_destroy(&candidates);
     return false;
 }

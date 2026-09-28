@@ -1,9 +1,10 @@
 # Offline generic planning
 
-Run `tired plan --offline --profile none -- /absolute/program argument` to construct
+Run `tired plan --offline -- /absolute/program argument` to construct
 a read-only proposal. `--json` emits one structured document, while `--unit` emits
-a unit view. The current implementation requires explicitly disabling profile
-matching; automatic profiles and live planning remain unfinished.
+a unit view. Installed profiles are matched automatically. `--profile none` disables
+matching; `--profile ID` selects a profile explicitly for renamed workloads. Live
+planning remains unfinished.
 
 Preparation captures the command once, resolves account/group choices, applies typed
 CLI overrides, recomputes dependent retry/scope/name defaults, imports only selected
@@ -32,8 +33,8 @@ sensitive-export`. Nothing unredacted is sent to stdout by that option. An expor
 failure may leave a private partial file and reports this explicitly. The only
 persistent planning effect is the explicitly requested output file.
 
-The current executable also provides help/version. Creation, live plans, profiles,
-settings, dashboard and management handlers remain under implementation and return
+The current executable also provides help/version and profiles list/show/validate.
+Profile installation/removal/explain, creation, live plans, settings, dashboard and management handlers remain under implementation and return
 an explicit unsupported result. Their parser recognition is not implementation
 completion. Full risk validation, host compatibility, real execution round trips,
 and release qualification remain required.

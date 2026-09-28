@@ -43,6 +43,19 @@ static bool push(struct json_object *array, struct json_object *child)
     }
     return true;
 }
+
+static bool comment(TiredBuffer *buffer, const char *label, const char *value, TiredError *error)
+{
+    TiredText safe = {0};
+    bool ok = tired_encode_display(value, strlen(value), &safe, error) &&
+              tired_buffer_append(buffer, "# ", 2, error) &&
+              tired_buffer_append(buffer, label, strlen(label), error) &&
+              tired_buffer_append(buffer, ": ", 2, error) &&
+              tired_buffer_append(buffer, safe.data, safe.length, error) &&
+              tired_buffer_append(buffer, "\n", 1, error);
+    tired_text_destroy(&safe);
+    return ok;
+}
 static struct json_object *field_value(const TiredField *field, const TiredFieldValue *value)
 {
     switch (field->kind)
@@ -201,11 +214,86 @@ bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool in
             !add(root, "live_validation", json_object_new_string("not_performed")) ||
             !add(root, "collision_check", json_object_new_string("not_performed")) ||
             !add(root, "replayable", json_object_new_boolean(false)) ||
-            !add(root, "profile", json_object_new_string("generic")) ||
-            !add(root, "profile_matching", json_object_new_string("disabled")) ||
+            !add(root, "profile",
+                 json_object_new_string(plan->profile.id == NULL ? "generic" : plan->profile.id)) ||
+            !add(root, "profile_matching",
+                 json_object_new_string(!plan->profile_matching              ? "disabled"
+                                        : plan->profile_candidates.count > 1 ? "ambiguous"
+                                        : plan->profile_explicit             ? "explicit"
+                                        : plan->profile.id == NULL ||
+                                                strcmp(plan->profile.id, "generic") == 0
+                                            ? "generic-fallback"
+                                            : "executable-name")) ||
+            !add(root, "target_systemd_min", json_object_new_int(249)) ||
             !add(root, "unit_redacted", json_object_new_boolean(redacted)) ||
             !add(root, "unit", json_object_new_string_len(unit.data, (int)unit.length)))
             goto allocation;
+        struct json_object *candidates = json_object_new_array();
+        if (candidates == NULL)
+            goto allocation;
+        for (size_t i = 0; i < plan->profile_candidates.count; ++i)
+            if (!push(candidates, json_object_new_string(plan->profile_candidates.items[i].data)))
+            {
+                json_object_put(candidates);
+                goto allocation;
+            }
+        if (!add(root, "profile_candidates", candidates))
+            goto allocation;
+        if (plan->profile.document != NULL)
+        {
+            if (!add(root, "profile_snapshot", json_object_get(plan->profile.document)) ||
+                !add(root, "profile_digest", json_object_new_string(plan->profile_digest)) ||
+                !add(root, "profile_source", json_object_new_string(plan->profile_path.data)) ||
+                !add(root, "profile_origin",
+                     json_object_new_string(
+                         plan->profile_origin == TIRED_PROFILE_BUNDLED ? "bundled"
+                         : plan->profile_origin == TIRED_PROFILE_ADMIN ? "administrator"
+                                                                       : "user")))
+                goto allocation;
+            struct json_object *decisions = json_object_new_array();
+            if (decisions == NULL)
+                goto allocation;
+            bool ok = true;
+            for (size_t i = 0; ok && i < plan->profile.count; ++i)
+            {
+                struct json_object *entry = json_object_new_object();
+                if (entry == NULL)
+                {
+                    ok = false;
+                    break;
+                }
+                if (!add(entry, "field",
+                         json_object_new_string(
+                             tired_field_get(plan->profile.recommendations[i].field)->name)) ||
+                    !add(entry, "disposition",
+                         json_object_new_string(
+                             tired_recommendation_disposition_name(plan->profile_decisions[i]))) ||
+                    !add(entry, "reason",
+                         json_object_new_string(plan->profile.recommendations[i].reason)))
+                {
+                    json_object_put(entry);
+                    ok = false;
+                    break;
+                }
+                ok = push(decisions, entry);
+            }
+            if (!ok)
+            {
+                json_object_put(decisions);
+                goto allocation;
+            }
+            if (!add(root, "recommendations", decisions))
+                goto allocation;
+        }
+        if (plan->profile_candidates.count > 1 &&
+            !push(warnings, json_object_new_string("ambiguous-profile")))
+            goto allocation;
+        for (size_t i = 0; i < plan->profile.count; ++i)
+            if ((plan->profile_decisions[i] == TIRED_RECOMMENDATION_CONFLICT ||
+                 plan->profile_decisions[i] == TIRED_RECOMMENDATION_REQUIRED_CONFLICT) &&
+                !push(warnings, json_object_new_string(tired_recommendation_disposition_name(
+                                    plan->profile_decisions[i]))))
+                goto allocation;
         bool added = add(root, "fields", fields);
         fields = NULL;
         if (!added)
@@ -245,11 +333,62 @@ bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool in
                      : "# Offline proposal; live validation and collision checks not performed\n";
         if (!tired_buffer_append(&text, heading, strlen(heading), error))
             goto fail;
-        if (!unit_only &&
-            !tired_buffer_append(
-                &text, "# Profile: Generic; application requirements unknown\n",
-                sizeof("# Profile: Generic; application requirements unknown\n") - 1, error))
-            goto fail;
+        if (!unit_only)
+        {
+            if (!comment(&text, "Profile",
+                         plan->profile.name == NULL ? "Generic; application requirements unknown"
+                                                    : plan->profile.name,
+                         error))
+                goto fail;
+            if (plan->profile.document != NULL)
+            {
+                if (!comment(&text, "Match",
+                             plan->profile_explicit
+                                 ? "Explicit selection; binary identity is not verified"
+                             : strcmp(plan->profile.id, "generic") == 0
+                                 ? "Generic fallback"
+                                 : "Executable name; binary identity is not verified",
+                             error) ||
+                    !comment(&text, "Profile source", plan->profile_path.data, error) ||
+                    !comment(&text, "Profile digest", plan->profile_digest, error))
+                    goto fail;
+                for (size_t i = 0; i < plan->profile.count; ++i)
+                    if (!comment(&text,
+                                 tired_field_get(plan->profile.recommendations[i].field)->name,
+                                 tired_recommendation_disposition_name(plan->profile_decisions[i]),
+                                 error) ||
+                        !comment(&text, "Reason", plan->profile.recommendations[i].reason, error))
+                        goto fail;
+                struct json_object *sources = NULL, *advisories = NULL;
+                (void)json_object_object_get_ex(plan->profile.document, "sources", &sources);
+                (void)json_object_object_get_ex(plan->profile.document, "advisories", &advisories);
+                for (size_t i = 0; i < json_object_array_length(sources); ++i)
+                {
+                    struct json_object *url = NULL;
+                    (void)json_object_object_get_ex(json_object_array_get_idx(sources, i), "url",
+                                                    &url);
+                    if (!comment(&text, "Evidence", json_object_get_string(url), error))
+                        goto fail;
+                }
+                for (size_t i = 0; i < json_object_array_length(advisories); ++i)
+                {
+                    struct json_object *message = NULL;
+                    (void)json_object_object_get_ex(json_object_array_get_idx(advisories, i),
+                                                    "message", &message);
+                    if (!comment(&text, "Advisory", json_object_get_string(message), error))
+                        goto fail;
+                }
+            }
+            if (plan->profile_candidates.count > 1)
+            {
+                if (!comment(&text, "Warning",
+                             "Ambiguous profile matches; generic settings retained", error))
+                    goto fail;
+                for (size_t i = 0; i < plan->profile_candidates.count; ++i)
+                    if (!comment(&text, "Candidate", plan->profile_candidates.items[i].data, error))
+                        goto fail;
+            }
+        }
         if (sensitive &&
             !tired_buffer_append(
                 &text, "# Warning: sensitive-command-data; actual unit retains command secrets\n",

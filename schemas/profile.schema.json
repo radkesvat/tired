@@ -6,7 +6,7 @@
   "required": ["schema_version", "id", "name", "revision", "summary", "match", "compatibility", "recommendations", "advisories", "sources"],
   "properties": {
     "schema_version": {"const": 1},
-    "id": {"$ref": "#/$defs/id"},
+    "id": {"allOf": [{"$ref": "#/$defs/id"}, {"not": {"enum": ["auto", "none"]}}]},
     "replaces": {"$ref": "#/$defs/id"},
     "name": {"type": "string", "minLength": 1, "maxLength": 256},
     "summary": {"type": "string", "minLength": 1, "maxLength": 4096},
