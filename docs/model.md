@@ -31,7 +31,7 @@ assignment as a general authorization or merge operation.
 
 The registry currently covers basic identity/execution, restart controls, timeouts,
 output modes, scalar hardening, scope/network, requested activation, and the
-collections listed below. Resource-limit types, signal validation, full provenance, and the CLI/TUI
+collections and resource types listed below. Signal validation, full provenance, and the CLI/TUI
 consumers remain under implementation.
 
 ## Collections and retry defaults
@@ -55,3 +55,23 @@ for persistent mode, or five minutes and ten starts for limited mode. It updates
 only inherited/default fields. Conflicting explicit/profile intervals fail without
 changing the model. Persistent retries reject a zero delay. A subsecond-delay risk
 acknowledgment belongs to the pending risk-validation layer.
+
+## Resource values
+
+`nofile.soft` and `nofile.hard` are a required pair when either is supplied; the
+soft value cannot exceed the hard value. Each is an unsigned decimal quantity or
+`infinity`, represented separately from numeric values. Numeric UINT64_MAX is
+rejected instead of silently becoming an infinity sentinel. No descriptor limit
+is applied by default.
+
+`memory_max` accepts integer bytes, binary K/M/G/T/P/E multipliers, or `infinity`.
+`tasks_max` accepts a positive integer or `infinity`. `cpu_quota` accepts a positive
+percentage with at most two decimal places and preserves values over 100%.
+`umask` accepts up to four octal digits bounded by 0777; runtime/state directory
+modes accept up to 07777. These values remain inherited unless selected.
+
+Parsing performs no clamping or global limit changes. Host controller availability,
+manager limits, kernel ceilings, and field-specific risk disclosure must still be
+validated before installation. See the baseline
+[resource-control reference](https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.resource-control.xml)
+and [execution reference](https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.exec.xml).

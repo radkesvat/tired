@@ -1,6 +1,7 @@
 #ifndef TIRED_MODEL_H
 #define TIRED_MODEL_H
 
+#include "tired/limit.h"
 #include "tired/value.h"
 
 typedef enum
@@ -10,7 +11,10 @@ typedef enum
     TIRED_FIELD_BOOL,
     TIRED_FIELD_INTEGER,
     TIRED_FIELD_DURATION,
-    TIRED_FIELD_LIST
+    TIRED_FIELD_LIST,
+    TIRED_FIELD_LIMIT,
+    TIRED_FIELD_MODE,
+    TIRED_FIELD_QUOTA
 } TiredFieldKind;
 typedef enum
 {
@@ -64,6 +68,14 @@ typedef enum
     TIRED_FIELD_READ_WRITE_PATHS,
     TIRED_FIELD_RUNTIME_DIRECTORY,
     TIRED_FIELD_STATE_DIRECTORY,
+    TIRED_FIELD_NOFILE_SOFT,
+    TIRED_FIELD_NOFILE_HARD,
+    TIRED_FIELD_MEMORY_MAX,
+    TIRED_FIELD_TASKS_MAX,
+    TIRED_FIELD_CPU_QUOTA,
+    TIRED_FIELD_UMASK,
+    TIRED_FIELD_RUNTIME_DIRECTORY_MODE,
+    TIRED_FIELD_STATE_DIRECTORY_MODE,
     TIRED_FIELD_COUNT
 } TiredFieldId;
 
@@ -92,6 +104,9 @@ typedef struct
         int64_t integer;
         uint64_t microseconds;
         TiredTextList list;
+        TiredLimit limit;
+        uint32_t mode;
+        uint64_t quota;
     } value;
 } TiredFieldValue;
 

@@ -9,6 +9,16 @@
     [TIRED_FIELD_##id] = {TIRED_FIELD_##id, name,     section, directive, TIRED_FIELD_##kind,      \
                           choices,          fallback, min,     max,       path}
 static const TiredField fields[TIRED_FIELD_COUNT] = {
+    FIELD(NOFILE_SOFT, "nofile.soft", "Service", "LimitNOFILE", LIMIT, NULL, NULL, 0, 0, false),
+    FIELD(NOFILE_HARD, "nofile.hard", "Service", "LimitNOFILE", LIMIT, NULL, NULL, 0, 0, false),
+    FIELD(MEMORY_MAX, "memory_max", "Service", "MemoryMax", LIMIT, NULL, NULL, 0, 0, false),
+    FIELD(TASKS_MAX, "tasks_max", "Service", "TasksMax", LIMIT, NULL, NULL, 1, 0, false),
+    FIELD(CPU_QUOTA, "cpu_quota", "Service", "CPUQuota", QUOTA, NULL, NULL, 0, 0, false),
+    FIELD(UMASK, "umask", "Service", "UMask", MODE, NULL, NULL, 0, 0777, false),
+    FIELD(RUNTIME_DIRECTORY_MODE, "runtime_directory_mode", "Service", "RuntimeDirectoryMode", MODE,
+          NULL, NULL, 0, 07777, false),
+    FIELD(STATE_DIRECTORY_MODE, "state_directory_mode", "Service", "StateDirectoryMode", MODE, NULL,
+          NULL, 0, 07777, false),
     FIELD(NAME, "name", NULL, NULL, TEXT, NULL, NULL, 0, 200, false),
     FIELD(DESCRIPTION, "description", "Unit", "Description", TEXT, NULL, NULL, 0, 4096, false),
     FIELD(SCOPE, "scope", NULL, NULL, CHOICE, "system|user", "system", 0, 0, false),
@@ -191,6 +201,22 @@ bool tired_spec_set(TiredServiceSpec *spec, TiredFieldId id, const char *text, s
     TiredFieldValue next = {.origin = origin};
     switch (field->kind)
     {
+    case TIRED_FIELD_LIMIT:
+        if (!tired_parse_limit(text, length, id == TIRED_FIELD_MEMORY_MAX, &next.value.limit,
+                               error))
+            return false;
+        if (!next.value.limit.infinity && next.value.limit.value < (uint64_t)field->minimum)
+            return tired_error_set(error, TIRED_INVALID, "resource-minimum",
+                                   "Resource limit is below the allowed minimum.", 0);
+        break;
+    case TIRED_FIELD_MODE:
+        if (!tired_parse_mode(text, length, (uint32_t)field->maximum, &next.value.mode, error))
+            return false;
+        break;
+    case TIRED_FIELD_QUOTA:
+        if (!tired_parse_quota(text, length, &next.value.quota, error))
+            return false;
+        break;
     case TIRED_FIELD_LIST:
         return tired_error_set(error, TIRED_INVALID, "field-collection",
                                "Collection fields require the list assignment API.", 0);
@@ -288,6 +314,15 @@ bool tired_spec_choice_is(const TiredServiceSpec *spec, TiredFieldId id, const c
 bool tired_spec_validate_scalars(const TiredServiceSpec *spec, TiredError *error)
 {
     assert(spec != NULL);
+    bool soft = has_value(&spec->fields[TIRED_FIELD_NOFILE_SOFT]);
+    bool hard = has_value(&spec->fields[TIRED_FIELD_NOFILE_HARD]);
+    if (soft != hard)
+        return tired_error_set(error, TIRED_INVALID, "nofile-pair",
+                               "Specify both soft and hard NOFILE limits.", 0);
+    if (soft && !tired_limit_le(spec->fields[TIRED_FIELD_NOFILE_SOFT].value.limit,
+                                spec->fields[TIRED_FIELD_NOFILE_HARD].value.limit))
+        return tired_error_set(error, TIRED_INVALID, "nofile-order",
+                               "Soft NOFILE limit exceeds the hard limit.", 0);
     if (tired_spec_choice_is(spec, TIRED_FIELD_TYPE, "oneshot") &&
         (tired_spec_choice_is(spec, TIRED_FIELD_RESTART, "always") ||
          tired_spec_choice_is(spec, TIRED_FIELD_RESTART, "on-success")))
