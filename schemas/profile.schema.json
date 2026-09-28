@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tired profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "revision", "summary", "match", "compatibility", "recommendations", "advisories", "sources"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {"$ref": "#/$defs/id"},
+    "replaces": {"$ref": "#/$defs/id"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 256},
+    "summary": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "revision": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+    "match": {
+      "type": "object", "additionalProperties": false,
+      "required": ["executable_basenames", "case_sensitive"],
+      "properties": {
+        "case_sensitive": {"type": "boolean"},
+        "executable_basenames": {"type": "array", "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^/\\u0000-\\u001f\\u007f-\\u009f]+$"}}
+      }
+    },
+    "compatibility": {
+      "type": "object", "additionalProperties": false,
+      "required": ["systemd_min", "application_version", "version_policy"],
+      "properties": {
+        "systemd_min": {"type": "integer", "minimum": 249, "maximum": 4294967295},
+        "application_version": {"type": ["string", "null"], "minLength": 1, "maxLength": 128},
+        "version_policy": {"enum": ["version-independent-advice", "exact-version"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"version_policy": {"const": "exact-version"}}}, "then": {"properties": {"application_version": {"type": "string"}}}, "else": {"properties": {"application_version": {"type": "null"}}}}
+      ]
+    },
+    "sources": {
+      "type": "array", "maxItems": 128,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "url", "checked_at", "source_kind"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "url": {"type": "string", "minLength": 9, "maxLength": 4096, "pattern": "^https://.+"},
+          "checked_at": {"type": "string", "format": "date"},
+          "source_kind": {"enum": ["tired-policy", "upstream-documentation", "source-audit", "tested-recommendation"]}
+        }
+      }
+    },
+    "advisories": {
+      "type": "array", "maxItems": 128,
+      "items": {"type": "object", "additionalProperties": false, "required": ["code", "message"], "properties": {
+        "code": {"$ref": "#/$defs/id"}, "message": {"type": "string", "minLength": 1, "maxLength": 4096}
+      }}
+    },
+    "recommendations": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/recommendation"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+    "condition": {
+      "type": "object", "minProperties": 1, "maxProperties": 1, "additionalProperties": false,
+      "properties": {
+        "all": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/condition"}},
+        "any": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/condition"}},
+        "scope": {"enum": ["system", "user"]},
+        "type": {"enum": ["exec", "simple", "notify", "forking", "oneshot"]},
+        "argument": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "feature": {"enum": ["credentials", "memory-max", "cpu-quota", "tasks-max", "ambient-capabilities"]},
+        "inspection": {"enum": ["executable-regular", "working-directory-accessible"]}
+      }
+    },
+    "recommendation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["field", "value", "scope", "apply", "strength", "risk", "reason", "source_ids"],
+      "properties": {
+        "field": {"enum": ["description", "type", "pid_file", "remain_after_exit", "restart", "restart_sec", "retry_policy", "start_limit_interval", "start_limit_burst", "timeout_start", "timeout_stop", "kill_mode", "standard_input", "standard_output", "standard_error", "syslog_identifier", "nice", "no_new_privileges", "private_tmp", "protect_system", "protect_home", "network", "start", "enable", "enable_linger", "environment_files", "after", "wants", "requires", "requires_mounts_for", "read_write_paths", "runtime_directory", "state_directory", "nofile.soft", "nofile.hard", "memory_max", "tasks_max", "cpu_quota", "umask", "runtime_directory_mode", "state_directory_mode", "kill_signal", "success_exit_status", "restart_prevent_exit_status", "capability_bounding_set", "ambient_capabilities", "wanted_by"]},
+        "value": {"type": ["string", "integer", "boolean", "array"], "items": {"type": "string"}},
+        "scope": {"type": "array", "minItems": 1, "maxItems": 2, "uniqueItems": true, "items": {"enum": ["system", "user"]}},
+        "apply": {"enum": ["automatic", "suggestion"]},
+        "strength": {"enum": ["default", "recommended", "required-under-stated-conditions"]},
+        "risk": {"enum": ["normal", "resource-change", "privilege-change", "behavior-change"]},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "source_ids": {"type": "array", "minItems": 1, "maxItems": 128, "items": {"$ref": "#/$defs/id"}},
+        "conditions": {"$ref": "#/$defs/condition"}
+      },
+      "allOf": [
+        {"if": {"properties": {"strength": {"const": "required-under-stated-conditions"}}}, "then": {"required": ["conditions"]}},
+        {"if": {"properties": {"field": {"enum": ["capability_bounding_set", "ambient_capabilities"]}}}, "then": {"properties": {"apply": {"const": "suggestion"}}}}
+      ]
+    }
+  },
+  "$comment": "The C semantic validator additionally enforces UTF-8 byte limits, decoded duplicate keys, source-ID uniqueness/references, replaces equality, eight-level conditions, and field-specific registry value types/ranges. Full validation requires both structural and semantic rules."
+}

@@ -83,6 +83,7 @@ add_library(tired_core STATIC src/util/value.c src/model/name.c src/model/model.
 target_sources(tired_core PRIVATE src/util/json.c)
 target_sources(tired_core PRIVATE src/storage/io.c)
 target_sources(tired_core PRIVATE src/cli/plan.c src/cli/plan_output.c)
+target_sources(tired_core PRIVATE src/profiles/profile.c)
 target_compile_definitions(tired_core PRIVATE _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 target_include_directories(tired_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c)
@@ -98,6 +99,10 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_profile_test tests/unit/profile_test.c)
+    target_link_libraries(tired_profile_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.profile COMMAND tired_profile_test "${CMAKE_CURRENT_SOURCE_DIR}/schemas/profile.schema.json")
+    set_tests_properties(tired.profile PROPERTIES LABELS unit)
     add_executable(tired_plan_test tests/unit/plan_test.c)
     target_link_libraries(tired_plan_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.plan COMMAND tired_plan_test)
@@ -160,6 +165,7 @@ if(BUILD_TESTING)
 endif()
 
 install(TARGETS tired RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(FILES schemas/profile.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
 
 # Development archive only; product/deb packaging belongs to later implementation.
 set(CPACK_GENERATOR TGZ)
