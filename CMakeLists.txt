@@ -78,7 +78,7 @@ target_compile_options(tired_build_options INTERFACE
     -Wstrict-prototypes -Wmissing-prototypes
     "$<$<BOOL:${TIRED_WARNINGS_AS_ERRORS}>:-Werror>"
 )
-add_library(tired_core STATIC src/util/value.c src/model/name.c src/model/model.c src/model/limit.c src/model/process_value.c src/model/environment.c src/model/environment_file.c src/capture/capture.c src/render/encode.c src/render/unit.c)
+add_library(tired_core STATIC src/util/value.c src/model/name.c src/model/model.c src/model/limit.c src/model/process_value.c src/model/environment.c src/model/environment_file.c src/model/proposal.c src/capture/capture.c src/capture/identity.c src/render/encode.c src/render/unit.c)
 target_compile_definitions(tired_core PRIVATE _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 target_include_directories(tired_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(tired_core PRIVATE tired_build_options)
@@ -94,6 +94,10 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_proposal_test tests/unit/proposal_test.c)
+    target_link_libraries(tired_proposal_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.proposal COMMAND tired_proposal_test)
+    set_tests_properties(tired.proposal PROPERTIES LABELS unit)
     add_executable(tired_render_test tests/unit/render_test.c)
     target_link_libraries(tired_render_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.render COMMAND tired_render_test)

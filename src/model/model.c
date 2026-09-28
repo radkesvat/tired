@@ -243,7 +243,13 @@ bool tired_spec_set(TiredServiceSpec *spec, TiredFieldId id, const char *text, s
             (field->absolute_path && (length == 0 || text[0] != '/')))
             return tired_error_set(error, TIRED_INVALID, "field-text",
                                    "Field length or absolute-path requirement is invalid.", 0);
-        if (id == TIRED_FIELD_NAME)
+        if (id == TIRED_FIELD_NAME && origin == TIRED_ORIGIN_CAPTURE)
+        {
+            if (!tired_name_validate_base(text, length, error) ||
+                !tired_text_set(&next.value.text, text, length, TIRED_EXPLICIT_NAME_LIMIT, error))
+                return false;
+        }
+        else if (id == TIRED_FIELD_NAME)
         {
             if (!tired_name_explicit(text, length, &next.value.text, error))
                 return false;

@@ -23,6 +23,8 @@ bool tired_name_suggest(const TiredTextList *argv, TiredText *name, TiredNameBas
  * A basename is 1–200 ASCII bytes, starts/ends alphanumeric, and contains only
  * alphanumeric, dot, underscore or hyphen. Adjacent dots are rejected. */
 bool tired_name_explicit(const char *input, size_t length, TiredText *name, TiredError *error);
+/* Validate an already-normalized basename without removing a suffix. */
+bool tired_name_validate_base(const char *input, size_t length, TiredError *error);
 /* Build a candidate full unit name. ordinal 1 is unsuffixed; 2 produces -2.
  * Collision discovery and reservation belong to the manager/transaction layer. */
 bool tired_name_candidate(const TiredText *base, uint64_t ordinal, TiredText *unit_name,

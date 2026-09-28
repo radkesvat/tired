@@ -128,7 +128,7 @@ bool tired_name_suggest(const TiredTextList *argv, TiredText *name, TiredNameBas
     return true;
 }
 
-static bool validate_base(const char *input, size_t length, TiredError *error)
+bool tired_name_validate_base(const char *input, size_t length, TiredError *error)
 {
     assert(input != NULL || length == 0);
     if (length == 0 || length > TIRED_EXPLICIT_NAME_LIMIT ||
@@ -155,7 +155,7 @@ bool tired_name_explicit(const char *input, size_t length, TiredText *name, Tire
     assert(name != NULL);
     if (length >= 8 && memcmp(input + length - 8, ".service", 8) == 0)
         length -= 8;
-    if (!validate_base(input, length, error))
+    if (!tired_name_validate_base(input, length, error))
         return false;
     return tired_text_set(name, input, length, TIRED_EXPLICIT_NAME_LIMIT, error);
 }
@@ -167,7 +167,7 @@ bool tired_name_candidate(const TiredText *base, uint64_t ordinal, TiredText *un
     if (ordinal == 0)
         return tired_error_set(error, TIRED_INVALID, "name-ordinal",
                                "Name ordinal must be positive.", 0);
-    if (!validate_base(base->data, base->length, error))
+    if (!tired_name_validate_base(base->data, base->length, error))
         return false;
     char result[TIRED_EXPLICIT_NAME_LIMIT + 32];
     int count;
