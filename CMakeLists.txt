@@ -78,7 +78,7 @@ target_compile_options(tired_build_options INTERFACE
     -Wstrict-prototypes -Wmissing-prototypes
     "$<$<BOOL:${TIRED_WARNINGS_AS_ERRORS}>:-Werror>"
 )
-add_library(tired_core STATIC src/util/value.c)
+add_library(tired_core STATIC src/util/value.c src/model/name.c)
 target_include_directories(tired_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(tired_core PRIVATE tired_build_options)
 target_link_libraries(tired PRIVATE tired_core tired_build_options)
@@ -93,6 +93,10 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_name_test tests/unit/name_test.c)
+    target_link_libraries(tired_name_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.name COMMAND tired_name_test)
+    set_tests_properties(tired.name PROPERTIES LABELS unit)
     add_executable(tired_value_test tests/unit/value_test.c)
     target_link_libraries(tired_value_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.value COMMAND tired_value_test)
