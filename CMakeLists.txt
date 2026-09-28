@@ -100,6 +100,14 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_bundled_profiles_test tests/unit/bundled_profiles_test.c)
+    target_link_libraries(tired_bundled_profiles_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.bundled_profiles COMMAND tired_bundled_profiles_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/profiles/generic.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/profiles/backhaul.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/profiles/frpc.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/profiles/frps.json")
+    set_tests_properties(tired.bundled_profiles PROPERTIES LABELS unit)
     add_executable(tired_profile_test tests/unit/profile_test.c)
     target_link_libraries(tired_profile_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.profile COMMAND tired_profile_test "${CMAKE_CURRENT_SOURCE_DIR}/schemas/profile.schema.json")
@@ -167,6 +175,8 @@ endif()
 
 install(TARGETS tired RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES schemas/profile.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
+install(DIRECTORY profiles/ DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/profiles.d"
+    FILES_MATCHING PATTERN "*.json")
 
 # Development archive only; product/deb packaging belongs to later implementation.
 set(CPACK_GENERATOR TGZ)

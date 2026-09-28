@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "frpc",
+  "name": "FRP client",
+  "revision": 1,
+  "summary": "Advice for a continuously running FRP client with an existing configuration.",
+  "match": {"executable_basenames": ["frpc"], "case_sensitive": true},
+  "compatibility": {"systemd_min": 249, "application_version": null, "version_policy": "version-independent-advice"},
+  "recommendations": [
+    {"field": "restart", "value": "always", "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "behavior-change", "reason": "tired policy for an explicitly long-running client: retry even after a clean exit. This is not an upstream FRP restart requirement.", "source_ids": ["restart-policy"]}
+  ],
+  "advisories": [
+    {"code": "preserve-config-context", "message": "The documented client invocation uses frpc -c with a configuration path. Preserve supplied arguments and their working-directory context."},
+    {"code": "review-privileges", "message": "Do not infer root, capabilities, high descriptor limits, or network-online requirements from the executable name."},
+    {"code": "profile-match-hint", "message": "An executable-name match is not verification of the binary or its application version."}
+  ],
+  "sources": [
+    {"id": "upstream-invocation", "url": "https://gofrp.org/en/docs/setup/", "checked_at": "2026-09-28", "source_kind": "upstream-documentation"},
+    {"id": "restart-policy", "url": "https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.service.xml", "checked_at": "2026-09-28", "source_kind": "tired-policy"}
+  ]
+}

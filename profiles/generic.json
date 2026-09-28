@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "generic",
+  "name": "Generic",
+  "revision": 1,
+  "summary": "Application requirements are unknown; retain the visible tired defaults and explicit user choices.",
+  "match": {"executable_basenames": [], "case_sensitive": true},
+  "compatibility": {"systemd_min": 249, "application_version": null, "version_policy": "version-independent-advice"},
+  "recommendations": [],
+  "advisories": [
+    {"code": "unknown-application", "message": "Confirm that this command can run without a terminal. No application-specific requirements have been inferred."}
+  ],
+  "sources": []
+}

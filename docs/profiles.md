@@ -60,3 +60,31 @@ outputs. It does not authorize capabilities, certify profile-file trust, validat
 host resource ceilings, or implement installed-service refresh by itself. Condition
 evaluation and merge are now implemented; discovery, per-file trust/digests, ambiguity
 across profiles, explicit-inherit UI state, and end-user provenance views remain.
+
+## Bundled profile evidence
+
+The bundle contains generic, backhaul, frpc, and frps. Generic adds no application
+requirements. Backhaul uses its pinned upstream service example for continuous
+restart, a three-second delay, network.target ordering, and descriptor advice.
+The NOFILE pair is conditional on `nofile_at_least: 1048576`: unknown or insufficient
+usable capacity suppresses both recommendations. The backend must establish that
+capacity from host, manager, and service-identity constraints without changing limits.
+
+FRP client/server are distinct exact basenames; `frp` alone matches neither. The
+server's network ordering has upstream evidence. Continuous restart for both FRP
+components is a tired policy choice, not an upstream requirement. Its source entry
+links systemd's behavior reference to explain the policy's mechanism. Existing exec
+type and five-second delay remain tired defaults. No FRP high-descriptor or root
+requirement is inferred.
+
+Sources were inspected on 2026-09-28. The Backhaul document is pinned to commit
+`df7966f8f725837a680ea7b90bd37ea52666c277`. FRP's official setup and systemd pages are
+linked directly. These dates establish documentation review, not tested application
+version guarantees. No upstream application executable or configuration is bundled.
+The profile prose summarizes facts and decisions rather than copying upstream code.
+
+Native bundle tests load all four actual files, check matching/nonmatching names,
+retain configuration argv, preserve user choices, suppress system network advice in
+user scope, and exercise unknown/insufficient/sufficient descriptor capacity. They do
+not execute the target. CLI discovery/application and real-host qualification remain
+separate work; installing the data files alone does not enable automatic matching.

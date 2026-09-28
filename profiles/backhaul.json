@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "backhaul",
+  "name": "Backhaul",
+  "revision": 1,
+  "summary": "Service advice for the Backhaul executable, with host-dependent descriptor limits.",
+  "match": {"executable_basenames": ["backhaul"], "case_sensitive": true},
+  "compatibility": {"systemd_min": 249, "application_version": null, "version_policy": "version-independent-advice"},
+  "recommendations": [
+    {"field": "restart", "value": "always", "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "normal", "reason": "Backhaul's service example uses continuous restart behavior.", "source_ids": ["upstream-service"]},
+    {"field": "restart_sec", "value": "3s", "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "normal", "reason": "The upstream service example delays retries by three seconds.", "source_ids": ["upstream-service"]},
+    {"field": "nofile.soft", "value": 1048576, "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "resource-change", "reason": "Use the documented descriptor setting only after the usable host and manager ceiling is known.", "source_ids": ["upstream-service"], "conditions": {"nofile_at_least": 1048576}},
+    {"field": "nofile.hard", "value": 1048576, "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "resource-change", "reason": "The descriptor ceiling must support the upstream recommendation; never raise global limits automatically.", "source_ids": ["upstream-service"], "conditions": {"nofile_at_least": 1048576}},
+    {"field": "network", "value": "network", "scope": ["system"], "apply": "automatic", "strength": "recommended", "risk": "normal", "reason": "The upstream unit orders startup after network.target.", "source_ids": ["upstream-service"]}
+  ],
+  "advisories": [
+    {"code": "preserve-config-context", "message": "Keep the existing -c argument and working directory. No missing configuration argument is inserted."},
+    {"code": "review-privileges", "message": "Required privileges depend on the actual configuration. The executable name and upstream example paths do not establish a root requirement."},
+    {"code": "network-ordering", "message": "Boot ordering is not continuous connectivity or application-health monitoring."}
+  ],
+  "sources": [
+    {"id": "upstream-service", "url": "https://github.com/Musixal/Backhaul/blob/df7966f8f725837a680ea7b90bd37ea52666c277/README.md#running-backhaul-as-a-service", "checked_at": "2026-09-28", "source_kind": "upstream-documentation"}
+  ]
+}

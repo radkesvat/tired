@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "frps",
+  "name": "FRP server",
+  "revision": 1,
+  "summary": "Advice for an FRP server using its existing command and configuration.",
+  "match": {"executable_basenames": ["frps"], "case_sensitive": true},
+  "compatibility": {"systemd_min": 249, "application_version": null, "version_policy": "version-independent-advice"},
+  "recommendations": [
+    {"field": "restart", "value": "always", "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "behavior-change", "reason": "tired policy for a continuously running server: retry after clean exits too. The upstream systemd example does not specify this restart policy.", "source_ids": ["restart-policy"]},
+    {"field": "network", "value": "network", "scope": ["system"], "apply": "automatic", "strength": "recommended", "risk": "normal", "reason": "The upstream server example orders startup after network.target. This does not require network-online.target.", "source_ids": ["upstream-service"]}
+  ],
+  "advisories": [
+    {"code": "preserve-config-context", "message": "Preserve frps -c and the supplied configuration path. No configuration is generated or rewritten."},
+    {"code": "review-privileges", "message": "Root and capability requirements depend on the selected server configuration. No privilege grant or descriptor limit is inferred."},
+    {"code": "network-ordering", "message": "Network ordering is system-scope advice and does not monitor ongoing connectivity."}
+  ],
+  "sources": [
+    {"id": "upstream-service", "url": "https://gofrp.org/en/docs/setup/systemd/", "checked_at": "2026-09-28", "source_kind": "upstream-documentation"},
+    {"id": "restart-policy", "url": "https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.service.xml", "checked_at": "2026-09-28", "source_kind": "tired-policy"}
+  ]
+}

@@ -14,6 +14,8 @@ typedef struct
     const char *application_version; /* NULL means unknown, never obtained by probing. */
     TiredFact features[5]; /* credentials, memory-max, cpu-quota, tasks-max, ambient-capabilities */
     TiredFact inspections[2]; /* executable-regular, working-directory-accessible */
+    bool nofile_known;
+    TiredLimit nofile_ceiling; /* Proven usable ceiling after host/manager/identity checks. */
 } TiredProfileContext;
 typedef enum
 {

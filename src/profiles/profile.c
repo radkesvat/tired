@@ -128,6 +128,13 @@ static bool conditions_valid(struct json_object *condition, unsigned depth, Tire
         }
         else
         {
+            if (strcmp(key, "nofile_at_least") == 0)
+            {
+                uint64_t minimum;
+                if (!tired_json_u64(value, 1, UINT64_MAX - 1, &minimum, error))
+                    return false;
+                continue;
+            }
             if (!json_object_is_type(value, json_type_string) ||
                 json_object_get_string_len(value) == 0 || json_object_get_string_len(value) > 4096)
                 return failure(error);

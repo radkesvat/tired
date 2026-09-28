@@ -44,6 +44,14 @@ static TiredFact condition(struct json_object *object, const TiredServiceSpec *s
             }
             return unknown ? TIRED_FACT_UNKNOWN : all ? TIRED_FACT_TRUE : TIRED_FACT_FALSE;
         }
+        if (strcmp(key, "nofile_at_least") == 0)
+        {
+            if (!context->nofile_known)
+                return TIRED_FACT_UNKNOWN;
+            TiredLimit minimum = {.value = json_object_get_uint64(value)};
+            return tired_limit_le(minimum, context->nofile_ceiling) ? TIRED_FACT_TRUE
+                                                                    : TIRED_FACT_FALSE;
+        }
         const char *text = json_object_get_string(value);
         if (strcmp(key, "scope") == 0 || strcmp(key, "type") == 0)
         {
