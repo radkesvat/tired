@@ -30,6 +30,28 @@ Profile merge precedence must be enforced by the profile layer rather than treat
 assignment as a general authorization or merge operation.
 
 The registry currently covers basic identity/execution, restart controls, timeouts,
-output modes, scalar hardening, scope/network, and requested activation. Collection
-fields, resource-limit types, signal validation, full provenance, and the CLI/TUI
+output modes, scalar hardening, scope/network, requested activation, and the
+collections listed below. Resource-limit types, signal validation, full provenance, and the CLI/TUI
 consumers remain under implementation.
+
+## Collections and retry defaults
+
+Ordered lists now cover arguments, supplementary groups, external environment files,
+unit dependencies, mount/write paths, and runtime/state directories. Each item is
+copied without whitespace splitting. Argument lists allow 4096 items; other lists
+allow 1024. Each list has a 1 MiB budget including terminators. Empty arguments are
+preserved; clearing a list records an explicit empty collection. Mixed-origin
+appends require the caller to resolve precedence first, so provenance is not silently
+reassigned. Per-item provenance and profile merging remain to be implemented.
+
+Environment/mount/write paths must be absolute. Runtime/state directories use
+relative ASCII components and reject empty, dot, and parent components. Dependency
+names require a recognized unit-type suffix and conservative ASCII characters;
+existence and activation effects require manager validation. Escaped unit names
+and directory creation modifiers are not currently accepted by this parser.
+
+After input assignment, retry-default resolution chooses zero start-limit interval
+for persistent mode, or five minutes and ten starts for limited mode. It updates
+only inherited/default fields. Conflicting explicit/profile intervals fail without
+changing the model. Persistent retries reject a zero delay. A subsecond-delay risk
+acknowledgment belongs to the pending risk-validation layer.

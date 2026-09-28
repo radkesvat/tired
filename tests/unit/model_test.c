@@ -89,6 +89,52 @@ int main(void)
     for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i)
         CHECK(!tired_parse_duration(bad[i], strlen(bad[i]), &duration, &error));
     CHECK(duration == UINT64_MAX);
+    CHECK(tired_spec_defaults(&spec, &error));
+    CHECK(set(&spec, TIRED_FIELD_RETRY_POLICY, "limited", &error));
+    CHECK(tired_spec_resolve_retry(&spec, &error));
+    CHECK(spec.fields[TIRED_FIELD_START_LIMIT_INTERVAL].value.microseconds == 300000000);
+    CHECK(spec.fields[TIRED_FIELD_START_LIMIT_BURST].value.integer == 10);
+    CHECK(set(&spec, TIRED_FIELD_START_LIMIT_BURST, "7", &error));
+    CHECK(tired_spec_resolve_retry(&spec, &error));
+    CHECK(spec.fields[TIRED_FIELD_START_LIMIT_BURST].value.integer == 7);
+    CHECK(set(&spec, TIRED_FIELD_START_LIMIT_INTERVAL, "0", &error));
+    CHECK(!tired_spec_resolve_retry(&spec, &error));
+    CHECK(spec.fields[TIRED_FIELD_START_LIMIT_INTERVAL].origin == TIRED_ORIGIN_USER);
+    CHECK(tired_spec_defaults(&spec, &error));
+    CHECK(set(&spec, TIRED_FIELD_RETRY_POLICY, "limited", &error));
+    CHECK(tired_spec_resolve_retry(&spec, &error));
+    CHECK(set(&spec, TIRED_FIELD_RETRY_POLICY, "persistent", &error));
+    CHECK(tired_spec_resolve_retry(&spec, &error));
+    CHECK(spec.fields[TIRED_FIELD_START_LIMIT_INTERVAL].value.microseconds == 0);
+    CHECK(spec.fields[TIRED_FIELD_START_LIMIT_BURST].origin == TIRED_ORIGIN_INHERITED);
+    CHECK(tired_spec_append(&spec, TIRED_FIELD_ARGV, "", 0, TIRED_ORIGIN_CAPTURE, &error));
+    CHECK(tired_spec_append(&spec, TIRED_FIELD_ARGV, "a\nb", 3, TIRED_ORIGIN_CAPTURE, &error));
+    CHECK(spec.fields[TIRED_FIELD_ARGV].value.list.count == 2);
+    CHECK(!tired_spec_append(&spec, TIRED_FIELD_ARGV, "x", 1, TIRED_ORIGIN_USER, &error));
+    CHECK(spec.fields[TIRED_FIELD_ARGV].value.list.count == 2);
+    CHECK(tired_spec_clear_list(&spec, TIRED_FIELD_ARGV, TIRED_ORIGIN_USER, &error));
+    CHECK(spec.fields[TIRED_FIELD_ARGV].origin == TIRED_ORIGIN_USER);
+    CHECK(spec.fields[TIRED_FIELD_ARGV].value.list.count == 0);
+    CHECK(tired_spec_append(&spec, TIRED_FIELD_AFTER, "network.target", 14, TIRED_ORIGIN_USER,
+                            &error));
+    CHECK(!tired_spec_append(&spec, TIRED_FIELD_AFTER, "x\nExecStart=bad", 15, TIRED_ORIGIN_USER,
+                             &error));
+    CHECK(!tired_spec_append(&spec, TIRED_FIELD_AFTER, "x.invalid", 9, TIRED_ORIGIN_USER, &error));
+    CHECK(!tired_spec_append(&spec, TIRED_FIELD_AFTER, "../x.service", 12, TIRED_ORIGIN_USER,
+                             &error));
+    CHECK(tired_spec_append(&spec, TIRED_FIELD_ENVIRONMENT_FILES, "/file with spaces", 17,
+                            TIRED_ORIGIN_USER, &error));
+    CHECK(!tired_spec_append(&spec, TIRED_FIELD_ENVIRONMENT_FILES, "relative", 8, TIRED_ORIGIN_USER,
+                             &error));
+    CHECK(tired_spec_append(&spec, TIRED_FIELD_STATE_DIRECTORY, "relay/data", 10, TIRED_ORIGIN_USER,
+                            &error));
+    CHECK(!tired_spec_append(&spec, TIRED_FIELD_STATE_DIRECTORY, "relay/../other", 14,
+                             TIRED_ORIGIN_USER, &error));
+    CHECK(!tired_spec_append(&spec, TIRED_FIELD_STATE_DIRECTORY, "/absolute", 9, TIRED_ORIGIN_USER,
+                             &error));
+    CHECK(!tired_spec_append(&spec, TIRED_FIELD_STATE_DIRECTORY, "relay//data", 11,
+                             TIRED_ORIGIN_USER, &error));
+    CHECK(!set(&spec, TIRED_FIELD_AFTER, "network.target", &error));
     tired_spec_destroy(&spec);
     tired_spec_destroy(&spec);
     return 0;

@@ -9,7 +9,8 @@ typedef enum
     TIRED_FIELD_CHOICE,
     TIRED_FIELD_BOOL,
     TIRED_FIELD_INTEGER,
-    TIRED_FIELD_DURATION
+    TIRED_FIELD_DURATION,
+    TIRED_FIELD_LIST
 } TiredFieldKind;
 typedef enum
 {
@@ -53,6 +54,16 @@ typedef enum
     TIRED_FIELD_START,
     TIRED_FIELD_ENABLE,
     TIRED_FIELD_ENABLE_LINGER,
+    TIRED_FIELD_ARGV,
+    TIRED_FIELD_SUPPLEMENTARY_GROUPS,
+    TIRED_FIELD_ENVIRONMENT_FILES,
+    TIRED_FIELD_AFTER,
+    TIRED_FIELD_WANTS,
+    TIRED_FIELD_REQUIRES,
+    TIRED_FIELD_REQUIRES_MOUNTS_FOR,
+    TIRED_FIELD_READ_WRITE_PATHS,
+    TIRED_FIELD_RUNTIME_DIRECTORY,
+    TIRED_FIELD_STATE_DIRECTORY,
     TIRED_FIELD_COUNT
 } TiredFieldId;
 
@@ -80,6 +91,7 @@ typedef struct
         bool boolean;
         int64_t integer;
         uint64_t microseconds;
+        TiredTextList list;
     } value;
 } TiredFieldValue;
 
@@ -101,6 +113,15 @@ bool tired_parse_duration(const char *text, size_t length, uint64_t *microsecond
 bool tired_spec_set(TiredServiceSpec *spec, TiredFieldId id, const char *text, size_t length,
                     TiredFieldOrigin origin, bool replace, TiredError *error);
 bool tired_spec_defaults(TiredServiceSpec *spec, TiredError *error);
+/* Lists are ordered, bounded, and copied. Append does not split whitespace or
+ * interpret shell quoting. Clear records an explicit empty list, not inheritance. */
+bool tired_spec_append(TiredServiceSpec *spec, TiredFieldId id, const char *text, size_t length,
+                       TiredFieldOrigin origin, TiredError *error);
+bool tired_spec_clear_list(TiredServiceSpec *spec, TiredFieldId id, TiredFieldOrigin origin,
+                           TiredError *error);
+/* Resolve policy-dependent defaults after applying inputs. Never overrides
+ * explicit/profile settings. Fails atomically for inconsistent retry controls. */
+bool tired_spec_resolve_retry(TiredServiceSpec *spec, TiredError *error);
 void tired_spec_destroy(TiredServiceSpec *spec);
 /* Validate implemented scalar combinations; missing captured fields are allowed
  * while constructing a proposal. Full install validation is a separate layer. */

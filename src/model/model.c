@@ -59,6 +59,22 @@ static const TiredField fields[TIRED_FIELD_COUNT] = {
     FIELD(START, "start", NULL, NULL, BOOL, NULL, "true", 0, 0, false),
     FIELD(ENABLE, "enable", NULL, NULL, BOOL, NULL, "true", 0, 0, false),
     FIELD(ENABLE_LINGER, "enable_linger", NULL, NULL, BOOL, NULL, "false", 0, 0, false),
+    FIELD(ARGV, "argv", "Service", "ExecStart", LIST, NULL, NULL, 0, TIRED_INPUT_LIMIT, false),
+    FIELD(SUPPLEMENTARY_GROUPS, "supplementary_groups", "Service", "SupplementaryGroups", LIST,
+          NULL, NULL, 1, 256, false),
+    FIELD(ENVIRONMENT_FILES, "environment_files", "Service", "EnvironmentFile", LIST, NULL, NULL, 1,
+          TIRED_INPUT_LIMIT, true),
+    FIELD(AFTER, "after", "Unit", "After", LIST, NULL, NULL, 1, 255, false),
+    FIELD(WANTS, "wants", "Unit", "Wants", LIST, NULL, NULL, 1, 255, false),
+    FIELD(REQUIRES, "requires", "Unit", "Requires", LIST, NULL, NULL, 1, 255, false),
+    FIELD(REQUIRES_MOUNTS_FOR, "requires_mounts_for", "Unit", "RequiresMountsFor", LIST, NULL, NULL,
+          1, TIRED_INPUT_LIMIT, true),
+    FIELD(READ_WRITE_PATHS, "read_write_paths", "Service", "ReadWritePaths", LIST, NULL, NULL, 1,
+          TIRED_INPUT_LIMIT, true),
+    FIELD(RUNTIME_DIRECTORY, "runtime_directory", "Service", "RuntimeDirectory", LIST, NULL, NULL,
+          1, 4096, false),
+    FIELD(STATE_DIRECTORY, "state_directory", "Service", "StateDirectory", LIST, NULL, NULL, 1,
+          4096, false),
 };
 #undef FIELD
 
@@ -175,6 +191,9 @@ bool tired_spec_set(TiredServiceSpec *spec, TiredFieldId id, const char *text, s
     TiredFieldValue next = {.origin = origin};
     switch (field->kind)
     {
+    case TIRED_FIELD_LIST:
+        return tired_error_set(error, TIRED_INVALID, "field-collection",
+                               "Collection fields require the list assignment API.", 0);
     case TIRED_FIELD_TEXT:
         if (length < (uint64_t)field->minimum ||
             length > (uint64_t)field->maximum + (id == TIRED_FIELD_NAME ? 8U : 0U) ||
@@ -225,8 +244,12 @@ void tired_spec_destroy(TiredServiceSpec *spec)
     if (spec == NULL)
         return;
     for (size_t i = 0; i < TIRED_FIELD_COUNT; ++i)
+    {
         if (fields[i].kind == TIRED_FIELD_TEXT && has_value(&spec->fields[i]))
             tired_text_destroy(&spec->fields[i].value.text);
+        if (fields[i].kind == TIRED_FIELD_LIST && has_value(&spec->fields[i]))
+            tired_text_list_destroy(&spec->fields[i].value.list);
+    }
     *spec = (TiredServiceSpec){0};
 }
 
@@ -295,6 +318,149 @@ bool tired_spec_validate_scalars(const TiredServiceSpec *spec, TiredError *error
         spec->fields[TIRED_FIELD_ENABLE_LINGER].value.boolean)
         return tired_error_set(error, TIRED_INVALID, "linger-scope",
                                "Lingering applies only to user services.", 0);
+    tired_error_clear(error);
+    return true;
+}
+
+static bool ascii_identifier(unsigned char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' ||
+           c == '-';
+}
+
+static bool safe_relative_directory(const char *text, size_t length)
+{
+    if (length == 0 || text[0] == '/' || text[length - 1] == '/')
+        return false;
+    size_t start = 0;
+    for (size_t i = 0; i <= length; ++i)
+    {
+        if (i == length || text[i] == '/')
+        {
+            size_t size = i - start;
+            if (size == 0 || (size == 1 && text[start] == '.') ||
+                (size == 2 && text[start] == '.' && text[start + 1] == '.'))
+                return false;
+            start = i + 1;
+        }
+        else if (!ascii_identifier((unsigned char)text[i]) && text[i] != '.')
+            return false;
+    }
+    return true;
+}
+
+static bool safe_unit_reference(const char *text, size_t length)
+{
+    const char *dot = NULL;
+    for (size_t i = 0; i < length; ++i)
+    {
+        unsigned char c = (unsigned char)text[i];
+        if (!ascii_identifier(c) && c != '.' && c != '@' && c != ':')
+            return false;
+        if (c == '.')
+        {
+            if (i == 0 || (i != 0 && text[i - 1] == '.'))
+                return false;
+            dot = text + i;
+        }
+    }
+    if (dot == NULL || dot == text || dot == text + length - 1)
+        return false;
+    const char *types[] = {"service", "target", "socket", "mount", "automount", "swap",
+                           "timer",   "path",   "slice",  "scope", "device"};
+    size_t suffix_length = length - (size_t)(dot - text) - 1;
+    for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); ++i)
+        if (strlen(types[i]) == suffix_length && memcmp(dot + 1, types[i], suffix_length) == 0)
+            return true;
+    return false;
+}
+
+bool tired_spec_append(TiredServiceSpec *spec, TiredFieldId id, const char *text, size_t length,
+                       TiredFieldOrigin origin, TiredError *error)
+{
+    assert(spec != NULL && (text != NULL || length == 0));
+    const TiredField *field = tired_field_get(id);
+    if (field == NULL || field->kind != TIRED_FIELD_LIST || origin < TIRED_ORIGIN_DEFAULT ||
+        origin > TIRED_ORIGIN_CAPTURE)
+        return tired_error_set(error, TIRED_INVALID, "field-collection",
+                               "Expected a collection field and assignment origin.", 0);
+    if (length < (uint64_t)field->minimum || length > (uint64_t)field->maximum ||
+        (field->absolute_path && (length == 0 || text[0] != '/')))
+        return tired_error_set(error, TIRED_INVALID, "collection-item",
+                               "Collection item length or path is invalid.", 0);
+    if (!tired_validate_text(text, length, id != TIRED_FIELD_ARGV, error))
+        return false;
+    bool valid = true;
+    if (id == TIRED_FIELD_SUPPLEMENTARY_GROUPS)
+        for (size_t i = 0; i < length; ++i)
+            if (!ascii_identifier((unsigned char)text[i]) && text[i] != '.')
+                valid = false;
+    if (id == TIRED_FIELD_AFTER || id == TIRED_FIELD_WANTS || id == TIRED_FIELD_REQUIRES)
+        valid = safe_unit_reference(text, length);
+    if (id == TIRED_FIELD_RUNTIME_DIRECTORY || id == TIRED_FIELD_STATE_DIRECTORY)
+        valid = safe_relative_directory(text, length);
+    if (!valid)
+        return tired_error_set(error, TIRED_INVALID, "collection-item",
+                               "Unsupported collection item syntax.", 0);
+    TiredFieldValue *destination = &spec->fields[id];
+    /* Callers resolve provenance before merging lists; do not silently erase it. */
+    if (has_value(destination) && destination->origin != origin)
+        return tired_error_set(error, TIRED_INVALID, "collection-origin",
+                               "Resolve collection precedence before appending another origin.", 0);
+    size_t count_limit = id == TIRED_FIELD_ARGV ? TIRED_ARGUMENT_LIMIT : 1024;
+    if (!tired_text_list_append(&destination->value.list, text, length, count_limit,
+                                TIRED_INPUT_LIMIT, error))
+        return false;
+    destination->origin = origin;
+    return true;
+}
+
+bool tired_spec_clear_list(TiredServiceSpec *spec, TiredFieldId id, TiredFieldOrigin origin,
+                           TiredError *error)
+{
+    assert(spec != NULL);
+    const TiredField *field = tired_field_get(id);
+    if (field == NULL || field->kind != TIRED_FIELD_LIST || origin < TIRED_ORIGIN_DEFAULT ||
+        origin > TIRED_ORIGIN_CAPTURE)
+        return tired_error_set(error, TIRED_INVALID, "field-collection",
+                               "Expected a collection field and assignment origin.", 0);
+    tired_text_list_destroy(&spec->fields[id].value.list);
+    spec->fields[id].origin = origin;
+    tired_error_clear(error);
+    return true;
+}
+
+bool tired_spec_resolve_retry(TiredServiceSpec *spec, TiredError *error)
+{
+    assert(spec != NULL);
+    bool limited = tired_spec_choice_is(spec, TIRED_FIELD_RETRY_POLICY, "limited");
+    if (!limited && !tired_spec_choice_is(spec, TIRED_FIELD_RETRY_POLICY, "persistent"))
+        return tired_error_set(error, TIRED_INVALID, "retry-policy",
+                               "Retry policy must be specified before resolving defaults.", 0);
+    TiredFieldValue interval = spec->fields[TIRED_FIELD_START_LIMIT_INTERVAL];
+    TiredFieldValue burst = spec->fields[TIRED_FIELD_START_LIMIT_BURST];
+    if (interval.origin <= TIRED_ORIGIN_DEFAULT)
+    {
+        interval.origin = TIRED_ORIGIN_DEFAULT;
+        interval.value.microseconds = limited ? 300000000 : 0;
+    }
+    if (burst.origin <= TIRED_ORIGIN_DEFAULT)
+    {
+        burst =
+            (TiredFieldValue){.origin = limited ? TIRED_ORIGIN_DEFAULT : TIRED_ORIGIN_INHERITED};
+        if (limited)
+            burst.value.integer = 10;
+    }
+    if ((limited && interval.value.microseconds == 0) ||
+        (!limited && interval.value.microseconds != 0))
+        return tired_error_set(error, TIRED_INVALID, "retry-interval",
+                               "Start-limit interval conflicts with the selected retry policy.", 0);
+    if (!limited && has_value(&spec->fields[TIRED_FIELD_RESTART_SEC]) &&
+        spec->fields[TIRED_FIELD_RESTART_SEC].value.microseconds == 0)
+        return tired_error_set(error, TIRED_INVALID, "restart-delay",
+                               "Persistent retries require a nonzero delay.", 0);
+    spec->fields[TIRED_FIELD_START_LIMIT_INTERVAL] = interval;
+    spec->fields[TIRED_FIELD_START_LIMIT_BURST] = burst;
     tired_error_clear(error);
     return true;
 }
