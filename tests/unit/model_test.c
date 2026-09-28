@@ -1,4 +1,6 @@
 #include "tired/model.h"
+#include "tired/process_value.h"
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -167,6 +169,44 @@ int main(void)
     CHECK(set(&spec, TIRED_FIELD_STATE_DIRECTORY_MODE, "2750", &error));
     CHECK(spec.fields[TIRED_FIELD_STATE_DIRECTORY_MODE].value.mode == 02750);
     CHECK(!set(&spec, TIRED_FIELD_STATE_DIRECTORY_MODE, "77777", &error));
+    CHECK(tired_spec_defaults(&spec, &error));
+    CHECK(spec.fields[TIRED_FIELD_KILL_SIGNAL].value.signal_number == SIGTERM);
+    CHECK(set(&spec, TIRED_FIELD_KILL_SIGNAL, "9", &error));
+    CHECK(spec.fields[TIRED_FIELD_KILL_SIGNAL].value.signal_number == SIGKILL);
+    CHECK(!set(&spec, TIRED_FIELD_KILL_SIGNAL, "0", &error));
+    CHECK(!set(&spec, TIRED_FIELD_KILL_SIGNAL, "SIGMADEUP", &error));
+    CHECK(set(&spec, TIRED_FIELD_KILL_SIGNAL, "SIGRTMIN+1", &error));
+    CHECK(spec.fields[TIRED_FIELD_KILL_SIGNAL].value.signal_number == SIGRTMIN + 1);
+    CHECK(!set(&spec, TIRED_FIELD_KILL_SIGNAL, "RTMAX-999", &error));
+    CHECK(!set(&spec, TIRED_FIELD_KILL_SIGNAL, "32", &error));
+    CHECK(tired_spec_append(&spec, TIRED_FIELD_SUCCESS_EXIT_STATUS, "255", 3, TIRED_ORIGIN_USER,
+                            &error));
+    CHECK(!tired_spec_append(&spec, TIRED_FIELD_SUCCESS_EXIT_STATUS, "256", 3, TIRED_ORIGIN_USER,
+                             &error));
+    CHECK(tired_spec_append(&spec, TIRED_FIELD_SUCCESS_EXIT_STATUS, "SIGTERM", 7, TIRED_ORIGIN_USER,
+                            &error));
+    CHECK(tired_spec_append(&spec, TIRED_FIELD_AMBIENT_CAPABILITIES, "CAP_NET_BIND_SERVICE", 20,
+                            TIRED_ORIGIN_USER, &error));
+    CHECK(!tired_spec_append(&spec, TIRED_FIELD_AMBIENT_CAPABILITIES, "CAP_UNKNOWN", 11,
+                             TIRED_ORIGIN_USER, &error));
+    CHECK(!tired_spec_append(&spec, TIRED_FIELD_AMBIENT_CAPABILITIES, "~CAP_SYS_ADMIN", 14,
+                             TIRED_ORIGIN_USER, &error));
+    CHECK(tired_spec_clear_list(&spec, TIRED_FIELD_CAPABILITY_BOUNDING_SET, TIRED_ORIGIN_USER,
+                                &error));
+    CHECK(!tired_spec_validate_scalars(&spec, &error));
+    CHECK(tired_spec_append(&spec, TIRED_FIELD_CAPABILITY_BOUNDING_SET, "CAP_NET_BIND_SERVICE", 20,
+                            TIRED_ORIGIN_USER, &error));
+    CHECK(tired_spec_validate_scalars(&spec, &error));
+    unsigned cap = 99;
+    CHECK(tired_parse_capability("CAP_CHECKPOINT_RESTORE", 22, &cap, &error) && cap == 40);
+    CHECK(tired_spec_resolve_scope(&spec, &error));
+    CHECK(tired_spec_choice_is(&spec, TIRED_FIELD_WANTED_BY, "multi-user.target"));
+    CHECK(set(&spec, TIRED_FIELD_SCOPE, "user", &error));
+    CHECK(tired_spec_resolve_scope(&spec, &error));
+    CHECK(tired_spec_choice_is(&spec, TIRED_FIELD_WANTED_BY, "default.target"));
+    CHECK(set(&spec, TIRED_FIELD_WANTED_BY, "multi-user.target", &error));
+    CHECK(!tired_spec_resolve_scope(&spec, &error));
+    CHECK(!tired_spec_validate_scalars(&spec, &error));
     tired_spec_destroy(&spec);
     tired_spec_destroy(&spec);
     return 0;

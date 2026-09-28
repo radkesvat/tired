@@ -1,6 +1,7 @@
 #include "tired/model.h"
 #include "tired/capture.h"
 #include "tired/name.h"
+#include "tired/process_value.h"
 
 #include <assert.h>
 #include <string.h>
@@ -9,6 +10,18 @@
     [TIRED_FIELD_##id] = {TIRED_FIELD_##id, name,     section, directive, TIRED_FIELD_##kind,      \
                           choices,          fallback, min,     max,       path}
 static const TiredField fields[TIRED_FIELD_COUNT] = {
+    FIELD(KILL_SIGNAL, "kill_signal", "Service", "KillSignal", SIGNAL, NULL, "SIGTERM", 0, 0,
+          false),
+    FIELD(SUCCESS_EXIT_STATUS, "success_exit_status", "Service", "SuccessExitStatus", LIST, NULL,
+          NULL, 1, 32, false),
+    FIELD(RESTART_PREVENT_EXIT_STATUS, "restart_prevent_exit_status", "Service",
+          "RestartPreventExitStatus", LIST, NULL, NULL, 1, 32, false),
+    FIELD(CAPABILITY_BOUNDING_SET, "capability_bounding_set", "Service", "CapabilityBoundingSet",
+          LIST, NULL, NULL, 1, 64, false),
+    FIELD(AMBIENT_CAPABILITIES, "ambient_capabilities", "Service", "AmbientCapabilities", LIST,
+          NULL, NULL, 1, 64, false),
+    FIELD(WANTED_BY, "wanted_by", "Install", "WantedBy", CHOICE, "multi-user.target|default.target",
+          NULL, 0, 0, false),
     FIELD(NOFILE_SOFT, "nofile.soft", "Service", "LimitNOFILE", LIMIT, NULL, NULL, 0, 0, false),
     FIELD(NOFILE_HARD, "nofile.hard", "Service", "LimitNOFILE", LIMIT, NULL, NULL, 0, 0, false),
     FIELD(MEMORY_MAX, "memory_max", "Service", "MemoryMax", LIMIT, NULL, NULL, 0, 0, false),
@@ -201,6 +214,10 @@ bool tired_spec_set(TiredServiceSpec *spec, TiredFieldId id, const char *text, s
     TiredFieldValue next = {.origin = origin};
     switch (field->kind)
     {
+    case TIRED_FIELD_SIGNAL:
+        if (!tired_parse_signal(text, length, &next.value.signal_number, error))
+            return false;
+        break;
     case TIRED_FIELD_LIMIT:
         if (!tired_parse_limit(text, length, id == TIRED_FIELD_MEMORY_MAX, &next.value.limit,
                                error))
@@ -314,6 +331,31 @@ bool tired_spec_choice_is(const TiredServiceSpec *spec, TiredFieldId id, const c
 bool tired_spec_validate_scalars(const TiredServiceSpec *spec, TiredError *error)
 {
     assert(spec != NULL);
+    if (has_value(&spec->fields[TIRED_FIELD_WANTED_BY]) &&
+        ((tired_spec_choice_is(spec, TIRED_FIELD_SCOPE, "user") &&
+          !tired_spec_choice_is(spec, TIRED_FIELD_WANTED_BY, "default.target")) ||
+         (tired_spec_choice_is(spec, TIRED_FIELD_SCOPE, "system") &&
+          !tired_spec_choice_is(spec, TIRED_FIELD_WANTED_BY, "multi-user.target"))))
+        return tired_error_set(error, TIRED_INVALID, "enablement-scope",
+                               "Enablement target does not match the selected scope.", 0);
+    if (has_value(&spec->fields[TIRED_FIELD_CAPABILITY_BOUNDING_SET]) &&
+        has_value(&spec->fields[TIRED_FIELD_AMBIENT_CAPABILITIES]))
+    {
+        const TiredTextList *ambient = &spec->fields[TIRED_FIELD_AMBIENT_CAPABILITIES].value.list;
+        const TiredTextList *bounding =
+            &spec->fields[TIRED_FIELD_CAPABILITY_BOUNDING_SET].value.list;
+        for (size_t i = 0; i < ambient->count; ++i)
+        {
+            bool found = false;
+            for (size_t j = 0; j < bounding->count; ++j)
+                if (strcmp(ambient->items[i].data, bounding->items[j].data) == 0)
+                    found = true;
+            if (!found)
+                return tired_error_set(
+                    error, TIRED_INVALID, "capability-bounds",
+                    "Ambient capability is absent from the explicit bounding set.", 0);
+        }
+    }
     bool soft = has_value(&spec->fields[TIRED_FIELD_NOFILE_SOFT]);
     bool hard = has_value(&spec->fields[TIRED_FIELD_NOFILE_HARD]);
     if (soft != hard)
@@ -426,6 +468,24 @@ bool tired_spec_append(TiredServiceSpec *spec, TiredFieldId id, const char *text
     if (!tired_validate_text(text, length, id != TIRED_FIELD_ARGV, error))
         return false;
     bool valid = true;
+    if (id == TIRED_FIELD_CAPABILITY_BOUNDING_SET || id == TIRED_FIELD_AMBIENT_CAPABILITIES)
+    {
+        unsigned number;
+        if (!tired_parse_capability(text, length, &number, error))
+            return false;
+    }
+    if (id == TIRED_FIELD_SUCCESS_EXIT_STATUS || id == TIRED_FIELD_RESTART_PREVENT_EXIT_STATUS)
+    {
+        uint64_t status;
+        int signal_number;
+        if (length != 0 && text[0] >= '0' && text[0] <= '9')
+        {
+            if (!tired_parse_u64(text, length, 0, 255, &status, error))
+                return false;
+        }
+        else if (!tired_parse_signal(text, length, &signal_number, error))
+            return false;
+    }
     if (id == TIRED_FIELD_SUPPLEMENTARY_GROUPS)
         for (size_t i = 0; i < length; ++i)
             if (!ascii_identifier((unsigned char)text[i]) && text[i] != '.')
@@ -496,6 +556,24 @@ bool tired_spec_resolve_retry(TiredServiceSpec *spec, TiredError *error)
                                "Persistent retries require a nonzero delay.", 0);
     spec->fields[TIRED_FIELD_START_LIMIT_INTERVAL] = interval;
     spec->fields[TIRED_FIELD_START_LIMIT_BURST] = burst;
+    tired_error_clear(error);
+    return true;
+}
+
+bool tired_spec_resolve_scope(TiredServiceSpec *spec, TiredError *error)
+{
+    assert(spec != NULL);
+    bool user = tired_spec_choice_is(spec, TIRED_FIELD_SCOPE, "user");
+    if (!user && !tired_spec_choice_is(spec, TIRED_FIELD_SCOPE, "system"))
+        return tired_error_set(error, TIRED_INVALID, "scope",
+                               "Select a scope before resolving its defaults.", 0);
+    const char *target = user ? "default.target" : "multi-user.target";
+    if (spec->fields[TIRED_FIELD_WANTED_BY].origin <= TIRED_ORIGIN_DEFAULT)
+        return tired_spec_set(spec, TIRED_FIELD_WANTED_BY, target, strlen(target),
+                              TIRED_ORIGIN_DEFAULT, true, error);
+    if (!tired_spec_choice_is(spec, TIRED_FIELD_WANTED_BY, target))
+        return tired_error_set(error, TIRED_INVALID, "enablement-scope",
+                               "Enablement target does not match the selected scope.", 0);
     tired_error_clear(error);
     return true;
 }

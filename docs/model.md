@@ -31,7 +31,7 @@ assignment as a general authorization or merge operation.
 
 The registry currently covers basic identity/execution, restart controls, timeouts,
 output modes, scalar hardening, scope/network, requested activation, and the
-collections and resource types listed below. Signal validation, full provenance, and the CLI/TUI
+collections, resource types, and process controls listed below. Full provenance and the CLI/TUI
 consumers remain under implementation.
 
 ## Collections and retry defaults
@@ -75,3 +75,27 @@ manager limits, kernel ceilings, and field-specific risk disclosure must still b
 validated before installation. See the baseline
 [resource-control reference](https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.resource-control.xml)
 and [execution reference](https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.exec.xml).
+
+## Signals, capabilities, and enablement
+
+`kill_signal` defaults to SIGTERM. The parser accepts standard Linux signal names
+with an optional SIG prefix, valid decimal signal numbers, and RTMIN+N/RTMAX-N
+forms. Zero, libc-reserved signal numbers, and out-of-range realtime offsets fail.
+The stored value is a signal number. Exit-status lists accept exit codes 0–255 or
+signal names; numeric entries in those lists mean exit codes, not signals.
+
+Capability lists accept canonical uppercase CAP_* names through
+CAP_CHECKPOINT_RESTORE. Unknown names and set-inversion syntax fail. If an explicit
+bounding set exists, each ambient capability must belong to it. The default remains
+inherited, with no new capabilities requested. A valid name is not evidence that
+the running kernel or service identity can provide it; granting capabilities still
+requires explicit user intent, risk disclosure, and host validation.
+
+Scope resolution selects multi-user.target for system services and default.target
+for user services. Explicit conflicting targets fail instead of being rewritten.
+Only these two enablement targets are currently supported. Ordinary dependency
+lists remain separate from installation enablement.
+
+The stop and exit-status semantics are based on the baseline
+[systemd.kill reference](https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.kill.xml)
+and [systemd.service reference](https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.service.xml).

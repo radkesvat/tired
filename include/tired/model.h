@@ -14,7 +14,8 @@ typedef enum
     TIRED_FIELD_LIST,
     TIRED_FIELD_LIMIT,
     TIRED_FIELD_MODE,
-    TIRED_FIELD_QUOTA
+    TIRED_FIELD_QUOTA,
+    TIRED_FIELD_SIGNAL
 } TiredFieldKind;
 typedef enum
 {
@@ -76,6 +77,12 @@ typedef enum
     TIRED_FIELD_UMASK,
     TIRED_FIELD_RUNTIME_DIRECTORY_MODE,
     TIRED_FIELD_STATE_DIRECTORY_MODE,
+    TIRED_FIELD_KILL_SIGNAL,
+    TIRED_FIELD_SUCCESS_EXIT_STATUS,
+    TIRED_FIELD_RESTART_PREVENT_EXIT_STATUS,
+    TIRED_FIELD_CAPABILITY_BOUNDING_SET,
+    TIRED_FIELD_AMBIENT_CAPABILITIES,
+    TIRED_FIELD_WANTED_BY,
     TIRED_FIELD_COUNT
 } TiredFieldId;
 
@@ -107,6 +114,7 @@ typedef struct
         TiredLimit limit;
         uint32_t mode;
         uint64_t quota;
+        int signal_number;
     } value;
 } TiredFieldValue;
 
@@ -137,6 +145,7 @@ bool tired_spec_clear_list(TiredServiceSpec *spec, TiredFieldId id, TiredFieldOr
 /* Resolve policy-dependent defaults after applying inputs. Never overrides
  * explicit/profile settings. Fails atomically for inconsistent retry controls. */
 bool tired_spec_resolve_retry(TiredServiceSpec *spec, TiredError *error);
+bool tired_spec_resolve_scope(TiredServiceSpec *spec, TiredError *error);
 void tired_spec_destroy(TiredServiceSpec *spec);
 /* Validate implemented scalar combinations; missing captured fields are allowed
  * while constructing a proposal. Full install validation is a separate layer. */
