@@ -79,9 +79,10 @@ target_compile_options(tired_build_options INTERFACE
     "$<$<BOOL:${TIRED_WARNINGS_AS_ERRORS}>:-Werror>"
 )
 add_library(tired_core STATIC src/util/value.c src/model/name.c src/model/model.c src/model/limit.c src/model/process_value.c src/model/environment.c src/model/environment_file.c src/model/proposal.c src/capture/capture.c src/capture/identity.c src/render/encode.c src/render/unit.c src/cli/parse.c)
+target_sources(tired_core PRIVATE src/util/json.c)
 target_compile_definitions(tired_core PRIVATE _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 target_include_directories(tired_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(tired_core PRIVATE tired_build_options)
+target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c)
 target_link_libraries(tired PRIVATE tired_core tired_build_options)
 
 add_custom_command(TARGET tired POST_BUILD
@@ -94,6 +95,10 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_json_test tests/unit/json_test.c)
+    target_link_libraries(tired_json_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.json COMMAND tired_json_test)
+    set_tests_properties(tired.json PROPERTIES LABELS unit)
     add_executable(tired_cli_test tests/unit/cli_test.c)
     target_link_libraries(tired_cli_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.cli COMMAND tired_cli_test)
