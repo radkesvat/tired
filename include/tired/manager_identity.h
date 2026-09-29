@@ -7,7 +7,7 @@
 typedef struct TiredManagerIdentity TiredManagerIdentity;
 typedef struct
 {
-    bool ready, changed;
+    bool ready, changed, user_scope;
     const char *unique_name; /* Borrowed until destroy, retained on invalidation. */
     uid_t uid;
     TiredError error;

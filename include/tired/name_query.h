@@ -10,7 +10,8 @@ typedef struct
 } TiredNameQueryResult;
 /* Discover manager UnitPath, include destination, then query successive names.
  * Inputs are copied. Supply the complete pending transaction inventory for this
- * scope; identity must be ready and outlive the query. One deadline covers all
+ * scope; identity must be ready and outlive the query. User-scope destinations
+ * must occur in the discovered manager UnitPath. One deadline covers all
  * candidates. Destination is an observation location, not write authorization.
  * No writes, reservations, service loading or activation. */
 bool tired_name_query_start(TiredManagerIdentity *identity, const TiredText *base,

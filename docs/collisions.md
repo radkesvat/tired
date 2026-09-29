@@ -63,8 +63,10 @@ does not reserve the name. Commit-time locking, fresh inventories, rechecking,
 and approval invalidation remain the mutation controller's responsibility.
 
 `TiredNameQuery` coordinates live discovery: it obtains UnitPath through the
-authenticated manager identity, includes the supplied destination if not already
-listed, and queries each candidate before asking the selector to inspect it.
+authenticated manager identity, includes the supplied system destination if not
+already listed, and queries each candidate before asking the selector to inspect
+it. For user scope, it rejects a destination absent from UnitPath before querying
+any candidate. Scope comes from identity discovery, including for a root user manager.
 The caller supplies the complete pending-transaction inventory for the selected
 scope. The combined location list retains the 256-directory/1 MiB limit; exceeding
 it fails rather than omitting paths. All inputs are copied. The identity must
@@ -77,7 +79,7 @@ can delay a step on a stalled filesystem; a result after the deadline is rejecte
 This API does not perform commit-time locking or read the transaction store.
 
 Broker fixtures exercise deterministic suffixes across manager, pending and
-filesystem collisions, a destination outside UnitPath, explicit-name conflicts,
+filesystem collisions, rejection of a user destination outside UnitPath, explicit-name conflicts,
 malformed paths, cancellation, a deadline spanning multiple candidates and owner
 invalidation. Live integration checks rejection of an existing explicit name
 without modifying the manager or its files.

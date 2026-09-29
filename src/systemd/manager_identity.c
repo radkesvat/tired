@@ -13,7 +13,7 @@ struct TiredManagerIdentity
     TiredText owner;
     uid_t expected, uid;
     uint64_t deadline;
-    bool ready, changed;
+    bool ready, changed, user_scope;
     TiredError error;
 };
 static bool now_usec(uint64_t *value)
@@ -185,6 +185,7 @@ bool tired_manager_identity_start(sd_bus *bus, bool user_scope, unsigned timeout
                                "Cannot allocate manager identity.", errno);
     identity->bus = sd_bus_ref(bus);
     identity->expected = user_scope ? getuid() : 0;
+    identity->user_scope = user_scope;
     if (!now_usec(&identity->deadline))
     {
         tired_manager_identity_destroy(identity);
@@ -275,6 +276,7 @@ TiredManagerIdentityResult tired_manager_identity_result(const TiredManagerIdent
                                         .changed = identity->changed,
                                         .unique_name = identity->owner.data,
                                         .uid = identity->uid,
+                                        .user_scope = identity->user_scope,
                                         .error = identity->error};
 }
 void tired_manager_identity_destroy(TiredManagerIdentity *identity)

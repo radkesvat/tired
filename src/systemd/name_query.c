@@ -1,4 +1,5 @@
 #include "tired/name_query.h"
+#include "tired/layout.h"
 #include "tired/load_paths.h"
 #include "tired/name_selection.h"
 #include <assert.h>
@@ -126,6 +127,11 @@ failed:
 }
 static bool prepare_selection(TiredNameQuery *query, const TiredTextList *paths)
 {
+    TiredLayout layout = {.user_scope = tired_manager_identity_result(query->identity).user_scope};
+    /* Borrow the destination only for comparison; layout owns no copied values. */
+    layout.paths[TIRED_PATH_UNITS] = query->destination;
+    if (!tired_layout_check_unit_path(&layout, paths, &query->error))
+        return false;
     TiredTextList locations = {0};
     bool included = false, ok = false;
     for (size_t i = 0; i < paths->count; ++i)

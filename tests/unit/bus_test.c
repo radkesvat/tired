@@ -278,6 +278,7 @@ int main(void)
         if (scenario == 0)
         {
             CHECK(owner.ready && owner.error.status == TIRED_OK && owner.uid == getuid());
+            CHECK(owner.user_scope);
             CHECK(strcmp(owner.unique_name, ":1.42") == 0);
             tired_manager_probe_destroy(probe);
             probe = NULL;
@@ -387,7 +388,7 @@ int main(void)
             broker.name_directory = directory.data;
             for (unsigned name_case = 0; name_case < 6; ++name_case)
             {
-                broker.name_directory = name_case == 5 ? load_directory.data : directory.data;
+                broker.name_directory = name_case == 4 ? load_directory.data : directory.data;
                 broker.name_mode = name_case == 2 ? 2 : 1;
                 broker.name_requests = 0;
                 broker.path_mode = name_case == 3 ? 1 : 0;
@@ -408,25 +409,24 @@ int main(void)
                 }
                 TiredNameQueryResult selected = tired_name_query_result(names);
                 CHECK(selected.done);
-                if (name_case >= 4)
+                if (name_case == 5)
                 {
                     CHECK(selected.error.status == TIRED_OK && selected.unit_name != NULL);
                     CHECK(strcmp(selected.unit_name->data, "fixture-4.service") == 0);
                     CHECK(broker.name_requests == 8);
-                    if (name_case == 4)
-                    {
-                        tired_name_query_destroy(names);
-                        names = NULL;
-                    }
                 }
                 else
                 {
                     const TiredStatus expected[] = {TIRED_CANCELLED, TIRED_CONFLICT,
-                                                    TIRED_RUNTIME_FAILED, TIRED_INVALID};
+                                                    TIRED_RUNTIME_FAILED, TIRED_INVALID,
+                                                    TIRED_CONFLICT};
                     CHECK(selected.error.status == expected[name_case] &&
                           selected.unit_name == NULL);
                     if (name_case == 2)
                         CHECK(broker.name_requests > 4);
+                    if (name_case == 4)
+                        CHECK(broker.name_requests == 0 &&
+                              strcmp(selected.error.code, "user-unit-path-mismatch") == 0);
                     tired_name_query_destroy(names);
                     names = NULL;
                 }
