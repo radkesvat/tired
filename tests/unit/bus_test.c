@@ -2,6 +2,7 @@
 #include "tired/load_paths.h"
 #include "tired/manager.h"
 #include "tired/manager_identity.h"
+#include "tired/manager_reload.h"
 #include "tired/name_query.h"
 #include "tired/unit_batch.h"
 #include "tired/unit_query.h"
@@ -30,6 +31,7 @@ typedef struct
     uint32_t uid;
     unsigned unit_case;
     unsigned path_mode;
+    unsigned reload_case;
     unsigned name_mode, name_requests;
     const char *name_directory;
     bool matched, change_during_uid, silent_match, pinned_version;
@@ -83,6 +85,22 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
 {
     Broker *broker = userdata;
     (void)error;
+    if (sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager", "Reload") > 0)
+    {
+        const char *destination = sd_bus_message_get_destination(message);
+        if (destination == NULL || strcmp(destination, ":1.42") != 0 ||
+            sd_bus_message_get_auto_start(message) != 0 ||
+            sd_bus_message_get_allow_interactive_authorization(message) != 0 ||
+            sd_bus_message_has_signature(message, "") <= 0)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_INVALID_ARGS, "Invalid reload");
+        if (broker->reload_case == 1)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_ACCESS_DENIED, "Denied");
+        if (broker->reload_case == 2)
+            return sd_bus_reply_method_return(message, "s", "malformed");
+        if (broker->reload_case == 3)
+            return 1;
+        return sd_bus_reply_method_return(message, "");
+    }
     bool file_query = sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager",
                                                     "GetUnitFileState") > 0;
     bool object_query =
@@ -190,6 +208,7 @@ int main(void)
     sd_bus *client = NULL, *server = NULL;
     sd_bus_slot *slot = NULL;
     TiredManagerProbe *probe = NULL;
+    TiredManagerReload *reload = NULL;
     TiredManagerIdentity *identity = NULL;
     TiredUnitQuery *query = NULL;
     TiredLoadPaths *paths = NULL;
@@ -301,6 +320,38 @@ int main(void)
             CHECK(tired_manager_probe_result(probe).done &&
                   tired_manager_probe_result(probe).error.status == TIRED_OK);
             CHECK(broker.pinned_version);
+            for (unsigned reload_case = 0; reload_case < 6; ++reload_case)
+            {
+                broker.reload_case = reload_case;
+                CHECK(tired_manager_reload_start(identity, reload_case == 3 ? 20 : 1000, &reload,
+                                                 &error));
+                struct pollfd descriptor;
+                uint64_t deadline;
+                CHECK(tired_manager_reload_poll(reload, &descriptor, &deadline, &error));
+                CHECK(descriptor.fd >= 0 && deadline != UINT64_MAX);
+                if (reload_case == 4)
+                    tired_manager_reload_cancel(reload);
+                for (unsigned i = 0; i < 2000; ++i)
+                {
+                    CHECK(sd_bus_process(server, NULL) >= 0);
+                    if (tired_manager_reload_step(reload))
+                        break;
+                    struct timespec delay = {.tv_nsec = 1000000};
+                    (void)nanosleep(&delay, NULL);
+                }
+                TiredManagerReloadResult reloaded = tired_manager_reload_result(reload);
+                const TiredStatus expected[] = {TIRED_OK,        TIRED_AUTHORIZATION,
+                                                TIRED_INVALID,   TIRED_RUNTIME_FAILED,
+                                                TIRED_CANCELLED, TIRED_OK};
+                CHECK(reloaded.done && reloaded.submitted &&
+                      reloaded.error.status == expected[reload_case]);
+                CHECK(reloaded.acknowledged == (expected[reload_case] == TIRED_OK));
+                if (reload_case != 5)
+                {
+                    tired_manager_reload_destroy(reload);
+                    reload = NULL;
+                }
+            }
             for (unsigned path_case = 0; path_case < 4; ++path_case)
             {
                 broker.path_mode = path_case == 0 ? 1 : path_case == 2 ? 2 : 0;
@@ -553,6 +604,10 @@ int main(void)
             names = NULL;
             CHECK(tired_load_paths_result(paths).directories == NULL &&
                   tired_load_paths_result(paths).error.status == TIRED_CONFLICT);
+            CHECK(tired_manager_reload_result(reload).error.status == TIRED_CONFLICT);
+            CHECK(tired_manager_reload_result(reload).acknowledged);
+            tired_manager_reload_destroy(reload);
+            reload = NULL;
             tired_load_paths_destroy(paths);
             paths = NULL;
             CHECK(tired_unit_query_result(query).error.status == TIRED_CONFLICT &&
@@ -608,6 +663,7 @@ int main(void)
     }
     result = 0;
 cleanup:
+    tired_manager_reload_destroy(reload);
     tired_unit_batch_destroy(batch);
     tired_name_query_destroy(discovery);
     tired_name_query_destroy(names);
