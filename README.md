@@ -29,10 +29,14 @@ On Ubuntu/Debian, install the build tools (CMake 3.22 or newer):
 
 ```sh
 sudo apt-get update
-sudo apt-get install clang llvm lld cmake ninja-build binutils pkg-config libjson-c-dev libssl-dev
+sudo apt-get install clang llvm lld cmake ninja-build binutils pkg-config libjson-c-dev libssl-dev libsystemd-dev
 ```
 
-Run from this directory:
+For direct builds, first prepare the external libsystemd static archive as described
+in [libsystemd dependency preparation](docs/systemd-dependency.md). Distribution
+builds use the installed shared library and do not need that preparation.
+
+Then run from this directory:
 
 ```sh
 cmake --preset linux-clang-x64-debug
@@ -69,8 +73,9 @@ cpack -G TGZ
 
 [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) 0.42.0 is vendored, including its
 license, and loaded in direct mode through `cmake/Dependencies.cmake`. The core uses
-json-c 0.15+ and OpenSSL libcrypto 3.0+, discovered locally through pkg-config. Builds configure offline
-when development packages are installed. Future source dependencies must use pinned
+json-c 0.15+, OpenSSL libcrypto 3.0+, and libsystemd 249+, discovered locally through
+pkg-config. Builds configure offline when development packages and required static
+archives are prepared. Future source dependencies must use pinned
 commits or archive hashes and explicit static-library options.
 Direct builds use `$XDG_CACHE_HOME/tired/cpm` (or `$HOME/.cache/tired/cpm`);
 override with `CPM_SOURCE_CACHE`, prepopulate it, or supply local CPM sources for
@@ -88,7 +93,7 @@ The default `-DTIRED_DEPENDENCY_MODE=DIRECT` requires static dependency archives
 Use `-DTIRED_DEPENDENCY_MODE=DISTRIBUTION` for Debian/PPA builds using installed
 shared libraries. Distribution mode bypasses CPM entirely. Neither mode downloads
 runtime dependencies automatically or switches to the other linkage mode.
-Direct mode requires local json-c and libcrypto static archives; distribution mode
+Direct mode requires local json-c, libcrypto, libsystemd and transitive static archives; distribution mode
 uses shared libraries. Missing development libraries fail configuration without downloading them.
 
 For example, configure a separate distribution build without changing a preset tree:

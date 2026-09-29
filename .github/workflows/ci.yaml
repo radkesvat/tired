@@ -25,7 +25,10 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm lld cmake ninja-build binutils pkg-config libjson-c-dev libssl-dev
+          sudo apt-get install -y clang llvm lld cmake ninja-build binutils pkg-config libjson-c-dev libssl-dev libsystemd-dev meson python3-jinja2 gperf libcap-dev libgcrypt20-dev liblzma-dev liblz4-dev libzstd-dev libmount-dev libaudit-dev dpkg-dev
+      - name: Prepare direct libsystemd archive
+        if: matrix.mode == 'DIRECT'
+        run: cmake -DTIRED_ALLOW_DOWNLOAD=ON -P cmake/PrepareSystemd.cmake
       - name: Configure
         run: cmake --preset linux-clang-${{ matrix.target.arch }}-${{ matrix.configuration }} -DTIRED_DEPENDENCY_MODE=${{ matrix.mode }}
       - name: Build and verify linkage

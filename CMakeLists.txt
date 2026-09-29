@@ -110,7 +110,7 @@ target_sources(tired_core PRIVATE src/storage/stage.c)
 target_sources(tired_core PRIVATE src/systemd/verify.c)
 target_compile_definitions(tired_core PRIVATE _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 target_include_directories(tired_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c tired_crypto)
+target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c tired_crypto tired_systemd)
 target_link_libraries(tired PRIVATE tired_core tired_build_options)
 
 add_custom_command(TARGET tired POST_BUILD
@@ -123,6 +123,14 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_systemd_library_test tests/unit/systemd_library_test.c)
+    target_link_libraries(tired_systemd_library_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.systemd_library COMMAND tired_systemd_library_test)
+    set_tests_properties(tired.systemd_library PROPERTIES LABELS unit)
+    add_custom_command(TARGET tired_systemd_library_test POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" "-DBINARY=$<TARGET_FILE:tired_systemd_library_test>"
+            "-DREADELF=${TIRED_READELF}" "-DDEPENDENCY_MODE=${TIRED_DEPENDENCY_MODE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckLinkage.cmake" VERBATIM)
     add_executable(tired_verify_test tests/unit/verify_test.c)
     target_compile_definitions(tired_verify_test PRIVATE _POSIX_C_SOURCE=200809L)
     target_link_libraries(tired_verify_test PRIVATE tired_core tired_build_options)

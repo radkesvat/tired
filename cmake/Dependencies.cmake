@@ -27,6 +27,41 @@ set_target_properties(tired_crypto PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${CRYPTO_INCLUDE_DIRS}"
     INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS};Threads::Threads")
 
+pkg_check_modules(SYSTEMD REQUIRED libsystemd>=249)
+add_library(tired_systemd UNKNOWN IMPORTED)
+if(TIRED_DEPENDENCY_MODE STREQUAL "DIRECT")
+    if(NOT DEFINED TIRED_SYSTEMD_CACHE)
+        if(DEFINED ENV{XDG_CACHE_HOME} AND NOT "$ENV{XDG_CACHE_HOME}" STREQUAL "")
+            set(_systemd_cache "$ENV{XDG_CACHE_HOME}/tired/systemd-249.11-0ubuntu3.22")
+        else()
+            set(_systemd_cache "$ENV{HOME}/.cache/tired/systemd-249.11-0ubuntu3.22")
+        endif()
+        set(TIRED_SYSTEMD_CACHE "${_systemd_cache}" CACHE PATH "External prepared libsystemd source/build cache")
+    endif()
+    find_library(TIRED_SYSTEMD_DIRECT_LIBRARY NAMES systemd
+        HINTS "${TIRED_SYSTEMD_CACHE}/build-${CMAKE_SYSTEM_PROCESSOR}" ${SYSTEMD_LIBRARY_DIRS})
+    if(NOT TIRED_SYSTEMD_DIRECT_LIBRARY)
+        message(FATAL_ERROR "Static libsystemd is missing. Run cmake -P cmake/PrepareSystemd.cmake with a populated external cache; see docs/systemd-dependency.md. No shared fallback is permitted.")
+    endif()
+    set(_systemd_static_deps)
+    foreach(_dependency IN ITEMS cap gcrypt gpg-error lzma lz4 zstd)
+        string(MAKE_C_IDENTIFIER "${_dependency}" _id)
+        find_library(TIRED_SYSTEMD_${_id}_ARCHIVE NAMES "${_dependency}" REQUIRED)
+        list(APPEND _systemd_static_deps "${TIRED_SYSTEMD_${_id}_ARCHIVE}")
+    endforeach()
+    set_target_properties(tired_systemd PROPERTIES
+        IMPORTED_LOCATION "${TIRED_SYSTEMD_DIRECT_LIBRARY}"
+        INTERFACE_LINK_LIBRARIES "${_systemd_static_deps};${CMAKE_DL_LIBS};Threads::Threads;rt")
+else()
+    set(CMAKE_FIND_LIBRARY_SUFFIXES .so)
+    find_library(TIRED_SYSTEMD_DISTRIBUTION_LIBRARY NAMES systemd HINTS ${SYSTEMD_LIBRARY_DIRS} REQUIRED)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ${_tired_saved_suffixes})
+    set_target_properties(tired_systemd PROPERTIES IMPORTED_LOCATION "${TIRED_SYSTEMD_DISTRIBUTION_LIBRARY}")
+endif()
+set_target_properties(tired_systemd PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${SYSTEMD_INCLUDE_DIRS}"
+    INTERFACE_COMPILE_OPTIONS "${SYSTEMD_CFLAGS_OTHER}")
+
 if(TIRED_DEPENDENCY_MODE STREQUAL "DISTRIBUTION")
     # Distribution builds resolve installed libraries only and never load CPM.
     return()
