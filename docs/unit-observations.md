@@ -65,4 +65,6 @@ and flags, malformed replies, authorization, disappearance, late responses,
 cancellation and completed-snapshot invalidation. A read-only host integration test
 discovers the system manager and observes systemd-journald; it explicitly skips if
 the system bus/manager is unavailable or inaccessible. Status/doctor/frontend
-presentation and combined filesystem collision checks remain pending.
+presentation remains pending. The [collision checker](collisions.md) can combine
+this query result with supplied load locations and pending reservations; discovery
+and commit-time integration remain pending.
