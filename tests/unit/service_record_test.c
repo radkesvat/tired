@@ -1,3 +1,5 @@
+#include "../../src/cli/show_effective.h"
+#include "tired/effective_files.h"
 #include "tired/encode.h"
 #include "tired/file_target.h"
 #include "tired/io.h"
@@ -161,6 +163,76 @@ cleanup:
     free(large_unit);
     return result;
 }
+static int effective_checks(TiredDirectory *units, const TiredText *path,
+                            TiredServiceRecord *record)
+{
+    int result = 1;
+    TiredError error = {0};
+    TiredText drop_path = {0}, missing_path = {0};
+    TiredEffectiveFiles effective = {0};
+    struct json_object *report = NULL, *rows = NULL, *value = NULL;
+    TiredBuffer text;
+    tired_buffer_init(&text, TIRED_UNIT_LIMIT);
+    CHECK(tired_path_absolute(path, "systemd/user/override.conf", 26, &drop_path, &error));
+    CHECK(tired_path_absolute(path, "systemd/user/missing.conf", 25, &missing_path, &error));
+    const char dropin[] = "[Service]\nEnvironment=API_TOKEN=drop-private\n";
+    CHECK(tired_private_file_create(units, "override.conf", dropin, sizeof(dropin) - 1, &error));
+    TiredText dropins[] = {drop_path, missing_path};
+    TiredUnitObservation observed = {0};
+    observed.fields[TIRED_OBS_FRAGMENT_PATH] =
+        (TiredObservedValue){.known = true, .value.text = record->unit_path};
+    observed.fields[TIRED_OBS_DROP_IN_PATHS] =
+        (TiredObservedValue){.known = true, .value.list = {.items = dropins, .count = 1}};
+    TiredUnitQueryResult query = {.done = true,
+                                  .object_found = true,
+                                  .unit_name = record->metadata.unit_name.data,
+                                  .observation = &observed};
+    CHECK(tired_effective_files_collect(record, &query, false, &effective, &error));
+    CHECK(effective.complete && effective.count == 2 &&
+          strstr(effective.files[0].display.data, "secret") == NULL &&
+          strstr(effective.files[1].display.data, "drop-private") == NULL);
+    TiredUnitBatchItem live = {.attempted = true, .completed_realtime_usec = 123, .query = query};
+    report = tired_show_effective_json(&effective, &live, true);
+    CHECK(report != NULL && json_object_object_get_ex(report, "files", &rows) &&
+          json_object_array_length(rows) == 2);
+    CHECK(json_object_object_get_ex(json_object_array_get_idx(rows, 1), "text", &value) &&
+          strstr(json_object_get_string(value), "drop-private") == NULL);
+    CHECK(tired_show_effective_text(&effective, true, &text, &error));
+    CHECK(strstr(text.data, "# Fragment:") != NULL && strstr(text.data, "# Drop-in:") != NULL &&
+          strstr(text.data, "secret") == NULL && memchr(text.data, 27, text.length) == NULL);
+    json_object_put(report);
+    report = tired_show_effective_json(&effective, &live, false);
+    CHECK(report != NULL && json_object_object_get_ex(report, "files", &rows) &&
+          !json_object_object_get_ex(json_object_array_get_idx(rows, 0), "text", &value));
+    CHECK(tired_effective_files_collect(record, &query, true, &effective, &error));
+    CHECK(effective.complete && strcmp(effective.files[1].display.data, dropin) == 0);
+    observed.fields[TIRED_OBS_DROP_IN_PATHS].value.list.count = 2;
+    CHECK(tired_effective_files_collect(record, &query, false, &effective, &error));
+    CHECK(!effective.complete && effective.count == 3 &&
+          effective.files[1].error.status == TIRED_OK &&
+          effective.files[2].error.status == TIRED_NOT_FOUND);
+    observed.fields[TIRED_OBS_DROP_IN_PATHS].known = false;
+    CHECK(tired_effective_files_collect(record, &query, false, &effective, &error));
+    CHECK(!effective.complete && effective.count == 1 &&
+          effective.error.status == TIRED_RECOVERY_REQUIRED);
+    query.unit_name = "other.service";
+    CHECK(!tired_effective_files_collect(record, &query, false, &effective, &error));
+    CHECK(effective.count == 1 && error.status == TIRED_CONFLICT);
+    query.error =
+        (TiredError){.status = TIRED_AUTHORIZATION, .code = "fixture-denied", .message = "Denied."};
+    CHECK(tired_effective_files_collect(record, &query, false, &effective, &error));
+    CHECK(!effective.complete && effective.count == 0 &&
+          effective.error.status == TIRED_AUTHORIZATION);
+    result = 0;
+cleanup:
+    json_object_put(report);
+    tired_buffer_destroy(&text);
+    (void)unlinkat(tired_directory_fd(units), "override.conf", 0);
+    tired_effective_files_destroy(&effective);
+    tired_text_destroy(&drop_path);
+    tired_text_destroy(&missing_path);
+    return result;
+}
 static int show_checks(TiredDirectory *root, const TiredText *path, TiredServiceRecord *record)
 {
     int result = 1;
@@ -187,13 +259,23 @@ static int show_checks(TiredDirectory *root, const TiredText *path, TiredService
     CHECK(
         tired_private_file_create(units, "relay.service", original.data, original.length, &error));
     CHECK(fchmodat(tired_directory_fd(units), "relay.service", 0644, 0) == 0);
+    CHECK(effective_checks(units, path, record) == 0);
     CHECK(tired_show_command(&request, &output, &status, &error));
     CHECK(status == TIRED_OK && strstr(output.data, "\"digest_matches\":false") != NULL &&
           strstr(output.data, "\"marker_matches\":true") != NULL &&
           strstr(output.data, "installed comment") != NULL &&
           strstr(output.data, "secret") == NULL && memchr(output.data, 27, output.length) == NULL);
-    request.json = false;
+    request.effective = true;
+    CHECK(tired_show_command(&request, &output, &status, &error));
+    CHECK(status == TIRED_RECOVERY_REQUIRED && strstr(output.data, "\"effective\":") != NULL &&
+          strstr(output.data, "\"complete\":false") != NULL &&
+          strstr(output.data, "secret") == NULL);
     request.unit = true;
+    request.json = false;
+    CHECK(tired_show_command(&request, &output, &status, &error));
+    CHECK(status == TIRED_RECOVERY_REQUIRED &&
+          strstr(output.data, "Effective file inspection") != NULL);
+    request.effective = false;
     CHECK(tired_show_command(&request, &output, &status, &error));
     CHECK(strstr(output.data, "Terminal-escaped, non-installable") != NULL &&
           strstr(output.data, "Redacted, non-installable") != NULL &&

@@ -1,4 +1,4 @@
-#include "recover_live.h"
+#include "inspection_live.h"
 #include "tired/encode.h"
 #include "tired/status_frontend.h"
 #include <assert.h>
@@ -97,7 +97,7 @@ bool tired_status_output(const TiredStatusView *view, bool json, bool check_acti
             !add(document, "record", json_object_new_string(record_state)) ||
             !add(document, "transactions", json_object_new_string(transaction)) ||
             !add(document, "fragment", json_object_new_string(fragment)) ||
-            !add(document, "live", tired_recover_live_json(&view->live)))
+            !add(document, "live", tired_inspection_live_json(&view->live)))
             goto allocation;
         if (view->record != NULL)
         {

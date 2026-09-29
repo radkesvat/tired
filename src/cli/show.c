@@ -1,4 +1,7 @@
+#include "inspection_live.h"
+#include "show_effective.h"
 #include "tired/capture.h"
+#include "tired/effective_files.h"
 #include "tired/encode.h"
 #include "tired/file_fingerprint.h"
 #include "tired/file_target.h"
@@ -112,6 +115,93 @@ static bool read_unit(const TiredLayout *layout, const TiredServiceRecord *recor
     tired_resolved_file_destroy(&resolved);
     return ok;
 }
+struct json_object *tired_show_effective_json(const TiredEffectiveFiles *files,
+                                              const TiredUnitBatchItem *live, bool include_text)
+{
+    struct json_object *object = json_object_new_object(), *rows = json_object_new_array();
+    if (object == NULL || rows == NULL)
+        goto failed;
+    if (!add(object, "complete", json_object_new_boolean(files->complete)) ||
+        !add(object, "live", tired_inspection_live_json(live)) ||
+        !add(object, "configuration_load_queued",
+             json_object_new_boolean(live->query.configuration_load_queued)) ||
+        !add(object, "configuration_load_acknowledged",
+             json_object_new_boolean(live->query.configuration_load_acknowledged)) ||
+        (files->error.code != NULL &&
+         !add(object, "error", json_object_new_string(files->error.code))))
+        goto failed;
+    for (size_t i = 0; i < files->count; ++i)
+    {
+        const TiredEffectiveFile *file = &files->files[i];
+        struct json_object *row = json_object_new_object();
+        bool ok = row != NULL &&
+                  add(row, "role", json_object_new_string(i == 0 ? "fragment" : "drop-in")) &&
+                  add(row, "status",
+                      json_object_new_string(file->error.status == TIRED_OK          ? "observed"
+                                             : file->error.status == TIRED_NOT_FOUND ? "missing"
+                                                                                     : "unknown"));
+        if (ok && file->reported_path.data != NULL)
+            ok = add(row, "path", json_object_new_string(file->reported_path.data));
+        if (ok && file->error.status == TIRED_OK)
+            ok = add(row, "resolved_path",
+                     json_object_new_string(file->source.resolved_path.data)) &&
+                 add(row, "sha256", json_object_new_string(file->source.fingerprint.sha256)) &&
+                 add(row, "redacted", json_object_new_boolean(file->redaction.redacted)) &&
+                 (!include_text ||
+                  add(row, "text",
+                      json_object_new_string_len(file->display.data, (int)file->display.length)));
+        else if (ok && file->error.code != NULL)
+            ok = add(row, "error", json_object_new_string(file->error.code));
+        if (!ok || json_object_array_add(rows, row) != 0)
+        {
+            json_object_put(row);
+            goto failed;
+        }
+    }
+    bool inserted = add(object, "files", rows);
+    rows = NULL;
+    if (!inserted)
+        goto failed;
+    return object;
+failed:
+    json_object_put(object);
+    json_object_put(rows);
+    return NULL;
+}
+bool tired_show_effective_text(const TiredEffectiveFiles *files, bool terminal, TiredBuffer *buffer,
+                               TiredError *error)
+{
+    if (!text(buffer, "# Effective file inspection; not a merged installable unit.\n", error))
+        return false;
+    if (files->error.message != NULL &&
+        (!text(buffer, "# ", error) || !text(buffer, files->error.message, error) ||
+         !text(buffer, "\n", error)))
+        return false;
+    for (size_t i = 0; i < files->count; ++i)
+    {
+        const TiredEffectiveFile *file = &files->files[i];
+        TiredText path = {0};
+        const char *raw = file->reported_path.data == NULL ? "unknown" : file->reported_path.data;
+        bool ok = tired_encode_display(raw, strlen(raw), &path, error) &&
+                  text(buffer, i == 0 ? "\n# Fragment: " : "\n# Drop-in: ", error) &&
+                  text(buffer, path.data, error) && text(buffer, "\n", error);
+        tired_text_destroy(&path);
+        if (!ok)
+            return false;
+        if (file->error.status != TIRED_OK)
+        {
+            if (!text(buffer, "# Unavailable: ", error) || !text(buffer, file->error.code, error) ||
+                !text(buffer, "\n", error))
+                return false;
+        }
+        else if (!unit_text(&file->display, terminal, buffer, error) ||
+                 (file->display.length != 0 &&
+                  file->display.data[file->display.length - 1] != '\n' &&
+                  !text(buffer, "\n", error)))
+            return false;
+    }
+    return true;
+}
 static struct json_object *environment_json(const TiredEnvironment *environment, bool sensitive)
 {
     static const char *const origins[] = {"default", "profile",  "config", "imported",
@@ -182,6 +272,9 @@ bool tired_show_command(const TiredRequest *request, TiredText *output, TiredSta
     TiredFileFingerprint fingerprint = {0};
     TiredError unit_error = {0};
     TiredRedaction model_redaction = {0}, unit_redaction = {0};
+    TiredInspectionLive live = {0};
+    TiredEffectiveFiles effective = {0};
+    TiredUnitBatchItem observation = {0};
     TiredBuffer buffer;
     tired_buffer_init(&buffer, 32U * TIRED_INPUT_LIMIT);
     struct json_object *document = NULL, *metadata = NULL, *model = NULL, *file = NULL;
@@ -219,7 +312,22 @@ bool tired_show_command(const TiredRequest *request, TiredText *output, TiredSta
         if (have_unit && (request->json || !request->unit || request->output.data == NULL))
             have_unit = tired_validate_text(unit.data, unit.length, false, &unit_error);
     }
-    if (request->unit)
+    if (request->effective)
+    {
+        tired_inspection_configuration_collect(layout.user_scope, &name, &live);
+        observation = tired_inspection_live_item(&live, 0);
+        if (!tired_effective_files_collect(&record, &observation.query, request->include_sensitive,
+                                           &effective, error))
+            goto done;
+        if (!effective.complete)
+            status = TIRED_RECOVERY_REQUIRED;
+    }
+    if (request->unit && request->effective)
+    {
+        if (!tired_show_effective_text(&effective, request->output.data == NULL, &buffer, error))
+            goto done;
+    }
+    else if (request->unit)
     {
         if (!have_unit)
         {
@@ -232,8 +340,8 @@ bool tired_show_command(const TiredRequest *request, TiredText *output, TiredSta
     }
     else
     {
-        status =
-            !have_unit && unit_error.status != TIRED_NOT_FOUND ? TIRED_RECOVERY_REQUIRED : TIRED_OK;
+        if (!have_unit && unit_error.status != TIRED_NOT_FOUND)
+            status = TIRED_RECOVERY_REQUIRED;
         if (!tired_spec_display(&record.spec, record.review.sensitive_arguments,
                                 request->include_sensitive, &display, &model_redaction, error) ||
             !tired_spec_encode(&display, &encoded, error) ||
@@ -286,7 +394,7 @@ bool tired_show_command(const TiredRequest *request, TiredText *output, TiredSta
                     json_object_new_boolean(original->length >= strlen(marker) &&
                                             memcmp(original->data, marker, strlen(marker)) == 0)) ||
                 !add(file, "redacted", json_object_new_boolean(unit_redaction.redacted)) ||
-                (request->json &&
+                (request->json && !request->effective &&
                  !add(file, "text", json_object_new_string_len(unit.data, (int)unit.length))))
                 goto allocation;
         }
@@ -296,11 +404,18 @@ bool tired_show_command(const TiredRequest *request, TiredText *output, TiredSta
         file = NULL;
         if (!inserted)
             goto allocation;
+        if (request->effective &&
+            !add(document, "effective",
+                 tired_show_effective_json(&effective, &observation, request->json)))
+            goto allocation;
         if ((!request->json &&
              !text(&buffer, "# Saved service and current file evidence\n", error)) ||
             !json_text(&buffer, document, error))
             goto done;
-        if (!request->json && have_unit &&
+        if (!request->json && request->effective &&
+            !tired_show_effective_text(&effective, request->output.data == NULL, &buffer, error))
+            goto done;
+        if (!request->json && !request->effective && have_unit &&
             (!text(&buffer, "\n# Installed unit bytes\n", error) ||
              !unit_text(&unit, request->output.data == NULL, &buffer, error)))
             goto done;
@@ -333,6 +448,8 @@ bool tired_show_command(const TiredRequest *request, TiredText *output, TiredSta
 allocation:
     tired_error_set(error, TIRED_INTERNAL, "allocation", "Cannot allocate service inspection.", 0);
 done:
+    tired_effective_files_destroy(&effective);
+    tired_inspection_live_destroy(&live);
     json_object_put(document);
     json_object_put(metadata);
     json_object_put(model);

@@ -1,4 +1,4 @@
-#include "../../src/cli/recover_live.h"
+#include "../../src/cli/inspection_live.h"
 #include "tired/io.h"
 #include "tired/json.h"
 #include "tired/list_frontend.h"
@@ -215,14 +215,14 @@ int main(void)
         .completed_realtime_usec = 123,
         .query = {.done = true, .object_found = true, .observation = &observation}};
     json_object_put(document);
-    document = tired_recover_live_json(&item);
+    document = tired_inspection_live_json(&item);
     CHECK(document != NULL && json_object_object_get_ex(document, "properties", &entries));
     CHECK(json_object_object_get_ex(entries, "MainPID", &value) && json_object_get_int(value) == 0);
     CHECK(!json_object_object_get_ex(entries, "ActiveState", &value));
     item.query.error =
         (TiredError){.status = TIRED_AUTHORIZATION, .code = "fixture-denied", .message = "Denied."};
     json_object_put(document);
-    document = tired_recover_live_json(&item);
+    document = tired_inspection_live_json(&item);
     CHECK(document != NULL && !json_object_object_get_ex(document, "properties", &entries));
     CHECK(!json_object_object_get_ex(document, "object_found", &value));
     result = 0;

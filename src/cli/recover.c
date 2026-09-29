@@ -1,5 +1,5 @@
+#include "inspection_live.h"
 #include "recover_files.h"
-#include "recover_live.h"
 #include "tired/encode.h"
 #include "tired/recover_frontend.h"
 #include "tired/transaction_inventory.h"
@@ -186,7 +186,7 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
     bool user = tired_spec_choice_is(&request->overrides, TIRED_FIELD_SCOPE, "user");
     TiredLayout layout = {0};
     TiredTransactionInventory inventory = {0};
-    TiredRecoveryLive live = {0};
+    TiredInspectionLive live = {0};
     TiredRecoveryFiles files = {0};
     size_t file_budget = 64U * 1024U * 1024U;
     TiredTextList live_names = {0};
@@ -212,11 +212,11 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
                                      error)))
             goto done;
     }
-    tired_recover_live_collect(user, &live_names, &live);
+    tired_inspection_live_collect(user, &live_names, &live);
     size_t successful = 0, live_index = 0;
     for (size_t i = 0; i < live_names.count; ++i)
     {
-        TiredUnitBatchItem item = tired_recover_live_item(&live, i);
+        TiredUnitBatchItem item = tired_inspection_live_item(&live, i);
         if (item.query.done && item.query.error.status == TIRED_OK)
             ++successful;
     }
@@ -243,11 +243,11 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
             tired_recover_files_collect(&layout, entry, &file_budget, &files);
         TiredUnitBatchItem observed = {0};
         if (observe)
-            observed = tired_recover_live_item(&live, live_index++);
+            observed = tired_inspection_live_item(&live, live_index++);
         bool observe_previous = observe && entry->previous_unit_name.data != NULL;
         TiredUnitBatchItem previous = {0};
         if (observe_previous)
-            previous = tired_recover_live_item(&live, live_index++);
+            previous = tired_inspection_live_item(&live, live_index++);
         bool known = entry->error.status == TIRED_OK;
         if (!known || (entry->progress.mode != TIRED_PROGRESS_COMMITTED &&
                        entry->progress.mode != TIRED_PROGRESS_ROLLED_BACK))
@@ -269,14 +269,14 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
             if (entry->unit_name.data != NULL &&
                 !add(row, "unit_name", json_object_new_string(entry->unit_name.data)))
                 goto allocation;
-            if (observe && !add(row, "live", tired_recover_live_json(&observed)))
+            if (observe && !add(row, "live", tired_inspection_live_json(&observed)))
                 goto allocation;
             if (observe && !add(row, "files", file_json(&files)))
                 goto allocation;
             if (observe_previous &&
                 (!add(row, "previous_unit_name",
                       json_object_new_string(entry->previous_unit_name.data)) ||
-                 !add(row, "previous_live", tired_recover_live_json(&previous))))
+                 !add(row, "previous_live", tired_inspection_live_json(&previous))))
                 goto allocation;
             if (!observe && !add(row, "live_status", json_object_new_string("not_requested")))
                 goto allocation;
@@ -406,7 +406,7 @@ allocation:
                     "Cannot allocate recovery inspection output.", 0);
 done:
     tired_recover_files_destroy(&files);
-    tired_recover_live_destroy(&live);
+    tired_inspection_live_destroy(&live);
     tired_text_list_destroy(&live_names);
     json_object_put(row);
     json_object_put(entries);

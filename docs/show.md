@@ -4,6 +4,8 @@
 tired show relay
 tired show relay --user --json
 tired show relay --unit
+tired show relay --effective --json
+tired show relay --effective --unit
 tired show relay --unit --output ./relay-redacted.unit
 tired show relay --unit --include-sensitive --allow-risk sensitive-export --output ./relay-private.unit
 ```
@@ -42,10 +44,34 @@ state and returns zero. A read/trust/redaction failure keeps the saved-model rep
 marks the unit unknown, and returns 8. `--unit` instead returns the underlying error
 when no safe unit view is available, including 9 for absence. Record discovery or
 identity conflicts fail before displaying a selected model. Corrupt neighboring
-records prevent an unambiguous lookup. No command here loads or mutates systemd.
+records prevent an unambiguous lookup. Ordinary show makes no manager requests.
+
+`--effective` queries the selected manager for its fragment and ordered drop-in
+paths, then displays each current file separately. It may call LoadUnit to make an
+unloaded configuration available in manager memory. It never starts/stops services,
+enqueues jobs, enables units or requests a reload. Existing loaded configuration is
+not refreshed by this call. Native queries share a five-second deadline.
+
+The effective view contains up to 257 files (fragment plus 256 drop-ins) with a
+shared 16 MiB read budget and a 4 MiB bound per file. Trusted directory aliases such
+as merged-`/usr` paths are resolved with the [observed-file reader](observed-files.md);
+unsafe paths and final symlinks are refused. Files must be valid UTF-8 text for this
+view. Redaction and private-export authorization follow the ordinary show rules.
+JSON retains reported/resolved paths, digests, redaction flags and per-file errors;
+text identifies each source before its contents. A readable neighbor remains visible
+when another file is missing or cannot be safely displayed. Unknown fragment/drop-in
+properties are not interpreted as an empty configuration. Incomplete effective
+views return 8, including when exporting a partial inspection.
+
+`--unit --effective` is an annotated file inspection, not a merged installable unit.
+With sensitive export authorized, each file's text remains unredacted, but the text
+export also has file-boundary headings. Use ordinary `--unit` for an exact single-file
+export. Configuration lookup and disk reads occur at different instants; file text
+does not prove which bytes the manager previously parsed. The report exposes lookup
+submission/acknowledgment separately from successful complete observations.
 
 The unit read is limited to 4 MiB and formatted output to 32 MiB. This is historical
 model plus current disk evidence, not a replayable installation request or proof of
-what systemd currently has loaded. `--effective`, drop-in contents, richer field/unit
-diffs and history views remain under implementation; `status` reports fresh manager
-properties and drop-in paths separately.
+what systemd currently has loaded. Directive merging, richer field/unit diffs and
+history views remain under implementation; `status` reports fresh manager properties
+and drop-in paths separately.

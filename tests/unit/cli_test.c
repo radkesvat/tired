@@ -86,6 +86,10 @@ int main(void)
     CHECK(!PARSE("tired", "list", "--active-state", "active", "--active-state", "failed"));
     CHECK(!PARSE("tired", "status", "relay", "--search", "relay"));
     CHECK(!PARSE("tired", "show", "relay", "--profile", "generic"));
+    CHECK(PARSE("tired", "show", "relay", "--effective", "--unit"));
+    CHECK(request.effective && request.unit);
+    CHECK(!PARSE("tired", "show", "relay", "--effective", "--effective"));
+    CHECK(!PARSE("tired", "status", "relay", "--effective"));
     CHECK(!PARSE("tired", "list", "--profile", "generic", "--env", "KEY=value"));
     CHECK(PARSE("tired", "--profile", "generic", "list"));
     CHECK(tired_list_match(&request, "relay.service", NULL, NULL, "none") == TIRED_LIST_NO_MATCH);

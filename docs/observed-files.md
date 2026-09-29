@@ -31,8 +31,8 @@ are created, changed or repaired.
 
 This is a sequential namespace observation, not an atomic snapshot of every ancestor
 or alias. It must never supply write authorization or replace the stricter typed
-publication paths. Configuration-file collection and `show --effective` integration
-remain separate work.
+publication paths. `show --effective` uses this reader for the selected manager's
+fragment and drop-ins and applies display redaction separately.
 
 Filesystem fixtures exercise relative/absolute/chained aliases, parent traversal
 after alias expansion, writable intermediate directories, loops, final symlinks,

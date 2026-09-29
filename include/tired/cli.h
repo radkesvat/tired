@@ -38,7 +38,7 @@ typedef struct
     TiredText profile, working_directory, output, color;
     TiredText active_filter, enabled_filter, search;
     bool help, version, json, no_tui, yes, quiet, verbose, offline, unit, dry_run,
-        include_sensitive, check_active;
+        include_sensitive, check_active, effective;
     bool explicit_boundary;
     bool profile_explain;
     bool sensitive_arguments[TIRED_ARGUMENT_LIMIT]; /* Workload argv indices; index 0 excluded. */

@@ -1,4 +1,4 @@
-#include "recover_live.h"
+#include "inspection_live.h"
 #include "tired/encode.h"
 #include "tired/json.h"
 #include "tired/list_frontend.h"
@@ -169,7 +169,7 @@ bool tired_list_command(const TiredRequest *request, TiredText *output, TiredSta
     TiredTransactionInventory transactions = {0};
     TiredError tx_error = {0}, directory_error = {0};
     TiredDirectory *directory = NULL;
-    TiredRecoveryLive live = {0};
+    TiredInspectionLive live = {0};
     TiredTextList names = {0};
     TiredText encoded = {0}, display = {0};
     TiredServiceRecord record = {0};
@@ -211,7 +211,7 @@ bool tired_list_command(const TiredRequest *request, TiredText *output, TiredSta
     if (record_names != 0)
         (void)tired_directory_open(layout.paths[TIRED_PATH_RECORDS].data, user ? geteuid() : 0,
                                    true, &directory, &directory_error);
-    tired_recover_live_collect(user, &names, &live);
+    tired_inspection_live_collect(user, &names, &live);
     document = json_object_new_object();
     rows = json_object_new_array();
     if (document == NULL || rows == NULL)
@@ -239,7 +239,7 @@ bool tired_list_command(const TiredRequest *request, TiredText *output, TiredSta
                                     .user_scope = user,
                                     .record_error = entry->error,
                                     .transactions_error = tx_error,
-                                    .live = tired_recover_live_item(&live, live_index++)};
+                                    .live = tired_inspection_live_item(&live, live_index++)};
             view.transaction_pending = contains(&transactions.pending_names, view.unit_name);
             if (view.record_error.status == TIRED_OK)
             {
@@ -291,7 +291,7 @@ bool tired_list_command(const TiredRequest *request, TiredText *output, TiredSta
                                 .user_scope = user,
                                 .transaction_pending = true,
                                 .transactions_error = tx_error,
-                                .live = tired_recover_live_item(&live, i)};
+                                .live = tired_inspection_live_item(&live, i)};
         tired_error_set(
             &view.record_error, inventory.complete ? TIRED_NOT_FOUND : TIRED_RECOVERY_REQUIRED,
             inventory.complete ? "service-record-not-found" : "service-inventory-incomplete",
@@ -385,7 +385,7 @@ done:
     tired_text_destroy(&encoded);
     tired_text_destroy(&display);
     tired_text_list_destroy(&names);
-    tired_recover_live_destroy(&live);
+    tired_inspection_live_destroy(&live);
     tired_directory_destroy(directory);
     tired_transaction_inventory_destroy(&transactions);
     tired_service_inventory_destroy(&inventory);

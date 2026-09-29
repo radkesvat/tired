@@ -80,8 +80,8 @@ queries continue to hide partial observations. Cancellation cannot undo manager
 configuration loading. A missing-unit reply retains ordinary known absence; a
 denial, timeout or malformed reply retains its error. Broker fixtures cover those
 cases, inactive loaded configuration, and cancellation after submission. Existing
-status/list/recovery callers keep the default loaded-only lookup. CLI effective
-configuration inspection remains integration work.
+status/list/recovery callers keep the default loaded-only lookup. `show --effective`
+uses the explicit configuration lookup through the shared CLI inspection driver.
 
 The identity tracker must outlive its queries. Destroy/cancel detaches pending
 callbacks. Results borrow query storage and are available only after successful

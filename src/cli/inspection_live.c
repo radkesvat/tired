@@ -1,4 +1,5 @@
-#include "recover_live.h"
+#include "inspection_live.h"
+#include "tired/name.h"
 #include <assert.h>
 #include <errno.h>
 #include <time.h>
@@ -7,9 +8,10 @@ typedef enum
 {
     IDENTITY,
     VERSION,
-    UNITS
+    UNITS,
+    CONFIGURATION
 } Phase;
-static bool remaining(TiredRecoveryLive *live, uint64_t deadline, unsigned *milliseconds)
+static bool remaining(TiredInspectionLive *live, uint64_t deadline, unsigned *milliseconds)
 {
     struct timespec now;
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
@@ -22,16 +24,17 @@ static bool remaining(TiredRecoveryLive *live, uint64_t deadline, unsigned *mill
     *milliseconds = (unsigned)((deadline - current + 999) / 1000);
     return true;
 }
-static bool drive(TiredRecoveryLive *live, Phase phase, uint64_t deadline)
+static bool drive(TiredInspectionLive *live, Phase phase, uint64_t deadline)
 {
     for (;;)
     {
         unsigned left;
         if (!remaining(live, deadline, &left))
             return false;
-        bool done = phase == IDENTITY  ? tired_manager_identity_step(live->identity)
-                    : phase == VERSION ? tired_manager_probe_step(live->version)
-                                       : tired_unit_batch_step(live->batch);
+        bool done = phase == IDENTITY        ? tired_manager_identity_step(live->identity)
+                    : phase == VERSION       ? tired_manager_probe_step(live->version)
+                    : phase == CONFIGURATION ? tired_unit_query_step(live->configuration)
+                                             : tired_unit_batch_step(live->batch);
         if (done)
             return true;
         struct pollfd descriptor;
@@ -40,8 +43,10 @@ static bool drive(TiredRecoveryLive *live, Phase phase, uint64_t deadline)
                                                                    &query_deadline, &live->error)
                   : phase == VERSION ? tired_manager_probe_poll(live->version, &descriptor,
                                                                 &query_deadline, &live->error)
-                                     : tired_unit_batch_poll(live->batch, &descriptor,
-                                                             &query_deadline, &live->error);
+                  : phase == CONFIGURATION ? tired_unit_query_poll(live->configuration, &descriptor,
+                                                                   &query_deadline, &live->error)
+                                           : tired_unit_batch_poll(live->batch, &descriptor,
+                                                                   &query_deadline, &live->error);
         if (!ok)
             return false;
         struct timespec now;
@@ -58,10 +63,11 @@ static bool drive(TiredRecoveryLive *live, Phase phase, uint64_t deadline)
                                    "Cannot wait for live recovery observations.", errno);
     }
 }
-void tired_recover_live_collect(bool user, const TiredTextList *names, TiredRecoveryLive *live)
+static void collect(bool user, const TiredTextList *names, bool configuration,
+                    TiredInspectionLive *live)
 {
     assert(names != NULL && live != NULL && live->bus == NULL && live->identity == NULL &&
-           live->batch == NULL);
+           live->batch == NULL && live->configuration == NULL);
     if (names->count == 0)
         return;
     struct timespec now;
@@ -90,8 +96,37 @@ void tired_recover_live_collect(bool user, const TiredTextList *names, TiredReco
         !drive(live, VERSION, deadline))
         return;
     live->error = tired_manager_probe_result(live->version).error;
-    if (live->error.status != TIRED_OK || !remaining(live, deadline, &left) ||
-        !tired_unit_batch_start(live->identity, names, left, &live->batch, &live->error))
+    if (live->error.status != TIRED_OK || !remaining(live, deadline, &left))
+        return;
+    if (configuration)
+    {
+        assert(names->count == 1);
+        TiredText base = {0};
+        bool started =
+            tired_name_explicit(names->items[0].data, names->items[0].length, &base,
+                                &live->error) &&
+            tired_unit_query_start_lookup(live->identity, &base, TIRED_UNIT_LOAD_CONFIGURATION,
+                                          left, &live->configuration, &live->error);
+        tired_text_destroy(&base);
+        if (!started)
+            return;
+        if (!drive(live, CONFIGURATION, deadline))
+        {
+            tired_unit_query_cancel(live->configuration);
+            return;
+        }
+        live->error = tired_unit_query_result(live->configuration).error;
+        if (clock_gettime(CLOCK_REALTIME, &now) != 0)
+        {
+            tired_error_set(&live->error, TIRED_INTERNAL, "inspection-clock",
+                            "Cannot timestamp configuration observation.", errno);
+            return;
+        }
+        live->configuration_completed_usec =
+            (uint64_t)now.tv_sec * 1000000 + (uint64_t)now.tv_nsec / 1000;
+        return;
+    }
+    if (!tired_unit_batch_start(live->identity, names, left, &live->batch, &live->error))
         return;
     if (!drive(live, UNITS, deadline))
     {
@@ -100,12 +135,31 @@ void tired_recover_live_collect(bool user, const TiredTextList *names, TiredReco
     }
     live->error = tired_unit_batch_result(live->batch).error;
 }
-TiredUnitBatchItem tired_recover_live_item(const TiredRecoveryLive *live, size_t index)
+void tired_inspection_live_collect(bool user, const TiredTextList *names, TiredInspectionLive *live)
+{
+    collect(user, names, false, live);
+}
+void tired_inspection_configuration_collect(bool user, const TiredText *name,
+                                            TiredInspectionLive *live)
+{
+    assert(name != NULL);
+    TiredText borrowed = *name;
+    TiredTextList names = {.items = &borrowed, .count = 1};
+    collect(user, &names, true, live);
+}
+TiredUnitBatchItem tired_inspection_live_item(const TiredInspectionLive *live, size_t index)
 {
     assert(live != NULL);
     TiredUnitBatchItem item = {0};
     if (live->batch != NULL)
         item = tired_unit_batch_item(live->batch, index);
+    if (live->configuration != NULL)
+    {
+        assert(index == 0);
+        item.attempted = true;
+        item.query = tired_unit_query_result(live->configuration);
+        item.completed_realtime_usec = live->configuration_completed_usec;
+    }
     if (item.completed_realtime_usec == 0 && live->error.status != TIRED_OK)
     {
         item.query.done = true;
@@ -122,7 +176,7 @@ static bool add(struct json_object *object, const char *key, struct json_object 
     json_object_put(value);
     return false;
 }
-struct json_object *tired_recover_live_json(const TiredUnitBatchItem *item)
+struct json_object *tired_inspection_live_json(const TiredUnitBatchItem *item)
 {
     assert(item != NULL);
     struct json_object *object = json_object_new_object(), *properties = NULL;
@@ -201,13 +255,14 @@ failed:
     json_object_put(object);
     return NULL;
 }
-void tired_recover_live_destroy(TiredRecoveryLive *live)
+void tired_inspection_live_destroy(TiredInspectionLive *live)
 {
     if (live == NULL)
         return;
+    tired_unit_query_destroy(live->configuration);
     tired_unit_batch_destroy(live->batch);
     tired_manager_probe_destroy(live->version);
     tired_manager_identity_destroy(live->identity);
     sd_bus_close_unref(live->bus);
-    *live = (TiredRecoveryLive){0};
+    *live = (TiredInspectionLive){0};
 }

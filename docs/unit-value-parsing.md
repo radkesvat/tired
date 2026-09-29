@@ -83,4 +83,4 @@ every secret form, inspect arbitrary directive values/comments, or match saved
 secrets embedded inside larger unrelated strings. It neither reads nor adopts
 external files. Returned bytes still require terminal control escaping. The `show`
 frontend performs installed-file reads, terminal escaping and private export
-authorization. Effective-view handling remains under implementation.
+authorization, including each file in an effective view.

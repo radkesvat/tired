@@ -94,32 +94,33 @@ int main(int argc, char **argv)
         goto failed;
     if (request.help)
     {
-        fputs("Usage: tired plan --offline [--profile auto|none|ID] [options] -- COMMAND [ARG...]\n"
-              "       tired profiles list | show ID | validate FILE [--json]\n"
-              "       tired profiles explain [options] -- COMMAND [ARG...]\n"
-              "       tired config show | validate FILE [--user] [--json]\n"
-              "       tired recover [--user] [--json]  (read-only inspection)\n"
-              "       tired status NAME [--user] [--json] [--check-active]\n"
-              "       tired list [--user] [--json]\n"
-              "         [--active-state STATE] [--enabled-state STATE] [--profile ID] [--search "
-              "TEXT]\n"
-              "       tired show NAME [--user] [--json | --unit] [--output NEW_FILE]\n"
-              "       tired --help | --version\n\n"
-              "Offline planning and profile, configuration, and stored-journal inspection are "
-              "available.\n"
-              "Service installation, live validation, and recovery resolutions are still under "
-              "implementation.\n"
-              "Options: --user, --name NAME, --run-as USER, --group GROUP,\n"
-              "  --working-directory PATH, --type TYPE, --restart POLICY, --restart-sec TIME,\n"
-              "  --retry-policy persistent|limited, --nofile SOFT:HARD, --set FIELD=VALUE, --unset "
-              "FIELD,\n"
-              "  --env KEY=VALUE, --pass-env KEY, --env-file PATH, --import-env-file PATH,\n"
-              "  --credential NAME=PATH, --unit, --json, --output NEW_FILE.\n"
-              "  --sensitive-arg INDEX masks a workload argument (1 is the first after COMMAND).\n"
-              "Sensitive exports: --include-sensitive --allow-risk sensitive-export --output "
-              "NEW_FILE.\n"
-              "Arguments after COMMAND or -- belong to the workload. Planning never executes it.\n",
-              stdout);
+        fputs(
+            "Usage: tired plan --offline [--profile auto|none|ID] [options] -- COMMAND [ARG...]\n"
+            "       tired profiles list | show ID | validate FILE [--json]\n"
+            "       tired profiles explain [options] -- COMMAND [ARG...]\n"
+            "       tired config show | validate FILE [--user] [--json]\n"
+            "       tired recover [--user] [--json]  (read-only inspection)\n"
+            "       tired status NAME [--user] [--json] [--check-active]\n"
+            "       tired list [--user] [--json]\n"
+            "         [--active-state STATE] [--enabled-state STATE] [--profile ID] [--search "
+            "TEXT]\n"
+            "       tired show NAME [--user] [--json | --unit] [--effective] [--output NEW_FILE]\n"
+            "       tired --help | --version\n\n"
+            "Offline planning and profile, configuration, and stored-journal inspection are "
+            "available.\n"
+            "Service installation, live validation, and recovery resolutions are still under "
+            "implementation.\n"
+            "Options: --user, --name NAME, --run-as USER, --group GROUP,\n"
+            "  --working-directory PATH, --type TYPE, --restart POLICY, --restart-sec TIME,\n"
+            "  --retry-policy persistent|limited, --nofile SOFT:HARD, --set FIELD=VALUE, --unset "
+            "FIELD,\n"
+            "  --env KEY=VALUE, --pass-env KEY, --env-file PATH, --import-env-file PATH,\n"
+            "  --credential NAME=PATH, --unit, --json, --output NEW_FILE.\n"
+            "  --sensitive-arg INDEX masks a workload argument (1 is the first after COMMAND).\n"
+            "Sensitive exports: --include-sensitive --allow-risk sensitive-export --output "
+            "NEW_FILE.\n"
+            "Arguments after COMMAND or -- belong to the workload. Planning never executes it.\n",
+            stdout);
         goto done;
     }
     if (request.version)

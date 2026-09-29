@@ -1,4 +1,4 @@
-#include "recover_live.h"
+#include "inspection_live.h"
 #include "tired/name.h"
 #include "tired/service_inventory.h"
 #include "tired/status_frontend.h"
@@ -17,7 +17,7 @@ bool tired_status_command(const TiredRequest *request, TiredText *output, TiredS
     TiredServiceInventory inventory = {0};
     TiredTransactionInventory transactions = {0};
     TiredServiceRecord record = {0};
-    TiredRecoveryLive live = {0};
+    TiredInspectionLive live = {0};
     TiredTextList names = {0};
     TiredStatusView view = {
         .user_scope = tired_spec_choice_is(&request->overrides, TIRED_FIELD_SCOPE, "user")};
@@ -53,11 +53,11 @@ bool tired_status_command(const TiredRequest *request, TiredText *output, TiredS
             for (size_t i = 0; i < pending->count; ++i)
                 view.transaction_pending |= strcmp(pending->items[i].data, unit.data) == 0;
     }
-    tired_recover_live_collect(view.user_scope, &names, &live);
-    view.live = tired_recover_live_item(&live, 0);
+    tired_inspection_live_collect(view.user_scope, &names, &live);
+    view.live = tired_inspection_live_item(&live, 0);
     ok = tired_status_output(&view, request->json, request->check_active, output, result, error);
 done:
-    tired_recover_live_destroy(&live);
+    tired_inspection_live_destroy(&live);
     tired_text_list_destroy(&names);
     tired_service_record_destroy(&record);
     tired_transaction_inventory_destroy(&transactions);
