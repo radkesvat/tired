@@ -1,5 +1,6 @@
 #include "tired/capture.h"
 #include "tired/cli.h"
+#include "tired/journal_stream.h"
 #include "tired/risk.h"
 #include <assert.h>
 #include <string.h>
@@ -244,6 +245,7 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
                      {"--dry-run", &parsed.dry_run},
                      {"--check-active", &parsed.check_active},
                      {"--effective", &parsed.effective},
+                     {"--follow", &parsed.logs.follow},
                      {"--include-sensitive", &parsed.include_sensitive}};
         for (size_t j = 0; j < sizeof(flags) / sizeof(flags[0]); ++j)
             if (strcmp(option, flags[j].name) == 0)
@@ -257,11 +259,25 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
             }
         if (handled)
             continue;
-        const char *taking[] = {
-            "--set",           "--nofile",       "--profile",         "--env",
-            "--pass-env",      "--env-file",     "--import-env-file", "--credential",
-            "--allow-risk",    "--output",       "--color",           "--unset",
-            "--sensitive-arg", "--active-state", "--enabled-state",   "--search"};
+        const char *taking[] = {"--set",
+                                "--nofile",
+                                "--profile",
+                                "--env",
+                                "--pass-env",
+                                "--env-file",
+                                "--import-env-file",
+                                "--credential",
+                                "--allow-risk",
+                                "--output",
+                                "--color",
+                                "--unset",
+                                "--sensitive-arg",
+                                "--active-state",
+                                "--enabled-state",
+                                "--search",
+                                "--lines",
+                                "--since",
+                                "--boot"};
         for (size_t j = 0; j < sizeof(taking) / sizeof(taking[0]); ++j)
             if (strcmp(option, taking[j]) == 0)
                 handled = true;
@@ -270,7 +286,27 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
         value = option_value(argc, argv, &i, value, error);
         if (value == NULL)
             goto fail;
-        if (strcmp(option, "--color") == 0)
+        if (strcmp(option, "--lines") == 0)
+        {
+            uint64_t lines;
+            if (!mark(&parsed.logs.lines_set, error) ||
+                !tired_parse_u64(value, strlen(value), 0, TIRED_JOURNAL_TAIL_LIMIT, &lines, error))
+                goto fail;
+            parsed.logs.lines = (size_t)lines;
+        }
+        else if (strcmp(option, "--since") == 0)
+        {
+            if (!mark(&parsed.logs.since_set, error) ||
+                !tired_log_since_parse(value, &parsed.logs.since_usec, error))
+                goto fail;
+        }
+        else if (strcmp(option, "--boot") == 0)
+        {
+            if (!mark(&parsed.logs.boot_set, error) ||
+                !tired_log_boot_parse(value, &parsed.logs, error))
+                goto fail;
+        }
+        else if (strcmp(option, "--color") == 0)
         {
             if (strcmp(value, "auto") != 0 && strcmp(value, "always") != 0 &&
                 strcmp(value, "never") != 0)
@@ -443,6 +479,10 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
     if (parsed.check_active && parsed.command != TIRED_COMMAND_STATUS)
         goto inappropriate;
     if (parsed.effective && parsed.command != TIRED_COMMAND_SHOW)
+        goto inappropriate;
+    if ((parsed.logs.follow || parsed.logs.lines_set || parsed.logs.since_set ||
+         parsed.logs.boot_set) &&
+        parsed.command != TIRED_COMMAND_LOGS)
         goto inappropriate;
     if (parsed.unit && parsed.json)
         goto inappropriate;

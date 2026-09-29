@@ -1,6 +1,7 @@
 #ifndef TIRED_CLI_H
 #define TIRED_CLI_H
 #include "tired/environment.h"
+#include "tired/log_options.h"
 #include "tired/model.h"
 
 typedef enum
@@ -37,6 +38,7 @@ typedef struct
     TiredTextList pass_environment, import_files, environment_files, credentials, allowed_risks;
     TiredText profile, working_directory, output, color;
     TiredText active_filter, enabled_filter, search;
+    TiredLogOptions logs;
     bool help, version, json, no_tui, yes, quiet, verbose, offline, unit, dry_run,
         include_sensitive, check_active, effective;
     bool explicit_boundary;

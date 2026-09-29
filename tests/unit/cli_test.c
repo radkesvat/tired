@@ -70,6 +70,70 @@ int main(void)
     CHECK(!PARSE("tired", "status", "relay", "--check-active", "--check-active"));
     CHECK(!PARSE("tired", "status", "relay", "--check-active=true"));
     CHECK(!PARSE("tired", "list", "--check-active"));
+    CHECK(PARSE("tired", "logs", "relay", "--follow", "--lines=0", "--boot", "current", "--since",
+                "@0.000001", "--json"));
+    CHECK(request.logs.follow && request.logs.lines_set && request.logs.lines == 0 &&
+          request.logs.boot_set && request.logs.boot_current && request.logs.since_set &&
+          request.logs.since_usec == 1 && request.json);
+    CHECK(PARSE("tired", "--user", "logs", "relay", "--lines", "10000", "--boot",
+                "0123456789ABCDEF0123456789ABCDEF"));
+    CHECK(request.logs.lines == 10000 && !request.logs.boot_current &&
+          strcmp(request.logs.boot_id, "0123456789abcdef0123456789abcdef") == 0);
+    CHECK(PARSE("tired", "logs", "relay"));
+    CHECK(!request.logs.lines_set && !request.logs.since_set && !request.logs.boot_set &&
+          !request.logs.follow);
+    CHECK(!PARSE("tired", "logs", "relay", "--lines", "10001"));
+    CHECK(!PARSE("tired", "logs", "relay", "--lines", "-1"));
+    CHECK(!PARSE("tired", "logs", "relay", "--lines", "1", "--lines", "2"));
+    CHECK(!PARSE("tired", "logs", "relay", "--follow", "--follow"));
+    CHECK(!PARSE("tired", "logs", "relay", "--follow=true"));
+    CHECK(!PARSE("tired", "logs", "relay", "--boot", "current", "--boot", "current"));
+    CHECK(!PARSE("tired", "logs", "relay", "--boot", "123"));
+    CHECK(!PARSE("tired", "logs", "relay", "--boot", "g123456789abcdef0123456789abcdef"));
+    CHECK(!PARSE("tired", "logs", "relay", "--since", "@0", "--since", "@1"));
+    CHECK(!PARSE("tired", "status", "relay", "--follow"));
+    CHECK(!PARSE("tired", "list", "--lines", "5"));
+    CHECK(!PARSE("tired", "show", "relay", "--since", "@0"));
+    CHECK(!PARSE("tired", "plan", "--boot", "current", "--", "./app"));
+    CHECK(PARSE("tired", "./app", "--follow", "--since", "bad"));
+    CHECK(request.arguments.count == 4 && !request.logs.follow);
+    uint64_t since = 99;
+    CHECK(tired_log_since_parse("1970-01-01T00:00:00Z", &since, &error) && since == 0);
+    CHECK(tired_log_since_parse("1970-01-02T01:02:03.4Z", &since, &error) &&
+          since == UINT64_C(90123400000));
+    CHECK(tired_log_since_parse("2000-02-29T00:00:00Z", &since, &error) &&
+          since == UINT64_C(951782400000000));
+    CHECK(tired_log_since_parse("@18446744073709.551615", &since, &error) && since == UINT64_MAX);
+    const char *bad_times[] = {"",
+                               "@",
+                               "@-1",
+                               "@+1",
+                               "@1.",
+                               "@1.1234567",
+                               "@18446744073709.551616",
+                               "@18446744073710",
+                               "@18446744073709551616",
+                               "now",
+                               "2026-09-29",
+                               "2026-09-29T00:00:00+00:00",
+                               "1969-12-31T23:59:59Z",
+                               "2001-02-29T00:00:00Z",
+                               "2100-02-29T00:00:00Z",
+                               "2024-04-31T00:00:00Z",
+                               "2024-00-01T00:00:00Z",
+                               "2024-13-01T00:00:00Z",
+                               "2024-01-00T00:00:00Z",
+                               "2024-01-01T24:00:00Z",
+                               "2024-01-01T00:60:00Z",
+                               "2024-01-01T00:00:60Z",
+                               "2024-01-01T00:00:00.Z",
+                               "@0x1",
+                               " @1"};
+    for (size_t i = 0; i < sizeof(bad_times) / sizeof(bad_times[0]); ++i)
+    {
+        since = 99;
+        CHECK(!tired_log_since_parse(bad_times[i], &since, &error) && since == 99);
+    }
     CHECK(PARSE("tired", "list", "--active-state", "active", "--enabled-state=enabled", "--profile",
                 "generic", "--search", "ReLaY"));
     CHECK(tired_list_match(&request, "relay.service", "active", "enabled", "generic") ==
