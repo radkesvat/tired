@@ -1,27 +1,12 @@
 #include "tired/plan_output.h"
 #include "tired/encode.h"
+#include "tired/redaction.h"
 #include "tired/render.h"
 #include "tired/risk.h"
 #include <assert.h>
 #include <json-c/json.h>
 #include <string.h>
 
-static bool secret_flag(const TiredText *arg)
-{
-    if (arg->length == 0 || arg->data[0] != '-')
-        return false;
-    char key[128];
-    size_t i = 0;
-    for (; i < arg->length && i < sizeof(key) - 1 && arg->data[i] != '='; ++i)
-    {
-        char c = arg->data[i];
-        key[i] = c >= 'A' && c <= 'Z' ? (char)(c - 'A' + 'a') : c;
-    }
-    key[i] = '\0';
-    return strstr(key, "password") != NULL || strstr(key, "passwd") != NULL ||
-           strstr(key, "token") != NULL || strstr(key, "secret") != NULL ||
-           strstr(key, "api-key") != NULL;
-}
 static bool add(struct json_object *object, const char *key, struct json_object *child)
 {
     if (child == NULL)
@@ -125,31 +110,12 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
     TiredBuffer text;
     tired_buffer_init(&text, TIRED_UNIT_LIMIT * 4U);
     struct json_object *root = NULL, *fields = NULL, *environment = NULL, *warnings = NULL;
-    bool redacted = false, sensitive = false;
-    for (unsigned i = 0; i < TIRED_FIELD_COUNT; ++i)
-        if (!tired_spec_copy_field(&display, &plan->spec, (TiredFieldId)i, error))
-            goto fail;
-    const TiredTextList *original = &plan->spec.fields[TIRED_FIELD_ARGV].value.list;
-    if (!tired_spec_clear_list(&display, TIRED_FIELD_ARGV, TIRED_ORIGIN_CAPTURE, error))
+    TiredRedaction redaction;
+    if (!tired_spec_display(&plan->spec, plan->sensitive_arguments, include_sensitive, &display,
+                            &redaction, error))
         goto fail;
-    bool hide_next = false;
-    for (size_t i = 0; i < original->count; ++i)
-    {
-        const TiredText *arg = &original->items[i];
-        bool flag = i != 0 && secret_flag(arg);
-        bool attached = flag && memchr(arg->data, '=', arg->length) != NULL;
-        bool hide = hide_next || attached || plan->sensitive_arguments[i];
-        if (hide || flag)
-            sensitive = true;
-        const char *value = !include_sensitive && hide ? "[redacted]" : arg->data;
-        size_t length = !include_sensitive && hide ? sizeof("[redacted]") - 1 : arg->length;
-        if (!include_sensitive && hide)
-            redacted = true;
-        if (!tired_spec_append(&display, TIRED_FIELD_ARGV, value, length, TIRED_ORIGIN_CAPTURE,
-                               error))
-            goto fail;
-        hide_next = flag && !attached;
-    }
+    bool redacted = redaction.redacted, sensitive = redaction.sensitive;
+    const TiredTextList *original = &plan->spec.fields[TIRED_FIELD_ARGV].value.list;
     if (!tired_render_unit(&display, plan->uuid,
                            plan->managed_environment.data == NULL ? NULL
                                                                   : &plan->managed_environment,

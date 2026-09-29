@@ -96,6 +96,7 @@ add_library(tired_core STATIC src/util/value.c src/model/name.c src/model/model.
 target_sources(tired_core PRIVATE src/util/json.c)
 target_sources(tired_core PRIVATE src/storage/io.c)
 target_sources(tired_core PRIVATE src/cli/plan.c src/cli/plan_output.c)
+target_sources(tired_core PRIVATE src/model/redaction.c)
 target_sources(tired_core PRIVATE src/profiles/profile.c)
 target_sources(tired_core PRIVATE src/profiles/merge.c)
 target_sources(tired_core PRIVATE src/profiles/catalog.c)
@@ -172,6 +173,10 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_redaction_test tests/unit/redaction_test.c)
+    target_link_libraries(tired_redaction_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.redaction COMMAND tired_redaction_test)
+    set_tests_properties(tired.redaction PROPERTIES LABELS unit)
     add_executable(tired_service_record_test tests/unit/service_record_test.c)
     add_executable(tired_status_test tests/unit/status_test.c)
     target_compile_definitions(tired_status_test PRIVATE _POSIX_C_SOURCE=200809L)

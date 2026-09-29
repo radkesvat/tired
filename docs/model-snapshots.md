@@ -28,3 +28,20 @@ and file/transaction identities; this codec does not stand in for those records.
 Tests cover defaults/unset values, field origins, explicit inheritance, empty lists,
 literal argv, normalized suffixes, exact large limits, durations/timeouts, quotas,
 modes, canonical re-encoding and malformed-input output preservation.
+
+For model display, `tired_spec_display` creates an owned copy with argv redaction.
+It preserves field origins, inheritance and explicit empty states. It masks
+explicitly classified arguments and values following recognized sensitive flags;
+attached sensitive assignments are masked as a whole. The heuristic checks the
+complete flag name before `=`, case-insensitively, for password, passwd, token,
+secret or api-key. It leaves argv[0] visible and does not claim to recognize every
+secret format. The captured model remains unchanged; input/output aliasing is also
+supported. Failures preserve the previous output and result flags.
+
+The result distinguishes sensitive input from actual redaction. A caller-authorized
+private export can retain sensitive argv while still reporting its presence.
+Authorization belongs to the frontend; this helper does not grant it. Offline
+previews use the helper. Saved-record display integration remains pending, and
+arbitrary installed unit bytes require separate redaction: regenerating a model
+is not a substitute for displaying the installed file. Environment values and
+other text fields are outside this argument-only helper's scope.
