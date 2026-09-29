@@ -115,6 +115,7 @@ target_sources(tired_core PRIVATE src/storage/directory.c)
 target_sources(tired_core PRIVATE src/storage/operation_lock.c)
 target_sources(tired_core PRIVATE src/storage/private_file.c)
 target_sources(tired_core PRIVATE src/storage/file_fingerprint.c)
+target_sources(tired_core PRIVATE src/storage/fingerprint_format.c)
 target_sources(tired_core PRIVATE src/storage/publication.c)
 target_sources(tired_core PRIVATE src/storage/transaction_record.c)
 target_sources(tired_core PRIVATE src/storage/transaction_journal.c)
@@ -145,6 +146,10 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_fingerprint_format_test tests/unit/fingerprint_format_test.c)
+    target_link_libraries(tired_fingerprint_format_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.fingerprint_format COMMAND tired_fingerprint_format_test "${CMAKE_CURRENT_SOURCE_DIR}/schemas/file-fingerprint.schema.json")
+    set_tests_properties(tired.fingerprint_format PROPERTIES LABELS unit)
     add_executable(tired_file_fingerprint_test tests/unit/file_fingerprint_test.c)
     target_compile_definitions(tired_file_fingerprint_test PRIVATE _POSIX_C_SOURCE=200809L)
     target_link_libraries(tired_file_fingerprint_test PRIVATE tired_core tired_build_options)
@@ -368,7 +373,7 @@ if(BUILD_TESTING)
 endif()
 
 install(TARGETS tired RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-install(FILES schemas/profile.schema.json schemas/settings.schema.json schemas/transaction-progress.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
+install(FILES schemas/profile.schema.json schemas/settings.schema.json schemas/transaction-progress.schema.json schemas/file-fingerprint.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
 install(DIRECTORY profiles/ DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/profiles.d"
     FILES_MATCHING PATTERN "*.json")
 

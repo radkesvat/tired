@@ -48,7 +48,7 @@ int main(void)
     int result = 1;
     char fixture[] = "fingerprint-test-XXXXXX";
     char *created = NULL, *cwd = getcwd(NULL, 0);
-    TiredText path = {0};
+    TiredText path = {0}, encoded = {0}, loaded = {0};
     TiredDirectory *directory = NULL;
     TiredFileFingerprint snapshot = {0}, original = {0};
     TiredError error = {0};
@@ -65,6 +65,13 @@ int main(void)
     CHECK(strcmp(snapshot.sha256,
                  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") == 0);
     original = snapshot;
+    CHECK(tired_file_fingerprint_encode(&snapshot, &encoded, &error));
+    CHECK(tired_private_file_create(directory, "fingerprint.json", encoded.data, encoded.length,
+                                    &error));
+    CHECK(tired_private_file_read(directory, "fingerprint.json", 4096, &loaded, &error));
+    TiredFileFingerprint persisted = {0};
+    CHECK(tired_file_fingerprint_parse(loaded.data, loaded.length, &persisted, &error));
+    CHECK(tired_file_fingerprint_equal(&snapshot, &persisted));
     CHECK(!tired_file_fingerprint(directory, "unit", 2, &snapshot, &error));
     CHECK(tired_file_fingerprint_equal(&snapshot, &original));
     CHECK(utimensat(parent_fd, "unit", NULL, 0) == 0);
@@ -111,7 +118,8 @@ cleanup:
     mutation = 0;
     if (directory != NULL)
     {
-        const char *names[] = {"unit", "saved", "hard", "link", "fifo", "empty"};
+        const char *names[] = {"unit",  "saved",           "hard", "link", "fifo",
+                               "empty", "fingerprint.json"};
         for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i)
             (void)unlinkat(tired_directory_fd(directory), names[i], 0);
     }
@@ -119,6 +127,8 @@ cleanup:
     if (created != NULL)
         (void)rmdir(created);
     tired_text_destroy(&path);
+    tired_text_destroy(&encoded);
+    tired_text_destroy(&loaded);
     free(cwd);
     return result;
 }

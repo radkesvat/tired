@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "File fingerprint",
+  "type": "object",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "required": ["schema_version", "exists"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "exists": {"const": false}
+      }
+    },
+    {
+      "additionalProperties": false,
+      "required": ["schema_version", "exists", "device", "inode", "uid", "gid", "mode", "size", "sha256"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "exists": {"const": true},
+        "device": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+        "inode": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+        "uid": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+        "gid": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+        "mode": {"type": "integer", "minimum": 0, "maximum": 4095},
+        "size": {"type": "integer", "minimum": 0, "maximum": 16777216},
+        "sha256": {"type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  ]
+}

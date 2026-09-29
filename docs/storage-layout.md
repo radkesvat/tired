@@ -131,3 +131,19 @@ Native tests cover known SHA-256 vectors, absent/empty files, byte limits, mode
 changes, same-content replacement, symlinks/hard links/FIFOs and deterministic
 replacement/growth during reading. Manifest storage and recovery comparisons
 remain subsequent integration work.
+
+Fingerprints have a strict schema-1 JSON representation for private persistence.
+Absence is exactly `schema_version` plus `exists: false`; it carries no invented
+device, owner, size or digest. Existing-file objects require all identity/metadata
+fields and a canonical 64-character lowercase SHA-256 value. Parsing rejects
+unknown fields, duplicate keys, missing metadata, floating-point/negative/overflowing
+integer values, permission bits outside `07777`, and sizes above the inspection
+limit. Native device/inode/owner/group ranges are enforced before conversion.
+
+Serialization preserves unsigned integer values exactly, including values above
+the signed 64-bit range. Consumers must not pass identities through floating point.
+Failures preserve previous outputs. The installed `file-fingerprint.schema.json`
+documents the structural format; native parsing additionally enforces strict integer
+syntax/types. Tests cover width boundaries, absence versus invalid metadata, and
+an actual observed fingerprint persisted through private-file storage and read back.
+These values remain evidence to compare, not permission to modify a file.

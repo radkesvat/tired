@@ -23,4 +23,11 @@ bool tired_file_fingerprint(TiredDirectory *directory, const char *name, size_t 
 /* Compare absence or regular-file identity, metadata and content. Timestamps are
  * used for read stability, not equality; touching unchanged bytes is not drift. */
 bool tired_file_fingerprint_equal(const TiredFileFingerprint *a, const TiredFileFingerprint *b);
+/* Strict schema-1 JSON representation, <=4096 bytes. Absence has no fabricated
+ * metadata. Existing files require every field and canonical lowercase SHA-256.
+ * Parsing is descriptive only, not proof of file ownership. Atomic outputs. */
+bool tired_file_fingerprint_parse(const char *data, size_t length,
+                                  TiredFileFingerprint *fingerprint, TiredError *error);
+bool tired_file_fingerprint_encode(const TiredFileFingerprint *fingerprint, TiredText *output,
+                                   TiredError *error);
 #endif
