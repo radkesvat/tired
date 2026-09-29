@@ -35,5 +35,15 @@ validation concern.
 Tests cover manager and pending reservations, ordinary files, masks, dangling links,
 FIFOs, unit-shaped directories, drop-in paths, directory aliases, missing locations,
 invalid load locations, mismatched/incomplete manager results and failure atomicity.
-Manager UnitPath discovery, transaction inventory loading, automatic-name selection
-and commit-time reservation are not yet connected to this checker.
+The native load-path query obtains the manager's UnitPath string array through the
+verified unique bus name. It requires a nonempty list, applies the same path/count
+bounds and preserves order, duplicates and directory-alias spelling. Missing or
+malformed UnitPath is an error, not an invitation to guess a smaller search path.
+Queries use one monotonic deadline, support cancellation/poll integration, and hide
+results after manager identity invalidation. The identity must outlive the query.
+
+Native tests cover typed variants, relative/control/oversized paths, empty and
+excessive arrays, failure preservation, destination/authorization flags, cancellation,
+timeout and invalidation. Live manager integration retrieves the host's UnitPath.
+The naming controller still needs to combine these paths with the intended write
+destination, transaction inventory and suffix selection under commit-time locking.

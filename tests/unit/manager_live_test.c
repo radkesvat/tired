@@ -1,3 +1,4 @@
+#include "tired/load_paths.h"
 #include "tired/manager.h"
 #include "tired/unit_query.h"
 #include <stdio.h>
@@ -13,6 +14,7 @@ int main(void)
     TiredManagerIdentity *identity = NULL;
     TiredManagerProbe *probe = NULL;
     TiredUnitQuery *query = NULL;
+    TiredLoadPaths *paths = NULL;
     TiredError error = {0};
     int result = 1;
     if (!tired_manager_bus_open(false, &bus, &error))
@@ -41,6 +43,14 @@ int main(void)
     error = version.error;
     if (!version.done || error.status != TIRED_OK)
         goto done;
+    if (!tired_load_paths_start(identity, 3000, &paths, &error))
+        goto done;
+    for (unsigned i = 0; i < 5000 && !tired_load_paths_step(paths); ++i)
+        tick();
+    TiredLoadPathsResult locations = tired_load_paths_result(paths);
+    error = locations.error;
+    if (!locations.done || error.status != TIRED_OK || locations.directories == NULL)
+        goto done;
     TiredText name = {.data = "systemd-journald", .length = 16};
     if (!tired_unit_query_start(identity, &name, 3000, &query, &error))
         goto done;
@@ -56,8 +66,10 @@ int main(void)
            version.version, observed.file_state == NULL ? "absent" : observed.file_state,
            observed.object_found ? "present" : "absent",
            observed.observation->fields[TIRED_OBS_MAIN_PID].known ? "known" : "unknown");
+    printf("Manager load locations: %zu\n", locations.directories->count);
     result = 0;
 done:
+    tired_load_paths_destroy(paths);
     if (result != 0)
         fprintf(stderr, "Live manager query %s: %s [%s]\n", result == 77 ? "unavailable" : "failed",
                 error.message == NULL ? "Incomplete observation" : error.message,

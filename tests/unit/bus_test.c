@@ -1,4 +1,5 @@
 #include "tired/io.h"
+#include "tired/load_paths.h"
 #include "tired/manager.h"
 #include "tired/manager_identity.h"
 #include "tired/unit_query.h"
@@ -26,6 +27,7 @@ typedef struct
 {
     uint32_t uid;
     unsigned unit_case;
+    unsigned path_mode;
     bool matched, change_during_uid, silent_match, pinned_version;
 } Broker;
 static int properties(sd_bus_message *request, Broker *broker)
@@ -136,6 +138,24 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
     if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus.Properties", "Get") > 0)
     {
         const char *destination = sd_bus_message_get_destination(message);
+        const char *interface = NULL, *property = NULL;
+        if (sd_bus_message_read(message, "ss", &interface, &property) <= 0)
+            return -1;
+        if (strcmp(property, "UnitPath") == 0)
+        {
+            if (destination == NULL || strcmp(destination, ":1.42") != 0 ||
+                strcmp(interface, "org.freedesktop.systemd1.Manager") != 0 ||
+                sd_bus_message_get_auto_start(message) != 0 ||
+                sd_bus_message_get_allow_interactive_authorization(message) != 0)
+                return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_INVALID_ARGS,
+                                                  "Invalid path query");
+            if (broker->path_mode == 2)
+                return 1;
+            return broker->path_mode == 1
+                       ? sd_bus_reply_method_return(message, "v", "s", "bad")
+                       : sd_bus_reply_method_return(message, "v", "as", 2, "/etc/systemd/system",
+                                                    "/usr/lib/systemd/system");
+        }
         broker->pinned_version = destination != NULL && strcmp(destination, ":1.42") == 0;
         return sd_bus_reply_method_return(message, "v", "s", "249.11");
     }
@@ -153,6 +173,7 @@ int main(void)
     TiredManagerProbe *probe = NULL;
     TiredManagerIdentity *identity = NULL;
     TiredUnitQuery *query = NULL;
+    TiredLoadPaths *paths = NULL;
     Broker broker = {.uid = (uint32_t)getuid()};
     CHECK(cwd != NULL);
     CHECK(unsetenv("XDG_RUNTIME_DIR") == 0);
@@ -255,6 +276,39 @@ int main(void)
             CHECK(tired_manager_probe_result(probe).done &&
                   tired_manager_probe_result(probe).error.status == TIRED_OK);
             CHECK(broker.pinned_version);
+            for (unsigned path_case = 0; path_case < 4; ++path_case)
+            {
+                broker.path_mode = path_case == 0 ? 1 : path_case == 2 ? 2 : 0;
+                CHECK(tired_load_paths_start(identity, path_case == 2 ? 20 : 1000, &paths, &error));
+                if (path_case == 1)
+                    tired_load_paths_cancel(paths);
+                for (unsigned i = 0; i < 2000; ++i)
+                {
+                    CHECK(sd_bus_process(server, NULL) >= 0);
+                    if (tired_load_paths_step(paths))
+                        break;
+                    struct timespec delay = {.tv_nsec = 1000000};
+                    (void)nanosleep(&delay, NULL);
+                }
+                TiredLoadPathsResult discovered = tired_load_paths_result(paths);
+                CHECK(discovered.done);
+                if (path_case == 3)
+                {
+                    CHECK(discovered.error.status == TIRED_OK &&
+                          discovered.directories->count == 2);
+                    CHECK(strcmp(discovered.directories->items[0].data, "/etc/systemd/system") ==
+                          0);
+                }
+                else
+                {
+                    const TiredStatus expected[] = {TIRED_INVALID, TIRED_CANCELLED,
+                                                    TIRED_RUNTIME_FAILED};
+                    CHECK(discovered.error.status == expected[path_case] &&
+                          discovered.directories == NULL);
+                    tired_load_paths_destroy(paths);
+                    paths = NULL;
+                }
+            }
             TiredText unit_base = {.data = "fixture", .length = 7};
             for (unsigned unit_case = 0; unit_case < 9; ++unit_case)
             {
@@ -320,6 +374,10 @@ int main(void)
             }
             owner = tired_manager_identity_result(identity);
             CHECK(!owner.ready && owner.changed && owner.error.status == TIRED_CONFLICT);
+            CHECK(tired_load_paths_result(paths).directories == NULL &&
+                  tired_load_paths_result(paths).error.status == TIRED_CONFLICT);
+            tired_load_paths_destroy(paths);
+            paths = NULL;
             CHECK(tired_unit_query_result(query).error.status == TIRED_CONFLICT &&
                   tired_unit_query_result(query).observation == NULL);
             tired_unit_query_destroy(query);
@@ -373,6 +431,7 @@ int main(void)
     }
     result = 0;
 cleanup:
+    tired_load_paths_destroy(paths);
     tired_unit_query_destroy(query);
     tired_manager_identity_destroy(identity);
     tired_manager_probe_destroy(probe);
