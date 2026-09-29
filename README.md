@@ -20,6 +20,8 @@ Live reconciliation and recovery resolutions remain under implementation.
 `tired list [--user] [--json]` provides a [managed-service inventory](docs/list.md).
 `tired show NAME [--user] [--json | --unit]` inspects the
 [saved model and installed unit](docs/show.md), with private export support.
+`tired logs NAME [--user] [--follow] [--json]` reads the
+[selected service's local journal](docs/logs.md), with explicit access diagnostics.
 
 Plans perform no service changes and do not execute the workload. After staging
 installation, omit `--profile none` to use installed

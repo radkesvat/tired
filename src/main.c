@@ -1,17 +1,57 @@
 #include "tired/config_frontend.h"
 #include "tired/io.h"
 #include "tired/list_frontend.h"
+#include "tired/logs_frontend.h"
+#include "tired/name.h"
 #include "tired/plan_output.h"
 #include "tired/profile_frontend.h"
 #include "tired/recover_frontend.h"
 #include "tired/show_frontend.h"
 #include "tired/status_frontend.h"
+#include <errno.h>
 #include <json-c/json.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
-static void report_error(const TiredError *error, bool json)
+static bool error_field(struct json_object *object, const char *key, const char *text)
+{
+    struct json_object *value = json_object_new_string(text);
+    if (value == NULL)
+        return false;
+    if (json_object_object_add(object, key, value) == 0)
+        return true;
+    json_object_put(value);
+    return false;
+}
+static volatile sig_atomic_t logs_cancelled;
+static void cancel_logs(int signal_number) { logs_cancelled = signal_number; }
+static bool run_logs(const TiredRequest *request, TiredStatus *status, TiredError *error)
+{
+    const int signals[] = {SIGINT, SIGTERM, SIGHUP};
+    struct sigaction old[3], action = {.sa_handler = cancel_logs};
+    sigemptyset(&action.sa_mask);
+    size_t installed = 0;
+    bool ok = false;
+    logs_cancelled = 0;
+    for (; installed < 3; ++installed)
+        if (sigaction(signals[installed], &action, &old[installed]) != 0)
+        {
+            tired_error_set(error, TIRED_INTERNAL, "logs-signals",
+                            "Cannot install journal cancellation handlers.", errno);
+            goto done;
+        }
+    ok = tired_logs_command(request, stdout, &logs_cancelled, status, error);
+done:
+    while (installed != 0)
+    {
+        --installed;
+        (void)sigaction(signals[installed], &old[installed], NULL);
+    }
+    return ok;
+}
+static void report_error(const TiredError *error, bool json, const TiredRequest *request)
 {
     if (!json)
     {
@@ -52,6 +92,38 @@ static void report_error(const TiredError *error, bool json)
     if (rc != 0)
         json_object_put(code);
     result |= rc;
+    if (request->command == TIRED_COMMAND_LOGS)
+    {
+        TiredText base = {0}, unit = {0};
+        TiredError ignored = {0};
+        const char *selected = "unknown";
+        if (request->arguments.count == 1)
+        {
+            const TiredText *operand = &request->arguments.items[0];
+            selected = operand->data;
+            if (tired_name_explicit(operand->data, operand->length, &base, &ignored) &&
+                tired_name_candidate(&base, 1, &unit, &ignored))
+                selected = unit.data;
+        }
+        if (!error_field(object, "event_type", "journal_error") ||
+            !error_field(object, "selected_service", selected) ||
+            !error_field(object, "scope",
+                         tired_spec_choice_is(&request->overrides, TIRED_FIELD_SCOPE, "user")
+                             ? "user"
+                             : "system"))
+            result = -1;
+        if (tired_spec_choice_is(&request->overrides, TIRED_FIELD_SCOPE, "user"))
+        {
+            struct json_object *uid = json_object_new_uint64(getuid());
+            if (uid == NULL || json_object_object_add(object, "selected_uid", uid) != 0)
+            {
+                json_object_put(uid);
+                result = -1;
+            }
+        }
+        tired_text_destroy(&base);
+        tired_text_destroy(&unit);
+    }
     rc = json_object_object_add(object, "ok", ok);
     if (rc != 0)
         json_object_put(ok);
@@ -105,6 +177,8 @@ int main(int argc, char **argv)
             "         [--active-state STATE] [--enabled-state STATE] [--profile ID] [--search "
             "TEXT]\n"
             "       tired show NAME [--user] [--json | --unit] [--effective] [--output NEW_FILE]\n"
+            "       tired logs NAME [--user] [--json] [--follow] [--lines 0..10000]\n"
+            "         [--since @SECONDS|UTC_TIMESTAMP] [--boot current|BOOT_ID]\n"
             "       tired --help | --version\n\n"
             "Offline planning and profile, configuration, and stored-journal inspection are "
             "available.\n"
@@ -130,6 +204,18 @@ int main(int argc, char **argv)
     }
     if (request.command != TIRED_COMMAND_PLAN || !request.offline)
     {
+        if (request.command == TIRED_COMMAND_LOGS)
+        {
+            TiredStatus status = TIRED_OK;
+            if (!run_logs(&request, &status, &error))
+            {
+                if (error.code != NULL && strcmp(error.code, "logs-output-write") == 0)
+                    json = false;
+                goto failed;
+            }
+            result = status;
+            goto done;
+        }
         if (request.command == TIRED_COMMAND_PROFILES || request.command == TIRED_COMMAND_CONFIG ||
             request.command == TIRED_COMMAND_RECOVER || request.command == TIRED_COMMAND_STATUS ||
             request.command == TIRED_COMMAND_LIST || request.command == TIRED_COMMAND_SHOW)
@@ -210,7 +296,7 @@ int main(int argc, char **argv)
     goto done;
 failed:
     result = error.status == TIRED_OK ? TIRED_INTERNAL : error.status;
-    report_error(&error, json);
+    report_error(&error, json, &request);
 done:
     tired_text_destroy(&output);
     tired_plan_destroy(&plan);

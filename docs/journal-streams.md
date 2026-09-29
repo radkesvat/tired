@@ -35,7 +35,8 @@ failed stream and its handle instead of retrying past the unread entry.
 Native library success does not establish complete access: the baseline library
 can ignore unreadable files at open time and drop files after some iteration
 errors. Production opening/access diagnostics remain required before an empty
-result can be presented as complete. This layer is not yet the logs command.
+result can be presented as complete. The [logs command](logs.md) combines this
+layer with access observations and explicit completeness limits.
 
 Fixtures exercise tail ordering, short and empty journals, zero-line follow,
 appended batches, inclusive time filtering, rotation notification, and all native

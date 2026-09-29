@@ -27,5 +27,5 @@ JSON rather than interpreting text markers as metadata.
 
 Output is bounded to 512 KiB per record, including the worst-case expansion of a
 64 KiB message. Failed rendering preserves the previous caller-owned output.
-This component is ready for command integration; the logs command and journal
-access diagnostics are still separate work.
+The [logs command](logs.md) uses this renderer alongside access and lifecycle
+events.

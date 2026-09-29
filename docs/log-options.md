@@ -27,5 +27,5 @@ converting to unsigned microseconds.
 time. Explicit IDs contain exactly 32 hex digits; uppercase digits are normalized
 to lowercase. Omitting boot selection leaves all accessible boots eligible.
 
-These are validated request fields, not a claim that the logs command is already
-operational. Production journal access and frontend integration remain pending.
+The [logs command](logs.md) consumes these options with native journal selection,
+access diagnostics, and incremental follow polling.
