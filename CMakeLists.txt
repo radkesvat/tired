@@ -46,6 +46,18 @@ string(APPEND CMAKE_EXE_LINKER_FLAGS " -fuse-ld=${TIRED_LLD} -static-libgcc")
 
 include(CheckCSourceCompiles)
 check_c_source_compiles("
+    #define _GNU_SOURCE
+    #include <spawn.h>
+    int main(void) {
+        posix_spawn_file_actions_t actions;
+        if (posix_spawn_file_actions_init(&actions)) return 1;
+        return posix_spawn_file_actions_addclosefrom_np(&actions, 3);
+    }
+" TIRED_HAS_SPAWN_CLOSEFROM)
+if(NOT TIRED_HAS_SPAWN_CLOSEFROM)
+    message(FATAL_ERROR "tired requires glibc posix_spawn_file_actions_addclosefrom_np (glibc 2.34+).")
+endif()
+check_c_source_compiles("
     #include <features.h>
     #if !defined(__GLIBC__) || (!defined(__x86_64__) && !defined(__aarch64__))
     #error tired requires x86-64 or ARM64 glibc
@@ -90,6 +102,7 @@ target_sources(tired_core PRIVATE src/profiles/catalog.c)
 target_sources(tired_core PRIVATE src/cli/profiles.c)
 target_sources(tired_core PRIVATE src/model/settings.c)
 target_sources(tired_core PRIVATE src/model/risk.c)
+target_sources(tired_core PRIVATE src/process/process.c)
 target_sources(tired_core PRIVATE src/cli/config.c)
 target_sources(tired_core PRIVATE src/cli/settings_output.c)
 target_sources(tired_core PRIVATE src/storage/settings_file.c)
@@ -108,6 +121,11 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_process_test tests/unit/process_test.c)
+    target_compile_definitions(tired_process_test PRIVATE _POSIX_C_SOURCE=200809L)
+    target_link_libraries(tired_process_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.process COMMAND tired_process_test)
+    set_tests_properties(tired.process PROPERTIES LABELS unit TIMEOUT 15)
     add_executable(tired_risk_test tests/unit/risk_test.c)
     target_link_libraries(tired_risk_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.risk COMMAND tired_risk_test)
