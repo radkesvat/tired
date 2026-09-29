@@ -86,6 +86,10 @@ int main(void)
     CHECK(json_object_object_get_ex(live_row, "status", &value) &&
           strcmp(json_object_get_string(value), "unknown") == 0);
     CHECK(!json_object_object_get_ex(live_row, "object_found", &value));
+    struct json_object *file_report = NULL;
+    CHECK(json_object_object_get_ex(row, "files", &file_report));
+    CHECK(json_object_object_get_ex(file_report, "status", &value) &&
+          strcmp(json_object_get_string(value), "unknown") == 0);
     CHECK(json_object_object_get_ex(document, "resolution_actions_supported", &value) &&
           !json_object_get_boolean(value));
     tired_publication_destroy(publication);
@@ -132,6 +136,16 @@ int main(void)
     row = json_object_array_get_idx(entries, 0);
     CHECK(json_object_object_get_ex(row, "previous_unit_name", &value) &&
           strcmp(json_object_get_string(value), "old.service") == 0);
+    CHECK(json_object_object_get_ex(row, "files", &file_report));
+    CHECK(json_object_object_get_ex(file_report, "status", &value) &&
+          strcmp(json_object_get_string(value), "completed") == 0);
+    CHECK(json_object_object_get_ex(file_report, "destinations", &value) &&
+          json_object_array_length(value) == 3);
+    struct json_object *file_state = NULL;
+    CHECK(json_object_object_get_ex(json_object_array_get_idx(value, 0), "state", &file_state) &&
+          strcmp(json_object_get_string(file_state), "after") == 0);
+    CHECK(json_object_object_get_ex(json_object_array_get_idx(value, 1), "state", &file_state) &&
+          strcmp(json_object_get_string(file_state), "before") == 0);
     CHECK(json_object_object_get_ex(row, "previous_live", &live_row));
     CHECK(json_object_object_get_ex(live_row, "status", &value) &&
           strcmp(json_object_get_string(value), "unknown") == 0);
@@ -151,6 +165,8 @@ int main(void)
     CHECK(strstr(output.data, "bad\\x1b\\xff") != NULL &&
           strstr(output.data, "relay.service") != NULL);
     CHECK(strstr(output.data, "previous_unit=old.service") != NULL);
+    CHECK(strstr(output.data, "file[0]=after") != NULL &&
+          strstr(output.data, "file[1]=before") != NULL);
     CHECK(memchr(output.data, 27, output.length) == NULL &&
           memchr(output.data, 255, output.length) == NULL);
     CHECK(setenv("XDG_STATE_HOME", "relative", 1) == 0);

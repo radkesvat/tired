@@ -30,4 +30,9 @@ typedef struct
 bool tired_file_reconcile(const TiredLayout *layout, const TiredFileManifest *manifest,
                           TiredFileReconciliation *output, TiredError *error);
 void tired_file_reconciliation_destroy(TiredFileReconciliation *result);
+/* Shared content budget for a sequence of inspections; consumed conservatively
+ * as above. Budget is reduced even when individual observations fail. */
+bool tired_file_reconcile_budget(const TiredLayout *layout, const TiredFileManifest *manifest,
+                                 size_t *remaining, TiredFileReconciliation *output,
+                                 TiredError *error);
 #endif

@@ -1,3 +1,4 @@
+#include "recover_files.h"
 #include "recover_live.h"
 #include "tired/encode.h"
 #include "tired/recover_frontend.h"
@@ -21,6 +22,49 @@ static bool add(struct json_object *object, const char *key, struct json_object 
 static bool text(TiredBuffer *buffer, const char *value, TiredError *error)
 {
     return tired_buffer_append(buffer, value, strlen(value), error);
+}
+static const char *const file_states[] = {"unknown", "before", "after", "foreign"};
+static struct json_object *file_json(const TiredRecoveryFiles *files)
+{
+    struct json_object *result = json_object_new_object(), *rows = json_object_new_array();
+    if (result == NULL || rows == NULL)
+        goto fail;
+    if (!add(result, "status",
+             json_object_new_string(files->error.status != TIRED_OK ? "unknown"
+                                    : files->observations.complete  ? "completed"
+                                                                    : "partial")))
+        goto fail;
+    if (files->error.status != TIRED_OK)
+    {
+        if (!add(result, "error", json_object_new_string(files->error.code)))
+            goto fail;
+    }
+    else
+        for (size_t i = 0; i < files->observations.count; ++i)
+        {
+            const TiredFileObservation *observed = &files->observations.files[i];
+            struct json_object *row = json_object_new_object();
+            if (row == NULL)
+                goto fail;
+            bool ok = add(row, "manifest_index", json_object_new_uint64(i)) &&
+                      add(row, "state", json_object_new_string(file_states[observed->state]));
+            if (ok && observed->error.status != TIRED_OK)
+                ok = add(row, "error", json_object_new_string(observed->error.code));
+            if (!ok || json_object_array_add(rows, row) != 0)
+            {
+                json_object_put(row);
+                goto fail;
+            }
+        }
+    bool inserted = add(result, "destinations", rows);
+    rows = NULL;
+    if (!inserted)
+        goto fail;
+    return result;
+fail:
+    json_object_put(rows);
+    json_object_put(result);
+    return NULL;
 }
 /* Filesystem names need not be UTF-8. Keep the display ASCII and lossless even
  * for invalid byte sequences, controls and literal backslashes. */
@@ -113,6 +157,8 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
     TiredLayout layout = {0};
     TiredTransactionInventory inventory = {0};
     TiredRecoveryLive live = {0};
+    TiredRecoveryFiles files = {0};
+    size_t file_budget = 64U * 1024U * 1024U;
     TiredTextList live_names = {0};
     TiredText name = {0};
     TiredBuffer buffer;
@@ -154,7 +200,7 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
     else if (!text(&buffer, "Transaction inspection (", error) ||
              !text(&buffer, user ? "user" : "system", error) ||
              !text(&buffer,
-                   "). Manifest reconciliation not performed; resolution actions are not yet "
+                   "). Recovery reconciliation incomplete; resolution actions are not yet "
                    "implemented.\n",
                    error))
         goto done;
@@ -163,6 +209,8 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
     {
         const TiredTransactionInventoryEntry *entry = &inventory.entries[i];
         bool observe = eligible(entry);
+        if (observe)
+            tired_recover_files_collect(&layout, entry, &file_budget, &files);
         TiredUnitBatchItem observed = {0};
         if (observe)
             observed = tired_recover_live_item(&live, live_index++);
@@ -192,6 +240,8 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
                 !add(row, "unit_name", json_object_new_string(entry->unit_name.data)))
                 goto allocation;
             if (observe && !add(row, "live", tired_recover_live_json(&observed)))
+                goto allocation;
+            if (observe && !add(row, "files", file_json(&files)))
                 goto allocation;
             if (observe_previous &&
                 (!add(row, "previous_unit_name",
@@ -247,6 +297,24 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
                 goto done;
             if (observe && !live_text(&buffer, &observed, error))
                 goto done;
+            if (observe)
+            {
+                if (files.error.status != TIRED_OK)
+                {
+                    if (!text(&buffer, "  files=unknown: ", error) ||
+                        !text(&buffer, files.error.message, error) || !text(&buffer, "\n", error))
+                        goto done;
+                }
+                else
+                    for (size_t j = 0; j < files.observations.count; ++j)
+                    {
+                        char line[96];
+                        (void)snprintf(line, sizeof(line), "  file[%zu]=%s\n", j,
+                                       file_states[files.observations.files[j].state]);
+                        if (!text(&buffer, line, error))
+                            goto done;
+                    }
+            }
             if (observe_previous &&
                 (!text(&buffer, "  previous_unit=", error) ||
                  !text(&buffer, entry->previous_unit_name.data, error) ||
@@ -297,6 +365,7 @@ allocation:
     tired_error_set(error, TIRED_INTERNAL, "allocation",
                     "Cannot allocate recovery inspection output.", 0);
 done:
+    tired_recover_files_destroy(&files);
     tired_recover_live_destroy(&live);
     tired_text_list_destroy(&live_names);
     json_object_put(row);

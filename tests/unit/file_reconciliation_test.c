@@ -71,6 +71,11 @@ int main(void)
     CHECK(tired_file_reconcile(&layout, &manifest, &observed, &error));
     CHECK(observed.complete && !observed.foreign && observed.files[0].state == TIRED_FILE_AFTER &&
           observed.files[1].state == TIRED_FILE_AFTER);
+    size_t budget = 3;
+    CHECK(tired_file_reconcile_budget(&layout, &manifest, &budget, &observed, &error));
+    CHECK(budget == 0 && !observed.complete && observed.files[0].state == TIRED_FILE_AFTER &&
+          observed.files[1].state == TIRED_FILE_UNKNOWN &&
+          strcmp(observed.files[1].error.code, "reconcile-budget") == 0);
     CHECK(fchmodat(fd, "relay.service", 0600, 0) == 0);
     CHECK(tired_file_reconcile(&layout, &manifest, &observed, &error));
     CHECK(observed.complete && observed.foreign && observed.files[0].state == TIRED_FILE_FOREIGN);

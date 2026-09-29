@@ -12,10 +12,11 @@ void tired_file_reconciliation_destroy(TiredFileReconciliation *result)
     *result = (TiredFileReconciliation){0};
 }
 
-bool tired_file_reconcile(const TiredLayout *layout, const TiredFileManifest *manifest,
-                          TiredFileReconciliation *output, TiredError *error)
+bool tired_file_reconcile_budget(const TiredLayout *layout, const TiredFileManifest *manifest,
+                                 size_t *remaining, TiredFileReconciliation *output,
+                                 TiredError *error)
 {
-    assert(layout != NULL && manifest != NULL && output != NULL);
+    assert(layout != NULL && manifest != NULL && remaining != NULL && output != NULL);
     if (!tired_file_manifest_validate(manifest, error))
         return false;
     if (layout->user_scope != manifest->prepared.user_scope)
@@ -29,7 +30,6 @@ bool tired_file_reconcile(const TiredLayout *layout, const TiredFileManifest *ma
             return tired_error_set(error, TIRED_INTERNAL, "allocation",
                                    "Cannot allocate file observations.", 0);
     }
-    size_t remaining = 64U * 1024U * 1024U;
     for (size_t i = 0; i < result.count; ++i)
     {
         const TiredFileChange *change = &manifest->files[i];
@@ -45,16 +45,17 @@ bool tired_file_reconcile(const TiredLayout *layout, const TiredFileManifest *ma
             known = observed->error.status == TIRED_NOT_FOUND;
             goto next;
         }
-        if (remaining == 0)
+        if (*remaining == 0)
         {
             tired_error_set(&observed->error, TIRED_RECOVERY_REQUIRED, "reconcile-budget",
                             "File inspection byte budget exhausted.", 0);
             goto next;
         }
-        size_t limit = remaining < TIRED_PRIVATE_FILE_LIMIT ? remaining : TIRED_PRIVATE_FILE_LIMIT;
+        size_t limit =
+            *remaining < TIRED_PRIVATE_FILE_LIMIT ? *remaining : TIRED_PRIVATE_FILE_LIMIT;
         known = tired_file_fingerprint(directory, resolved.name.data, limit, &observed->actual,
                                        &observed->error);
-        remaining -= known ? (size_t)observed->actual.size : limit;
+        *remaining -= known ? (size_t)observed->actual.size : limit;
     next:
         if (known)
         {
@@ -75,4 +76,11 @@ bool tired_file_reconcile(const TiredLayout *layout, const TiredFileManifest *ma
     *output = result;
     tired_error_clear(error);
     return true;
+}
+
+bool tired_file_reconcile(const TiredLayout *layout, const TiredFileManifest *manifest,
+                          TiredFileReconciliation *output, TiredError *error)
+{
+    size_t remaining = 64U * 1024U * 1024U;
+    return tired_file_reconcile_budget(layout, manifest, &remaining, output, error);
 }

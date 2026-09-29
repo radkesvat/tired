@@ -19,9 +19,17 @@ JSON rows retain the new unit in `unit_name`/`live` and report the old unit in
 Requested/successful unit counts include both queries. Up to 1024 transactions
 can therefore supply 2048 unit names, all sharing the same five-second deadline.
 
-Manager observations are not complete recovery reconciliation. The command still
-does not compare manifests and expected file identities or offer finish/rollback
-actions. `live_reconciliation` remains `not_performed` until those checks exist;
+Eligible transactions also load their private file manifest, bind it to the journal
+and selected scope, and compare destination fingerprints. JSON `files` reports
+`completed`, `partial` or `unknown`, with per-destination manifest indices and
+`before`, `after`, `foreign` or `unknown` states. A top-level file error preserves
+the journal and manager diagnostics. Text output reports the same indexed states.
+All transactions share a 64 MiB content budget; exhausted entries stay unknown.
+Completed inspection can still find foreign changes and never authorizes mutation.
+
+Manager and file observations are not complete recovery reconciliation. The command
+does not yet inspect all recovery artifacts or offer finish/rollback actions.
+`live_reconciliation` remains `not_performed` until controller reconciliation exists;
 `live_observations` separately reports `not_needed`, `completed`, `partial` or
 `unavailable` for the selected units.
 
