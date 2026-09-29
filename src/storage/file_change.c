@@ -6,18 +6,12 @@
 #include <errno.h>
 #include <unistd.h>
 
-bool tired_file_change_apply(const TiredLayout *layout, const TiredFileManifest *manifest,
-                             size_t index, bool rollback, const TiredOperationLock *lock,
-                             TiredFileChangeResult *result, TiredError *error)
+static bool apply(const TiredLayout *layout, const TiredFileChange *change, bool rollback,
+                  const TiredOperationLock *lock, TiredFileChangeResult *result, TiredError *error)
 {
-    assert(layout != NULL && manifest != NULL && lock != NULL && result != NULL);
     *result = (TiredFileChangeResult){0};
-    if (!tired_file_manifest_validate(manifest, error) || !tired_operation_lock_check(lock, error))
+    if (!tired_operation_lock_check(lock, error))
         return false;
-    if (index >= manifest->count || layout->user_scope != manifest->prepared.user_scope)
-        return tired_error_set(error, TIRED_INVALID, "file-change-input",
-                               "File index or scope does not match the manifest.", 0);
-    const TiredFileChange *change = &manifest->files[index];
     TiredResolvedFile resolved = {0};
     TiredDirectory *directory = NULL;
     TiredPublication *publication = NULL;
@@ -96,4 +90,80 @@ done:
     tired_directory_destroy(directory);
     tired_resolved_file_destroy(&resolved);
     return ok;
+}
+bool tired_file_change_apply(const TiredLayout *layout, const TiredFileManifest *manifest,
+                             size_t index, bool rollback, const TiredOperationLock *lock,
+                             TiredFileChangeResult *result, TiredError *error)
+{
+    assert(layout != NULL && manifest != NULL && lock != NULL && result != NULL);
+    *result = (TiredFileChangeResult){0};
+    if (!tired_file_manifest_validate(manifest, error))
+        return false;
+    if (index >= manifest->count || layout->user_scope != manifest->prepared.user_scope)
+        return tired_error_set(error, TIRED_INVALID, "file-change-input",
+                               "File index or scope does not match the manifest.", 0);
+    return apply(layout, &manifest->files[index], rollback, lock, result, error);
+}
+static unsigned rank(const TiredFileManifest *manifest, size_t index)
+{
+    const TiredFileChange *file = &manifest->files[index];
+    if (manifest->prepared.operation == TIRED_TRANSACTION_REMOVE)
+        return file->target.role == TIRED_FILE_TARGET_UNIT     ? 0U
+               : file->target.role == TIRED_FILE_TARGET_RECORD ? 1U
+                                                               : 2U;
+    if (file->target.role == TIRED_FILE_TARGET_ENVIRONMENT)
+        return 0;
+    if (file->target.role == TIRED_FILE_TARGET_UNIT)
+        return file->after.exists ? 1U : 2U;
+    return 3;
+}
+bool tired_file_change_order(const TiredFileManifest *manifest, bool rollback,
+                             TiredFileOrder *output, TiredError *error)
+{
+    assert(manifest != NULL && output != NULL);
+    if (!tired_file_manifest_validate(manifest, error))
+        return false;
+    TiredFileOrder order = {0};
+    for (unsigned group = 0; group < 4; ++group)
+        for (size_t i = 0; i < manifest->count; ++i)
+            if (rank(manifest, i) == group)
+                order.indices[order.count++] = i;
+    if (rollback)
+        for (size_t i = 0; i < order.count / 2; ++i)
+        {
+            size_t saved = order.indices[i];
+            order.indices[i] = order.indices[order.count - i - 1];
+            order.indices[order.count - i - 1] = saved;
+        }
+    *output = order;
+    tired_error_clear(error);
+    return true;
+}
+bool tired_file_phase_apply(const TiredLayout *layout, const TiredFileManifest *manifest,
+                            bool rollback, const TiredOperationLock *lock,
+                            TiredFilePhaseResult *result, TiredError *error)
+{
+    assert(layout != NULL && manifest != NULL && lock != NULL && result != NULL);
+    *result = (TiredFilePhaseResult){.failed_index = SIZE_MAX};
+    TiredFileOrder order = {0};
+    if (!tired_file_change_order(manifest, rollback, &order, error) ||
+        !tired_operation_lock_check(lock, error))
+        return false;
+    if (layout->user_scope != manifest->prepared.user_scope)
+        return tired_error_set(error, TIRED_INVALID, "file-phase-scope",
+                               "File phase scope does not match the manifest.", 0);
+    for (size_t i = 0; i < order.count; ++i)
+    {
+        TiredFileChangeResult step = {0};
+        if (!apply(layout, &manifest->files[order.indices[i]], rollback, lock, &step, error))
+        {
+            result->failed_index = order.indices[i];
+            result->reached = step.reached;
+            result->durable = step.durable;
+            return false;
+        }
+        ++result->completed;
+    }
+    tired_error_clear(error);
+    return true;
 }

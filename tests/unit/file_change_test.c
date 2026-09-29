@@ -79,12 +79,36 @@ int main(void)
     }
     CHECK(tired_file_change_apply(&layout, &manifest, 0, true, lock, &applied, &error));
     CHECK(applied.reached && applied.durable);
-    for (size_t i = 0; i < 2; ++i)
+    TiredFileChange ordered_files[3] = {files[1], files[0], files[1]};
+    ordered_files[2].target.role = TIRED_FILE_TARGET_ENVIRONMENT;
+    memcpy(ordered_files[2].target.revision_uuid, manifest.prepared.transaction_uuid, 37);
+    TiredFileManifest order_manifest = manifest;
+    order_manifest.files = ordered_files;
+    order_manifest.count = 3;
+    TiredFileOrder order = {0};
+    CHECK(tired_file_change_order(&order_manifest, false, &order, &error));
+    CHECK(order.count == 3 && order.indices[0] == 2 && order.indices[1] == 1 &&
+          order.indices[2] == 0);
+    CHECK(tired_file_change_order(&order_manifest, true, &order, &error));
+    CHECK(order.indices[0] == 0 && order.indices[1] == 1 && order.indices[2] == 2);
+    order_manifest.prepared.operation = TIRED_TRANSACTION_REMOVE;
+    for (size_t i = 0; i < 3; ++i)
     {
-        CHECK(tired_file_change_apply(&layout, &manifest, i, false, lock, &applied, &error));
-        CHECK(applied.reached && applied.durable);
-        CHECK(tired_file_change_apply(&layout, &manifest, i, false, lock, &applied, &error));
+        ordered_files[i].before = ordered_files[i].after;
+        ordered_files[i].after = (TiredFileFingerprint){0};
+        memcpy(ordered_files[i].rollback_uuid, ordered_files[i].staging_uuid, 37);
+        ordered_files[i].staging_uuid[0] = '\0';
     }
+    CHECK(tired_file_change_order(&order_manifest, false, &order, &error));
+    CHECK(order.indices[0] == 1 && order.indices[1] == 0 && order.indices[2] == 2);
+    TiredFilePhaseResult phase = {0};
+    CHECK(tired_private_file_create(root, names[1], "foreign", 7, &error));
+    CHECK(!tired_file_phase_apply(&layout, &manifest, false, lock, &phase, &error));
+    CHECK(phase.completed == 1 && phase.failed_index == 1 && !phase.reached);
+    CHECK(unlinkat(tired_directory_fd(root), names[1], 0) == 0);
+    CHECK(tired_file_phase_apply(&layout, &manifest, false, lock, &phase, &error));
+    CHECK(phase.completed == 2 && phase.failed_index == SIZE_MAX);
+    CHECK(tired_file_phase_apply(&layout, &manifest, false, lock, &phase, &error));
     manifest.prepared.operation = TIRED_TRANSACTION_EDIT;
     for (size_t i = 0; i < 2; ++i)
     {
@@ -93,12 +117,9 @@ int main(void)
         files[i].rollback_uuid[0] = (char)('a' + i);
         CHECK(stage(root, names[i], "edited", &files[i], staging[i + 2], &error));
     }
-    for (size_t i = 0; i < 2; ++i)
-    {
-        CHECK(tired_file_change_apply(&layout, &manifest, i, false, lock, &applied, &error));
-        CHECK(tired_file_change_apply(&layout, &manifest, i, true, lock, &applied, &error));
-        CHECK(tired_file_change_apply(&layout, &manifest, i, true, lock, &applied, &error));
-    }
+    CHECK(tired_file_phase_apply(&layout, &manifest, false, lock, &phase, &error));
+    CHECK(tired_file_phase_apply(&layout, &manifest, true, lock, &phase, &error));
+    CHECK(tired_file_phase_apply(&layout, &manifest, true, lock, &phase, &error));
     manifest.prepared.operation = TIRED_TRANSACTION_REMOVE;
     for (size_t i = 0; i < 2; ++i)
     {

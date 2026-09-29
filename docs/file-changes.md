@@ -1,5 +1,20 @@
 # Applying a manifest file step
 
+`tired_file_change_order` derives stable dependency ordering from a validated
+manifest, independent of its entry order. Creation/edit/restore first add new
+environment revisions, then add/replace units, then remove old rename units, and
+finally update records. Removal deletes units, records and environment revisions
+in that order. Rollback uses the exact reverse sequence; same-role entries retain
+input order in the forward direction.
+
+`tired_file_phase_apply` executes that sequence under the supplied scope lock. It
+stops at the first failed step and reports its manifest index, progress flags and
+the number of durable steps completed by this invocation. Retry begins at the
+start; file primitives recognize already-applied states. It does not automatically
+roll back a partially applied phase. The caller must persist phase intent before
+calling, record the outcome, and enforce operation-level preconditions and ordering.
+Manifest validation occurs once per phase; each step rechecks its lock and files.
+
 `tired_file_change_apply` dispatches one entry from a validated file manifest. It
 checks the selected scope and held operation lock and resolves the destination
 through the trusted layout. Callers cannot supply another path or permission mode.
