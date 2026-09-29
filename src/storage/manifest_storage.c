@@ -20,28 +20,19 @@ bool tired_manifest_publish(TiredDirectory *directory, const TiredOperationLock 
     return ok;
 }
 
-bool tired_manifest_load(TiredDirectory *directory, TiredFileManifest *output, TiredError *error)
+bool tired_manifest_read_bound(TiredDirectory *directory, const TiredTransactionRecord *prepared,
+                               TiredFileManifest *output, TiredError *error)
 {
-    assert(directory != NULL && output != NULL);
+    assert(directory != NULL && prepared != NULL && output != NULL);
     TiredText bytes = {0}, expected = {0}, actual = {0};
     TiredFileManifest manifest = {0};
-    TiredTransactionJournal journal = {0};
-    TiredDirectory *journal_directory = NULL;
     bool ok = false;
     if (!tired_private_file_read(directory, "files.json", TIRED_FILE_MANIFEST_LIMIT, &bytes,
                                  error) ||
-        !tired_file_manifest_parse(bytes.data, bytes.length, &manifest, error) ||
-        !tired_directory_child(directory, "journal", false, true, &journal_directory, error) ||
-        !tired_transaction_journal_read(journal_directory, &journal, error))
+        !tired_file_manifest_parse(bytes.data, bytes.length, &manifest, error))
         goto done;
-    if (journal.count == 0 || journal.staging_count != 0)
-    {
-        tired_error_set(error, TIRED_RECOVERY_REQUIRED, "manifest-journal-incomplete",
-                        "Manifest requires a prepared journal without unpublished staging.", 0);
-        goto done;
-    }
     if (!tired_transaction_record_encode(&manifest.prepared, &expected, error) ||
-        !tired_transaction_record_encode(&journal.records[0], &actual, error))
+        !tired_transaction_record_encode(prepared, &actual, error))
         goto done;
     if (expected.length != actual.length ||
         memcmp(expected.data, actual.data, expected.length) != 0)
@@ -58,11 +49,31 @@ bool tired_manifest_load(TiredDirectory *directory, TiredFileManifest *output, T
     tired_error_clear(error);
     ok = true;
 done:
-    tired_directory_destroy(journal_directory);
-    tired_transaction_journal_destroy(&journal);
     tired_file_manifest_destroy(&manifest);
     tired_text_destroy(&bytes);
     tired_text_destroy(&expected);
     tired_text_destroy(&actual);
+    return ok;
+}
+
+bool tired_manifest_load(TiredDirectory *directory, TiredFileManifest *output, TiredError *error)
+{
+    assert(directory != NULL && output != NULL);
+    TiredDirectory *journal_directory = NULL;
+    TiredTransactionJournal journal = {0};
+    bool ok = false;
+    if (!tired_directory_child(directory, "journal", false, true, &journal_directory, error) ||
+        !tired_transaction_journal_read(journal_directory, &journal, error))
+        goto done;
+    if (journal.count == 0 || journal.staging_count != 0)
+    {
+        tired_error_set(error, TIRED_RECOVERY_REQUIRED, "manifest-journal-incomplete",
+                        "Manifest requires a prepared journal without unpublished staging.", 0);
+        goto done;
+    }
+    ok = tired_manifest_read_bound(directory, &journal.records[0], output, error);
+done:
+    tired_directory_destroy(journal_directory);
+    tired_transaction_journal_destroy(&journal);
     return ok;
 }

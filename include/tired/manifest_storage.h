@@ -14,4 +14,8 @@ bool tired_manifest_publish(TiredDirectory *directory, const TiredOperationLock 
  * a complete binding. Atomic owned output; no writes or live-state reconciliation.
  * Observation only: controllers must revalidate under the scope lock. */
 bool tired_manifest_load(TiredDirectory *directory, TiredFileManifest *manifest, TiredError *error);
+/* Bind to an already validated journal anchor without scanning the journal again.
+ * Caller checks journal completeness, scope and directory identity. */
+bool tired_manifest_read_bound(TiredDirectory *directory, const TiredTransactionRecord *prepared,
+                               TiredFileManifest *manifest, TiredError *error);
 #endif

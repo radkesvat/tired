@@ -1,4 +1,5 @@
 #include "tired/transaction_inventory.h"
+#include "tired/manifest_storage.h"
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
@@ -26,6 +27,7 @@ void tired_transaction_inventory_destroy(TiredTransactionInventory *inventory)
     {
         tired_text_destroy(&inventory->entries[i].directory_name);
         tired_text_destroy(&inventory->entries[i].unit_name);
+        tired_text_destroy(&inventory->entries[i].previous_unit_name);
     }
     free(inventory->entries);
     tired_text_list_destroy(&inventory->pending_names);
@@ -41,6 +43,7 @@ static bool inspect(TiredDirectory *root, bool user_scope, TiredTransactionInven
 {
     TiredDirectory *transaction = NULL, *directory = NULL;
     TiredTransactionJournal journal = {0};
+    TiredFileManifest manifest = {0};
     bool ok = true;
     if (*budget < TIRED_TRANSACTION_SEQUENCE_LIMIT)
     {
@@ -83,8 +86,22 @@ static bool inspect(TiredDirectory *root, bool user_scope, TiredTransactionInven
     else if (first->operation == TIRED_TRANSACTION_RENAME &&
              journal.progress.mode != TIRED_PROGRESS_COMMITTED &&
              journal.progress.mode != TIRED_PROGRESS_ROLLED_BACK)
-        invalid(&entry->error, "Pending rename requires both names from its transaction manifest.");
+    {
+        if (!tired_manifest_read_bound(transaction, first, &manifest, &entry->error))
+            goto done;
+        for (size_t i = 0; i < manifest.count; ++i)
+        {
+            const TiredFileChange *file = &manifest.files[i];
+            if (file->target.role == TIRED_FILE_TARGET_UNIT && file->before.exists)
+            {
+                ok = tired_text_set(&entry->previous_unit_name, file->target.unit_name.data,
+                                    file->target.unit_name.length, 208, error);
+                break;
+            }
+        }
+    }
 done:
+    tired_file_manifest_destroy(&manifest);
     tired_transaction_journal_destroy(&journal);
     tired_directory_destroy(directory);
     tired_directory_destroy(transaction);
@@ -168,6 +185,11 @@ bool tired_transaction_inventory_read(TiredDirectory *root, bool user_scope,
         {
             if (!tired_text_list_append(&inventory.pending_names, entry->unit_name.data,
                                         entry->unit_name.length, 4096, TIRED_INPUT_LIMIT, error))
+                goto done;
+            if (entry->previous_unit_name.data != NULL &&
+                !tired_text_list_append(&inventory.pending_names, entry->previous_unit_name.data,
+                                        entry->previous_unit_name.length, 4096, TIRED_INPUT_LIMIT,
+                                        error))
                 goto done;
         }
     }

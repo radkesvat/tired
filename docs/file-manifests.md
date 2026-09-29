@@ -33,7 +33,8 @@ Native validation enforces these file-plan shapes:
 This describes the file phase, not the full operation. Manager jobs, enablement
 links, required observations and complete validated request data need associated
 records and controller checks. A valid rename manifest provides both unit names
-for reservation discovery, but inventory integration is separate work.
+for reservation discovery. Pending transaction inventory loads and binds that
+manifest before returning both names to collision checking.
 
 The strict schema-1 codec permits at most 256 changes and 1 MiB input, rejects
 unknown/missing fields and invalid references, and preserves previous outputs on
@@ -57,7 +58,7 @@ Parsing does not prove approval, artifact existence or current file identity. Be
 any mutation the controller must load from trusted private storage, bind the anchor
 to the journal and approved request, verify staging/rollback bytes and fingerprints,
 resolve targets through the trusted scope layout and revalidate under the scope
-lock. Inventory integration, artifact comparison and application remain pending.
+lock. Artifact comparison and application remain pending.
 
 Tests cover create/edit/remove/rename round trips, restore validation, lifecycle-only plans, arbitrary-path
 rejection, service mismatch, duplicate targets, immutable revisions, missing

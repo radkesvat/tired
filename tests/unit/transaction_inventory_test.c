@@ -1,4 +1,5 @@
 #include "tired/io.h"
+#include "tired/manifest_storage.h"
 #include "tired/transaction_inventory.h"
 #include <fcntl.h>
 #include <stdio.h>
@@ -20,6 +21,50 @@ static bool append(TiredDirectory *journal, TiredOperationLock *lock,
 {
     TiredPublication *publication = NULL;
     bool ok = tired_transaction_journal_append(journal, lock, record, &publication, error);
+    if (publication != NULL)
+    {
+        TiredError cleanup_error = {0};
+        if (!tired_publication_discard(publication, &cleanup_error))
+            ok = false;
+    }
+    tired_publication_destroy(publication);
+    return ok;
+}
+static bool publish_rename(TiredDirectory *directory, TiredOperationLock *lock,
+                           const TiredTransactionRecord *prepared, TiredError *error)
+{
+    TiredFileChange files[3] = {0};
+    TiredFileManifest manifest = {.prepared = *prepared, .files = files, .count = 3};
+    TiredFileFingerprint snapshot = {
+        .exists = true,
+        .device = 1,
+        .inode = 1,
+        .mode = 0644,
+        .sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"};
+    for (size_t i = 0; i < 3; ++i)
+        memcpy(files[i].target.service_uuid, prepared->service_uuid, 37);
+    files[0].target.role = files[1].target.role = TIRED_FILE_TARGET_UNIT;
+    files[0].target.unit_name = (TiredText){.data = "old.service", .length = 11};
+    files[1].target.unit_name = prepared->unit_name;
+    files[0].before = files[1].after = snapshot;
+    files[1].after.inode = 2;
+    files[2].target.role = TIRED_FILE_TARGET_RECORD;
+    snapshot.mode = 0600;
+    snapshot.inode = 3;
+    files[2].before = files[2].after = snapshot;
+    files[2].after.inode = 4;
+    for (size_t i = 0; i < 3; ++i)
+    {
+        if (files[i].before.exists)
+        {
+            memcpy(files[i].rollback_uuid, prepared->transaction_uuid, 37);
+            files[i].rollback_uuid[0] = (char)('a' + i);
+        }
+        if (files[i].after.exists)
+            memcpy(files[i].staging_uuid, prepared->transaction_uuid, 37);
+    }
+    TiredPublication *publication = NULL;
+    bool ok = tired_manifest_publish(directory, lock, &manifest, &publication, error);
     if (publication != NULL)
     {
         TiredError cleanup_error = {0};
@@ -108,7 +153,20 @@ int main(void)
     CHECK(append(second_journal, lock, &record, &error));
     CHECK(tired_transaction_inventory_read(transactions, false, &inventory, &error));
     CHECK(!inventory.complete && strcmp(inventory.entries[1].unit_name.data, "relay.service") == 0);
-    CHECK(strstr(inventory.entries[1].error.message, "both names") != NULL);
+    CHECK(inventory.entries[1].error.status == TIRED_NOT_FOUND);
+    CHECK(publish_rename(second, lock, &record, &error));
+    CHECK(tired_transaction_inventory_read(transactions, false, &inventory, &error));
+    CHECK(inventory.complete && inventory.pending_names.count == 2);
+    CHECK(strcmp(inventory.entries[1].previous_unit_name.data, "old.service") == 0);
+    CHECK(tired_transaction_inventory_pending(&inventory, &pending, &error));
+    CHECK(strcmp(pending->items[0].data, "relay.service") == 0 &&
+          strcmp(pending->items[1].data, "old.service") == 0);
+    CHECK(unlinkat(tired_directory_fd(second), "files.json", 0) == 0);
+    record.approved_sha256[0] = 'a';
+    CHECK(publish_rename(second, lock, &record, &error));
+    CHECK(tired_transaction_inventory_read(transactions, false, &inventory, &error));
+    CHECK(!inventory.complete &&
+          strcmp(inventory.entries[1].error.code, "manifest-journal-mismatch") == 0);
     CHECK(tired_transaction_inventory_load(&layout, &inventory, &error));
     CHECK(!inventory.complete && inventory.count == 2);
     CHECK(!tired_transaction_inventory_pending(&inventory, &pending, &error));
@@ -132,7 +190,10 @@ cleanup:
     if (transaction != NULL)
         (void)unlinkat(tired_directory_fd(transaction), "journal", AT_REMOVEDIR);
     if (second != NULL)
+    {
+        (void)unlinkat(tired_directory_fd(second), "files.json", 0);
         (void)unlinkat(tired_directory_fd(second), "journal", AT_REMOVEDIR);
+    }
     tired_directory_destroy(transaction);
     tired_directory_destroy(second);
     if (transactions != NULL)

@@ -123,21 +123,26 @@ rolled-back journals do not reserve names. Missing/empty/corrupt journals, scope
 or identity mismatches, unexplained staging and exhausted scan budgets make the
 inventory incomplete. The reservation accessor rejects an incomplete inventory
 with recovery-required; partial results must never establish name availability.
-Pending renames also remain incomplete until manifest loading supplies both names.
-The single progress-envelope name is insufficient for that operation.
+Pending renames load their private `files.json` and require an exact match with
+the journal's preparation record. Both the removed old unit and the created new
+unit are reserved. Missing, invalid or mismatched manifests leave discovery
+incomplete. The inventory entry retains the old name as `previous_unit_name`.
 
 Discovery accepts at most 1024 transaction entries and a 16,384-record work budget.
 Before reading another journal it reserves room for that journal's full 4096-record
 bound; a successful read charges its actual count, while a failed read charges the
-full bound. Exhausted entries retain a diagnostic. Root namespace changes observed
+full bound. Rename manifests are read once per entry, bounded to 1 MiB and 256
+changes; binding reuses the validated journal anchor rather than scanning it again.
+Exhausted entries retain a diagnostic. Root namespace changes observed
 during discovery reject the snapshot. This is not an atomic snapshot against
 noncooperating edits inside previously read journals: commit must rescan under the
 scope lock and verify manifests and actual state.
 
 Tests cover empty inventories, unfinished-name reservations, terminal exclusion,
 scope mismatch, missing/empty neighboring journals and the refusal to treat an
-unfinished rename's single name as a complete reservation inventory. CLI routing,
-manifest loading and recovery choices remain controller work.
+unfinished rename's single name as a complete reservation inventory. Tests also
+cover both-name reservations and manifest digest mismatch. Recovery choices and
+actual file-state reconciliation remain controller work.
 
 The layout loader opens the configured transactions location using the scope's
 owner and private-directory checks. Only a missing path becomes a complete empty

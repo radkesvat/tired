@@ -4,7 +4,7 @@
 #include "tired/transaction_journal.h"
 typedef struct
 {
-    TiredText directory_name, unit_name;
+    TiredText directory_name, unit_name, previous_unit_name;
     TiredTransactionProgress progress;
     TiredError error;
 } TiredTransactionInventoryEntry;

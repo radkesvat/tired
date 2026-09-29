@@ -44,7 +44,7 @@ int main(void)
     CHECK(tired_directory_open(path.data, getuid(), true, &root, &error));
     CHECK(tired_directory_child(root, "journal", true, true, &journal, &error));
     CHECK(tired_operation_lock_acquire(root, &lock, &error));
-    CHECK(!tired_manifest_load(root, &loaded, &error) && error.status == TIRED_NOT_FOUND);
+    CHECK(!tired_manifest_load(root, &loaded, &error) && error.status == TIRED_RECOVERY_REQUIRED);
     CHECK(tired_manifest_publish(root, lock, &source, &publication, &error));
     CHECK(tired_publication_durable(publication));
     tired_publication_destroy(publication);
