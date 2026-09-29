@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private service record",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "metadata", "model", "inputs", "review", "executable", "profile", "unit_path", "owned_environment", "external_config_paths"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "metadata": {"$ref": "service-metadata.schema.json"},
+    "model": {"$ref": "model-snapshot.schema.json"},
+    "inputs": {"$ref": "environment-snapshot.schema.json"},
+    "review": {"$ref": "review-snapshot.schema.json"},
+    "executable": {"$ref": "executable-evidence.schema.json"},
+    "profile": {"oneOf": [{"type": "null"}, {"$ref": "profile-snapshot.schema.json"}]},
+    "unit_path": {"$ref": "#/$defs/path"},
+    "owned_environment": {"oneOf": [{"type": "null"}, {
+      "type": "object", "additionalProperties": false, "required": ["revision", "sha256", "path"],
+      "properties": {
+        "revision": {"$ref": "transaction-progress.schema.json#/$defs/uuid"},
+        "sha256": {"type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}$"},
+        "path": {"$ref": "#/$defs/path"}
+      }
+    }]},
+    "external_config_paths": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/path"}}
+  },
+  "$defs": {"path": {"type": "string", "minLength": 1, "maxLength": 4095, "pattern": "^/"}}
+}
