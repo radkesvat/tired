@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Historical executable identity",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "lexical_path", "resolved_path", "device", "inode"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "lexical_path": {"$ref": "#/$defs/path"},
+    "resolved_path": {"$ref": "#/$defs/path"},
+    "device": {"$ref": "#/$defs/identity"},
+    "inode": {"$ref": "#/$defs/identity"}
+  },
+  "$defs": {
+    "path": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^/"},
+    "identity": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}
+  }
+}
