@@ -13,4 +13,10 @@ bool tired_service_record_read(TiredDirectory *directory, const TiredLayout *lay
  * records. Permission/trust failures remain distinct. */
 bool tired_service_record_load(const TiredLayout *layout, const char *uuid,
                                TiredServiceRecord *output, TiredError *error);
+/* Inventory variant with a shared byte budget. Successful reads charge actual
+ * bytes, including malformed records; failed reads conservatively charge their
+ * full bounded allowance. Budget exhaustion is explicit, never an empty record. */
+bool tired_service_record_read_budget(TiredDirectory *directory, const TiredLayout *layout,
+                                      const char *uuid, size_t *budget, TiredServiceRecord *output,
+                                      TiredError *error);
 #endif

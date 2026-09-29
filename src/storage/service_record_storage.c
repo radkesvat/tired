@@ -11,10 +11,11 @@ static bool identifier(const char *uuid, TiredError *error)
            tired_error_set(error, TIRED_INVALID, "service-record-id",
                            "Expected a canonical service UUID.", 0);
 }
-bool tired_service_record_read(TiredDirectory *directory, const TiredLayout *layout,
-                               const char *uuid, TiredServiceRecord *output, TiredError *error)
+bool tired_service_record_read_budget(TiredDirectory *directory, const TiredLayout *layout,
+                                      const char *uuid, size_t *budget, TiredServiceRecord *output,
+                                      TiredError *error)
 {
-    assert(directory != NULL && layout != NULL && uuid != NULL && output != NULL);
+    assert(directory != NULL && layout != NULL && uuid != NULL && budget != NULL && output != NULL);
     if (!identifier(uuid, error))
         return false;
     char name[42];
@@ -22,8 +23,17 @@ bool tired_service_record_read(TiredDirectory *directory, const TiredLayout *lay
     TiredText bytes = {0};
     TiredServiceRecord record = {0};
     bool ok = false;
-    if (!tired_private_file_read(directory, name, TIRED_SERVICE_RECORD_LIMIT, &bytes, error) ||
-        !tired_service_record_parse(bytes.data, bytes.length, &record, error))
+    if (*budget == 0)
+        return tired_error_set(error, TIRED_RECOVERY_REQUIRED, "service-record-budget",
+                               "Service record read budget exhausted.", 0);
+    size_t limit = *budget < TIRED_SERVICE_RECORD_LIMIT ? *budget : TIRED_SERVICE_RECORD_LIMIT;
+    if (!tired_private_file_read(directory, name, limit, &bytes, error))
+    {
+        *budget -= limit;
+        goto done;
+    }
+    *budget -= bytes.length;
+    if (!tired_service_record_parse(bytes.data, bytes.length, &record, error))
         goto done;
     uid_t owner = layout->user_scope ? geteuid() : 0;
     if (strcmp(record.metadata.service_uuid, uuid) != 0 ||
@@ -45,6 +55,12 @@ done:
     tired_service_record_destroy(&record);
     tired_text_destroy(&bytes);
     return ok;
+}
+bool tired_service_record_read(TiredDirectory *directory, const TiredLayout *layout,
+                               const char *uuid, TiredServiceRecord *output, TiredError *error)
+{
+    size_t budget = TIRED_SERVICE_RECORD_LIMIT;
+    return tired_service_record_read_budget(directory, layout, uuid, &budget, output, error);
 }
 bool tired_service_record_load(const TiredLayout *layout, const char *uuid,
                                TiredServiceRecord *output, TiredError *error)

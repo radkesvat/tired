@@ -1,5 +1,6 @@
 #include "tired/io.h"
 #include "tired/private_file.h"
+#include "tired/service_inventory.h"
 #include "tired/service_record.h"
 #include "tired/service_record_storage.h"
 #include <fcntl.h>
@@ -28,6 +29,8 @@ int main(int argc, char **argv)
     char fixture[] = "record-storage-XXXXXX", name[42], other[42];
     char *created = NULL, *cwd = NULL;
     TiredDirectory *directory = NULL;
+    TiredServiceInventory inventory = {0};
+    const TiredServiceMetadata *found = NULL;
     TiredText directory_path = {0};
     TiredServiceRecord
         source =
@@ -142,10 +145,58 @@ int main(int argc, char **argv)
     (void)snprintf(other, sizeof(other), "%s.json", source.metadata.revision_uuid);
     CHECK(!tired_service_record_load(&layout, source.metadata.service_uuid, &parsed, &error));
     CHECK(error.status == TIRED_NOT_FOUND);
+    CHECK(tired_service_inventory_load(&layout, &inventory, &error));
+    CHECK(inventory.complete && inventory.count == 0);
+    CHECK(!tired_service_inventory_find(&inventory, "relay.service", &found, &error) &&
+          error.status == TIRED_NOT_FOUND);
     CHECK(tired_private_file_create(directory, name, encoded.data, encoded.length, &error));
     CHECK(tired_service_record_load(&layout, source.metadata.service_uuid, &parsed, &error));
     CHECK(parsed.metadata.owner_uid == getuid());
+    size_t budget = encoded.length;
+    CHECK(tired_service_record_read_budget(directory, &layout, source.metadata.service_uuid,
+                                           &budget, &parsed, &error));
+    CHECK(budget == 0);
+    CHECK(!tired_service_record_read_budget(directory, &layout, source.metadata.service_uuid,
+                                            &budget, &parsed, &error));
+    CHECK(error.status == TIRED_RECOVERY_REQUIRED);
+    CHECK(tired_service_inventory_load(&layout, &inventory, &error));
+    CHECK(inventory.complete && inventory.count == 1);
+    CHECK(tired_service_inventory_find(&inventory, "relay.service", &found, &error));
+    CHECK(strcmp(found->service_uuid, source.metadata.service_uuid) == 0);
     int fd = tired_directory_fd(directory);
+    const char unusual_name[] = "unexpected\n\xff";
+    int unusual_fd = openat(fd, unusual_name, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    CHECK(unusual_fd >= 0);
+    CHECK(close(unusual_fd) == 0);
+    CHECK(tired_service_inventory_load(&layout, &inventory, &error));
+    CHECK(!inventory.complete && inventory.count == 2 &&
+          inventory.entries[0].error.status == TIRED_OK &&
+          inventory.entries[1].error.status == TIRED_RECOVERY_REQUIRED &&
+          inventory.entries[1].filename.length == sizeof(unusual_name) - 1 &&
+          memcmp(inventory.entries[1].filename.data, unusual_name, sizeof(unusual_name)) == 0);
+    CHECK(unlinkat(fd, unusual_name, 0) == 0);
+    CHECK(tired_service_inventory_load(&layout, &inventory, &error));
+    TiredServiceInventoryEntry *saved_entries = inventory.entries;
+    CHECK(fchmod(fd, 0755) == 0);
+    CHECK(!tired_service_inventory_load(&layout, &inventory, &error));
+    CHECK(inventory.entries == saved_entries && inventory.complete && inventory.count == 1);
+    CHECK(fchmod(fd, 0700) == 0);
+    CHECK(tired_private_file_create(directory, other, "{", 1, &error));
+    CHECK(tired_service_inventory_load(&layout, &inventory, &error));
+    CHECK(!inventory.complete && inventory.count == 2 &&
+          inventory.entries[0].error.status == TIRED_OK &&
+          inventory.entries[1].error.status != TIRED_OK);
+    CHECK(!tired_service_inventory_find(&inventory, "relay.service", &found, &error) &&
+          error.status == TIRED_RECOVERY_REQUIRED);
+    CHECK(unlinkat(fd, other, 0) == 0);
+    source.metadata.service_uuid[0] = '1';
+    CHECK(tired_service_record_encode(&source, &again, &error));
+    source.metadata.service_uuid[0] = '0';
+    CHECK(tired_private_file_create(directory, other, again.data, again.length, &error));
+    CHECK(tired_service_inventory_load(&layout, &inventory, &error));
+    CHECK(!inventory.complete && inventory.entries[0].error.status == TIRED_CONFLICT &&
+          inventory.entries[1].error.status == TIRED_CONFLICT);
+    CHECK(unlinkat(fd, other, 0) == 0);
     CHECK(renameat(fd, name, fd, other) == 0);
     CHECK(!tired_service_record_load(&layout, source.metadata.revision_uuid, &parsed, &error));
     CHECK(error.status == TIRED_CONFLICT &&
@@ -161,8 +212,11 @@ int main(int argc, char **argv)
     CHECK(!tired_service_record_load(&layout, "../escape", &parsed, &error));
     result = 0;
 cleanup:
+    tired_service_inventory_destroy(&inventory);
     if (directory != NULL)
     {
+        (void)fchmod(tired_directory_fd(directory), 0700);
+        (void)unlinkat(tired_directory_fd(directory), "unexpected\n\xff", 0);
         char cleanup_name[42];
         (void)snprintf(cleanup_name, sizeof(cleanup_name), "%s.json", source.metadata.service_uuid);
         (void)unlinkat(tired_directory_fd(directory), cleanup_name, 0);
