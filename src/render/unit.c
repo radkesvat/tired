@@ -62,6 +62,10 @@ static bool scalar(TiredBuffer *b, const TiredField *field, const TiredFieldValu
     }
     case TIRED_FIELD_DURATION:
         return number(b, v->value.microseconds, e) && append(b, "us", e);
+    case TIRED_FIELD_TIMEOUT:
+        return v->value.timeout.infinity
+                   ? append(b, "infinity", e)
+                   : number(b, v->value.timeout.value, e) && append(b, "us", e);
     case TIRED_FIELD_INTEGER:
         size = snprintf(text, sizeof(text), "%" PRId64, v->value.integer);
         break;

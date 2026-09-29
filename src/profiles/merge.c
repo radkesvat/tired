@@ -104,6 +104,9 @@ static bool equal_value(TiredFieldId id, const TiredFieldValue *a, const TiredFi
         return a->value.integer == b->value.integer;
     case TIRED_FIELD_DURATION:
         return a->value.microseconds == b->value.microseconds;
+    case TIRED_FIELD_TIMEOUT:
+        return a->value.timeout.infinity == b->value.timeout.infinity &&
+               (a->value.timeout.infinity || a->value.timeout.value == b->value.timeout.value);
     case TIRED_FIELD_LIMIT:
         return a->value.limit.infinity == b->value.limit.infinity &&
                (a->value.limit.infinity || a->value.limit.value == b->value.limit.value);

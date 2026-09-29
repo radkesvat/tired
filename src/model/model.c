@@ -56,9 +56,9 @@ static const TiredField fields[TIRED_FIELD_COUNT] = {
           NULL, "0", 0, 0, false),
     FIELD(START_LIMIT_BURST, "start_limit_burst", "Unit", "StartLimitBurst", INTEGER, NULL, NULL, 1,
           UINT32_MAX, false),
-    FIELD(TIMEOUT_START, "timeout_start", "Service", "TimeoutStartSec", DURATION, NULL, NULL, 0, 0,
+    FIELD(TIMEOUT_START, "timeout_start", "Service", "TimeoutStartSec", TIMEOUT, NULL, NULL, 0, 0,
           false),
-    FIELD(TIMEOUT_STOP, "timeout_stop", "Service", "TimeoutStopSec", DURATION, NULL, "30s", 0, 0,
+    FIELD(TIMEOUT_STOP, "timeout_stop", "Service", "TimeoutStopSec", TIMEOUT, NULL, "30s", 0, 0,
           false),
     FIELD(KILL_MODE, "kill_mode", "Service", "KillMode", CHOICE, "control-group|mixed|process|none",
           "control-group", 0, 0, false),
@@ -280,6 +280,16 @@ bool tired_spec_set(TiredServiceSpec *spec, TiredFieldId id, const char *text, s
     case TIRED_FIELD_DURATION:
         if (!tired_parse_duration(text, length, &next.value.microseconds, error))
             return false;
+        break;
+    case TIRED_FIELD_TIMEOUT:
+        if (length == 8 && memcmp(text, "infinity", 8) == 0)
+            next.value.timeout.infinity = true;
+        else if (!tired_parse_duration(text, length, &next.value.timeout.value, error))
+            return false;
+        else if (next.value.timeout.value == UINT64_MAX)
+            return tired_error_set(
+                error, TIRED_INVALID, "timeout-range",
+                "Finite timeout exceeds the supported range; use infinity explicitly.", 0);
         break;
     }
     if (field->kind == TIRED_FIELD_TEXT && tired_field_has_value(&spec->fields[id]))

@@ -11,6 +11,7 @@ typedef enum
     TIRED_FIELD_BOOL,
     TIRED_FIELD_INTEGER,
     TIRED_FIELD_DURATION,
+    TIRED_FIELD_TIMEOUT,
     TIRED_FIELD_LIST,
     TIRED_FIELD_LIMIT,
     TIRED_FIELD_MODE,
@@ -113,6 +114,7 @@ typedef struct
         bool boolean;
         int64_t integer;
         uint64_t microseconds;
+        TiredLimit timeout; /* Finite microseconds or explicit infinity. */
         TiredTextList list;
         TiredLimit limit;
         uint32_t mode;

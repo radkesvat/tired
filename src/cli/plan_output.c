@@ -82,6 +82,9 @@ static struct json_object *field_value(const TiredField *field, const TiredField
         return json_object_new_int64(value->value.integer);
     case TIRED_FIELD_DURATION:
         return json_object_new_uint64(value->value.microseconds);
+    case TIRED_FIELD_TIMEOUT:
+        return value->value.timeout.infinity ? json_object_new_string("infinity")
+                                             : json_object_new_uint64(value->value.timeout.value);
     case TIRED_FIELD_MODE:
         return json_object_new_int64(value->value.mode);
     case TIRED_FIELD_SIGNAL:

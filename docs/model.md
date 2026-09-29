@@ -16,7 +16,13 @@ Duration inputs use a decimal number with up to six fractional digits and an
 optional `us`, `ms`, `s`, `min`, `h`, or `d` suffix. No suffix means seconds.
 Fractions must be exactly representable in microseconds; values are never rounded.
 Whitespace, signs, scientific notation, compound durations, and overflow fail.
-Infinity support for applicable resource/timeout fields is not yet implemented.
+Start and stop timeouts have a separate type storing finite microseconds or explicit
+`infinity`. Their directives render infinity literally, and JSON represents it as
+the string `"infinity"`; finite values remain integer microseconds. The maximum
+unsigned 64-bit value is reserved and cannot be supplied as a finite timeout.
+Inheritance still omits the directive. Ordinary restart and start-limit durations
+remain finite. The timeout behavior follows the
+[systemd 249 service contract](https://github.com/systemd/systemd/blob/v249/man/systemd.service.xml).
 
 Scalar assignment validates syntax without claiming the host can apply a setting.
 Callers must perform semantic, risk, identity, filesystem, manager, rendering, and

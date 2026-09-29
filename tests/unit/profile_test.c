@@ -92,6 +92,25 @@ int main(int argc, char **argv)
     context.features[1] = TIRED_FACT_TRUE;
     CHECK(tired_profile_merge(&profile, &model, &context, &merged, &error));
     CHECK(merged.decisions[0] == TIRED_RECOMMENDATION_APPLIED);
+    CHECK(json_object_object_add(rec, "field", json_object_new_string("timeout_start")) == 0);
+    CHECK(json_object_object_add(rec, "strength",
+                                 json_object_new_string("required-under-stated-conditions")) == 0);
+    CHECK(json_object_object_add(rec, "value", json_object_new_string("infinity")) == 0);
+    with_condition = json_object_to_json_string_ext(document, JSON_C_TO_STRING_PLAIN);
+    CHECK(tired_profile_parse(with_condition, strlen(with_condition), &profile, &error));
+    CHECK(tired_profile_merge(&profile, &model, &context, &merged, &error));
+    CHECK(merged.spec.fields[TIRED_FIELD_TIMEOUT_START].value.timeout.infinity);
+    CHECK(tired_spec_set(&model, TIRED_FIELD_TIMEOUT_START, "infinity", 8, TIRED_ORIGIN_USER, true,
+                         &error));
+    CHECK(tired_profile_merge(&profile, &model, &context, &merged, &error));
+    CHECK(merged.decisions[0] == TIRED_RECOMMENDATION_USER_OVERRIDE);
+    CHECK(tired_spec_set(&model, TIRED_FIELD_TIMEOUT_START, "10s", 3, TIRED_ORIGIN_USER, true,
+                         &error));
+    CHECK(tired_profile_merge(&profile, &model, &context, &merged, &error));
+    CHECK(merged.decisions[0] == TIRED_RECOMMENDATION_REQUIRED_CONFLICT);
+    CHECK(json_object_object_add(rec, "value", json_object_new_string("always")) == 0);
+    CHECK(json_object_object_add(rec, "field", json_object_new_string("restart")) == 0);
+    CHECK(json_object_object_add(rec, "strength", json_object_new_string("recommended")) == 0);
     json_object_object_del(rec, "conditions");
     struct json_object *other = NULL;
     const char *rec_text = json_object_to_json_string_ext(rec, JSON_C_TO_STRING_PLAIN);

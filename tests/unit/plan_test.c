@@ -131,6 +131,21 @@ int main(int argc, char **argv)
     CHECK(tired_cli_parse(7, configured, &request, &error));
     CHECK(tired_plan_prepare_settings(&request, &settings, &plan, &error));
     CHECK(plan.spec.fields[TIRED_FIELD_RESTART_SEC].origin == TIRED_ORIGIN_CONFIG_USER);
+    CHECK(tired_spec_set(&plan.spec, TIRED_FIELD_TIMEOUT_START, "infinity", 8, TIRED_ORIGIN_USER,
+                         true, &error));
+    CHECK(tired_spec_set(&plan.spec, TIRED_FIELD_TIMEOUT_STOP, "1.5s", 4, TIRED_ORIGIN_USER, true,
+                         &error));
+    CHECK(tired_plan_output(&plan, true, false, false, &output, &error));
+    CHECK(strstr(output.data, "TimeoutStartSec=infinity") != NULL);
+    CHECK(strstr(output.data, "TimeoutStopSec=1500000us") != NULL);
+    json = NULL;
+    CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &json, &error));
+    struct json_object *fields = NULL, *timeout = NULL;
+    CHECK(json_object_object_get_ex(json, "fields", &fields));
+    CHECK(json_object_object_get_ex(fields, "timeout_start", &timeout));
+    CHECK(json_object_object_get_ex(timeout, "value", &flag));
+    CHECK(strcmp(json_object_get_string(flag), "infinity") == 0);
+    json_object_put(json);
     tired_catalog_destroy(&catalog);
     tired_settings_destroy(&layer);
     tired_settings_destroy(&settings);
