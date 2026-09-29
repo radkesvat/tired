@@ -1,7 +1,10 @@
 #include "tired/file_change.h"
 #include "tired/io.h"
+#include "tired/manifest_storage.h"
 #include "tired/private_file.h"
 #include "tired/publication.h"
+#include "tired/transaction_files.h"
+#include "tired/transaction_journal.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,7 +45,9 @@ int main(void)
     const char *names[] = {"relay.service", "fedcba98-7654-4321-abcd-fedcba987654.json"};
     TiredText path = {0};
     TiredLayout layout = {.user_scope = true};
-    TiredDirectory *root = NULL;
+    TiredDirectory *root = NULL, *journal_directory = NULL;
+    TiredPublication *publication = NULL;
+    TiredTransactionJournal journal = {0};
     TiredOperationLock *lock = NULL;
     TiredError error = {0};
     TiredFileChange files[2] = {0};
@@ -102,12 +107,34 @@ int main(void)
     CHECK(tired_file_change_order(&order_manifest, false, &order, &error));
     CHECK(order.indices[0] == 1 && order.indices[1] == 0 && order.indices[2] == 2);
     TiredFilePhaseResult phase = {0};
+    TiredTransactionFilesResult transaction_result = {0};
+    CHECK(tired_directory_child(root, "journal", true, true, &journal_directory, &error));
+    CHECK(tired_manifest_publish(root, lock, &manifest, &publication, &error));
+    tired_publication_destroy(publication);
+    publication = NULL;
+    CHECK(tired_transaction_journal_append(journal_directory, lock, &manifest.prepared,
+                                           &publication, &error));
+    tired_publication_destroy(publication);
+    publication = NULL;
+    CHECK(!tired_transaction_files_apply(&layout, root, &manifest.prepared, true, lock,
+                                         &transaction_result, &error));
+    CHECK(!transaction_result.intent_durable);
     CHECK(tired_private_file_create(root, names[1], "foreign", 7, &error));
-    CHECK(!tired_file_phase_apply(&layout, &manifest, false, lock, &phase, &error));
-    CHECK(phase.completed == 1 && phase.failed_index == 1 && !phase.reached);
+    CHECK(!tired_transaction_files_apply(&layout, root, &manifest.prepared, false, lock,
+                                         &transaction_result, &error));
+    CHECK(transaction_result.intent_durable && transaction_result.outcome_durable &&
+          !transaction_result.files_completed);
+    CHECK(transaction_result.phase.completed == 1 && transaction_result.phase.failed_index == 1);
+    CHECK(tired_transaction_journal_read(journal_directory, &journal, &error));
+    CHECK(journal.count == 3 && journal.progress.pending && journal.progress.uncertain);
     CHECK(unlinkat(tired_directory_fd(root), names[1], 0) == 0);
-    CHECK(tired_file_phase_apply(&layout, &manifest, false, lock, &phase, &error));
-    CHECK(phase.completed == 2 && phase.failed_index == SIZE_MAX);
+    CHECK(tired_transaction_files_apply(&layout, root, &manifest.prepared, false, lock,
+                                        &transaction_result, &error));
+    CHECK(transaction_result.files_completed && transaction_result.outcome_durable &&
+          transaction_result.phase.completed == 2);
+    CHECK(tired_transaction_journal_read(journal_directory, &journal, &error));
+    CHECK(journal.count == 4 && !journal.progress.pending &&
+          journal.records[3].state == TIRED_ACTION_COMPLETED);
     CHECK(tired_file_phase_apply(&layout, &manifest, false, lock, &phase, &error));
     manifest.prepared.operation = TIRED_TRANSACTION_EDIT;
     for (size_t i = 0; i < 2; ++i)
@@ -150,8 +177,33 @@ int main(void)
     CHECK(!tired_file_change_apply(&layout, &manifest, 0, true, lock, &applied, &error));
     CHECK(error.status == TIRED_CONFLICT && !applied.reached);
     CHECK(!tired_file_change_apply(&layout, &manifest, 2, false, lock, &applied, &error));
+    CHECK(unlinkat(tired_directory_fd(root), names[0], 0) == 0);
+    TiredTransactionRecord rollback_record = manifest.prepared;
+    rollback_record.sequence = 5;
+    rollback_record.action = TIRED_ACTION_ROLLBACK;
+    rollback_record.state = TIRED_ACTION_INTENT;
+    CHECK(tired_transaction_journal_append(journal_directory, lock, &rollback_record, &publication,
+                                           &error));
+    tired_publication_destroy(publication);
+    publication = NULL;
+    CHECK(tired_transaction_files_apply(&layout, root, &manifest.prepared, true, lock,
+                                        &transaction_result, &error));
+    CHECK(transaction_result.files_completed && transaction_result.outcome_durable);
+    CHECK(tired_transaction_journal_read(journal_directory, &journal, &error));
+    CHECK(journal.count == 7 && journal.progress.mode == TIRED_PROGRESS_ROLLBACK &&
+          !journal.progress.pending);
     result = 0;
 cleanup:
+    tired_publication_destroy(publication);
+    tired_transaction_journal_destroy(&journal);
+    if (journal_directory != NULL)
+        for (unsigned i = 1; i <= 7; ++i)
+        {
+            char name[16];
+            (void)snprintf(name, sizeof(name), "%04u.json", i);
+            (void)unlinkat(tired_directory_fd(journal_directory), name, 0);
+        }
+    tired_directory_destroy(journal_directory);
     tired_operation_lock_destroy(lock);
     if (root != NULL)
     {
@@ -170,6 +222,8 @@ cleanup:
         (void)unlinkat(fd, ".tired-a1234567-89ab-4cde-8fab-0123456789ab.removed", 0);
         (void)unlinkat(fd, ".tired-b1234567-89ab-4cde-8fab-0123456789ab.removed", 0);
         (void)unlinkat(fd, "operation.lock", 0);
+        (void)unlinkat(fd, "files.json", 0);
+        (void)unlinkat(fd, "journal", AT_REMOVEDIR);
     }
     tired_directory_destroy(root);
     tired_layout_destroy(&layout);
