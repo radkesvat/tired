@@ -1,4 +1,5 @@
 #include "tired/io.h"
+#include "tired/linger_enable.h"
 #include "tired/linger_query.h"
 #include "tired/load_paths.h"
 #include "tired/manager.h"
@@ -39,6 +40,7 @@ typedef struct
     unsigned job_case;
     unsigned enablement_case;
     unsigned linger_case;
+    unsigned linger_enable_case;
     bool job_match, subscribed;
     unsigned name_mode, name_requests;
     const char *name_directory;
@@ -115,6 +117,32 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
 {
     Broker *broker = userdata;
     (void)error;
+    if (sd_bus_message_is_method_call(message, "org.freedesktop.login1.Manager", "SetUserLinger") >
+        0)
+    {
+        uint32_t uid;
+        int enabled, interactive;
+        const char *destination = sd_bus_message_get_destination(message);
+        if (!broker->login || destination == NULL || strcmp(destination, ":1.42") != 0 ||
+            sd_bus_message_get_auto_start(message) != 0 ||
+            sd_bus_message_read(message, "ubb", &uid, &enabled, &interactive) <= 0 || uid != 1000 ||
+            enabled != 1 || interactive != (broker->linger_enable_case == 1) ||
+            sd_bus_message_get_allow_interactive_authorization(message) != interactive)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_INVALID_ARGS,
+                                              "Invalid lingering enable request");
+        if (broker->linger_enable_case == 2)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_ACCESS_DENIED, "Denied");
+        if (broker->linger_enable_case == 3)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_UNKNOWN_METHOD, "Unsupported");
+        if (broker->linger_enable_case == 4)
+            return 1;
+        if (broker->linger_enable_case == 5)
+            return sd_bus_reply_method_return(message, "b", 1);
+        if (broker->linger_enable_case == 11)
+            return sd_bus_reply_method_errorf(message, "org.freedesktop.login1.NoSuchUser",
+                                              "Missing");
+        return sd_bus_reply_method_return(message, "");
+    }
     if (sd_bus_message_is_method_call(message, "org.freedesktop.login1.Manager", "GetUser") > 0)
     {
         const char *destination = sd_bus_message_get_destination(message);
@@ -423,6 +451,7 @@ int main(void)
     TiredManagerEnablement *enablement = NULL;
     TiredManagerIdentity *identity = NULL;
     TiredLingerQuery *linger = NULL;
+    TiredLingerEnable *linger_enable = NULL;
     TiredUnitQuery *query = NULL;
     TiredLoadPaths *paths = NULL;
     TiredNameQuery *names = NULL;
@@ -518,6 +547,8 @@ int main(void)
             CHECK(owner.user_scope);
             CHECK(!tired_linger_query_start(identity, 1000, 1000, &linger, &error) &&
                   linger == NULL);
+            CHECK(!tired_linger_enable_start(identity, 1000, false, 1000, &linger_enable, &error) &&
+                  linger_enable == NULL);
             CHECK(strcmp(owner.unique_name, ":1.42") == 0);
             tired_manager_probe_destroy(probe);
             probe = NULL;
@@ -1037,6 +1068,52 @@ int main(void)
         if (scenario == 0)
         {
             CHECK(owner.ready && owner.uid == 0 && owner.error.status == TIRED_OK);
+            for (unsigned scenario = 0; scenario < 12; ++scenario)
+            {
+                broker.linger_enable_case = scenario;
+                broker.linger_case = scenario == 6 ? 1 : scenario == 7 ? 6 : scenario == 8 ? 7 : 0;
+                CHECK(tired_linger_enable_start(identity, 1000, scenario == 1,
+                                                scenario == 4 || scenario == 8 ? 20 : 1000,
+                                                &linger_enable, &error));
+                struct pollfd descriptor;
+                uint64_t deadline;
+                CHECK(tired_linger_enable_poll(linger_enable, &descriptor, &deadline, &error) &&
+                      descriptor.fd >= 0 && deadline != UINT64_MAX);
+                if (scenario == 9)
+                    tired_linger_enable_cancel(linger_enable);
+                for (unsigned i = 0; i < 2000; ++i)
+                {
+                    CHECK(sd_bus_process(server, NULL) >= 0);
+                    if (tired_linger_enable_step(linger_enable))
+                        break;
+                    if (scenario == 10 && tired_linger_enable_result(linger_enable).acknowledged)
+                        tired_linger_enable_cancel(linger_enable);
+                    struct timespec delay = {.tv_nsec = 1000000};
+                    (void)nanosleep(&delay, NULL);
+                }
+                TiredLingerEnableResult observed = tired_linger_enable_result(linger_enable);
+                const TiredStatus expected[] = {TIRED_OK,
+                                                TIRED_OK,
+                                                TIRED_AUTHORIZATION,
+                                                TIRED_UNSUPPORTED,
+                                                TIRED_RUNTIME_FAILED,
+                                                TIRED_INVALID,
+                                                TIRED_RUNTIME_FAILED,
+                                                TIRED_UNSUPPORTED,
+                                                TIRED_RUNTIME_FAILED,
+                                                TIRED_CANCELLED,
+                                                TIRED_CANCELLED,
+                                                TIRED_NOT_FOUND};
+                CHECK(observed.done && observed.submitted && observed.uid == 1000 &&
+                      observed.error.status == expected[scenario]);
+                CHECK(observed.acknowledged ==
+                      (scenario < 2 || (scenario >= 6 && scenario <= 8) || scenario == 10));
+                CHECK(observed.observed == (scenario < 2 || scenario == 6));
+                CHECK(observed.enabled == (scenario < 2));
+                tired_linger_enable_destroy(linger_enable);
+                linger_enable = NULL;
+            }
+            broker.linger_enable_case = 0;
             for (unsigned scenario = 0; scenario < 11; ++scenario)
             {
                 broker.linger_case = scenario;
@@ -1082,6 +1159,16 @@ int main(void)
             }
             CHECK(tired_linger_query_result(linger).known &&
                   tired_linger_query_result(linger).enabled);
+            CHECK(tired_linger_enable_start(identity, 1000, false, 1000, &linger_enable, &error));
+            for (unsigned i = 0; i < 2000; ++i)
+            {
+                CHECK(sd_bus_process(server, NULL) >= 0);
+                if (tired_linger_enable_step(linger_enable))
+                    break;
+                struct timespec delay = {.tv_nsec = 1000000};
+                (void)nanosleep(&delay, NULL);
+            }
+            CHECK(tired_linger_enable_result(linger_enable).enabled);
             TiredText unit_base = {.data = "fixture", .length = 7};
             TiredTextList pending = {0};
             CHECK(!tired_unit_batch_start(identity, &pending, 1000, &batch, &error) &&
@@ -1112,6 +1199,11 @@ int main(void)
             CHECK(tired_linger_query_step(linger));
             CHECK(!tired_linger_query_result(linger).known &&
                   tired_linger_query_result(linger).error.status == TIRED_CONFLICT);
+            CHECK(tired_linger_enable_result(linger_enable).acknowledged &&
+                  !tired_linger_enable_result(linger_enable).observed &&
+                  tired_linger_enable_result(linger_enable).error.status == TIRED_CONFLICT);
+            tired_linger_enable_destroy(linger_enable);
+            linger_enable = NULL;
             tired_linger_query_destroy(linger);
             linger = NULL;
         }
@@ -1163,6 +1255,7 @@ int main(void)
     }
     result = 0;
 cleanup:
+    tired_linger_enable_destroy(linger_enable);
     tired_linger_query_destroy(linger);
     tired_manager_enablement_destroy(enablement);
     tired_manager_job_destroy(job);
