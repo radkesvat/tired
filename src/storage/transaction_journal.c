@@ -1,4 +1,5 @@
 #include "tired/transaction_journal.h"
+#include "tired/io.h"
 #include "tired/private_file.h"
 #include <assert.h>
 #include <dirent.h>
@@ -31,18 +32,7 @@ static bool staging_name(const char *name)
 {
     if (strlen(name) != 47 || memcmp(name, ".tired-", 7) != 0 || strcmp(name + 43, ".tmp") != 0)
         return false;
-    for (size_t i = 0; i < 36; ++i)
-    {
-        char c = name[7 + i];
-        if (i == 8 || i == 13 || i == 18 || i == 23)
-        {
-            if (c != '-')
-                return false;
-        }
-        else if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
-            return false;
-    }
-    return name[21] == '4' && strchr("89ab", name[26]) != NULL;
+    return tired_uuid_valid(name + 7, 36);
 }
 void tired_transaction_journal_destroy(TiredTransactionJournal *journal)
 {

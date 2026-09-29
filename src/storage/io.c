@@ -193,3 +193,23 @@ bool tired_uuid_create(char output[37], TiredError *error)
     tired_error_clear(error);
     return true;
 }
+
+bool tired_uuid_valid(const char *data, size_t length)
+{
+    assert(data != NULL || length == 0);
+    if (length != 36 || data[14] != '4' ||
+        (data[19] != '8' && data[19] != '9' && data[19] != 'a' && data[19] != 'b'))
+        return false;
+    for (size_t i = 0; i < length; ++i)
+    {
+        char c = data[i];
+        if (i == 8 || i == 13 || i == 18 || i == 23)
+        {
+            if (c != '-')
+                return false;
+        }
+        else if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
+            return false;
+    }
+    return true;
+}

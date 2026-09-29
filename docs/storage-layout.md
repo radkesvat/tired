@@ -147,3 +147,29 @@ documents the structural format; native parsing additionally enforces strict int
 syntax/types. Tests cover width boundaries, absence versus invalid metadata, and
 an actual observed fingerprint persisted through private-file storage and read back.
 These values remain evidence to compare, not permission to modify a file.
+
+## Typed file targets
+
+Transaction file destinations are derived from a trusted scope layout and a
+typed role, not from arbitrary caller-supplied paths or modes. Every target binds
+a canonical service UUID. The resolver produces a directory, single filename,
+required mode and whether the destination directory must be private.
+
+| Role | Selector and derived destination | Mode |
+| --- | --- | --- |
+| Unit | Safe full service name below the scope unit directory | `0644` |
+| Environment | Service UUID plus revision UUID below the environment services root, ending in `revisions/<revision>/environment` | `0600` |
+| Record | `<service-uuid>.json` below the scope service-record directory | `0600` |
+
+Environment revisions use canonical lowercase UUIDv4 identifiers. Irrelevant
+selectors are rejected: only unit targets carry a unit name and only environment
+targets carry a revision UUID. The complete derived path must fit within 4095
+bytes, excluding the terminator. Failures preserve the prior resolved output.
+UUID validation is shared with transaction records and staging-name recognition.
+
+Resolution performs no I/O and establishes no managed ownership or authorization.
+Controllers must bind selectors to the approved service/transaction, validate
+existing metadata and fingerprints, and use validated directory descriptors for
+publication. Trusted layouts must never be reconstructed from arbitrary helper
+IPC destination paths. Tests cover both scopes, all roles, fixed modes, traversal,
+invalid UUIDs/selectors, path bounds and failure preservation.

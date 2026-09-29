@@ -1,4 +1,5 @@
 #include "tired/transaction_record.h"
+#include "tired/io.h"
 #include "tired/json.h"
 #include "tired/name.h"
 #include <assert.h>
@@ -28,24 +29,10 @@ const char *tired_transaction_action_name(TiredTransactionAction action)
     return actions[action];
 }
 static bool hex(char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }
-static bool uuid(const char value[37])
-{
-    if (strnlen(value, 37) != 36 || value[14] != '4' ||
-        (value[19] != '8' && value[19] != '9' && value[19] != 'a' && value[19] != 'b'))
-        return false;
-    for (size_t i = 0; i < 36; ++i)
-        if (i == 8 || i == 13 || i == 18 || i == 23)
-        {
-            if (value[i] != '-')
-                return false;
-        }
-        else if (!hex(value[i]))
-            return false;
-    return true;
-}
 static bool validate(const TiredTransactionRecord *record, TiredError *error)
 {
-    if (!uuid(record->transaction_uuid) || !uuid(record->service_uuid) ||
+    if (!tired_uuid_valid(record->transaction_uuid, strnlen(record->transaction_uuid, 37)) ||
+        !tired_uuid_valid(record->service_uuid, strnlen(record->service_uuid, 37)) ||
         strnlen(record->approved_sha256, 65) != 64 || record->sequence == 0 ||
         record->sequence > TIRED_TRANSACTION_SEQUENCE_LIMIT ||
         (unsigned)record->operation >= TIRED_TRANSACTION_OPERATION_COUNT ||

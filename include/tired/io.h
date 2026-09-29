@@ -17,4 +17,6 @@ bool tired_path_absolute(const TiredText *directory, const char *path, size_t le
                          TiredText *output, TiredError *error);
 /* Cryptographic kernel randomness, UUIDv4, canonical 36-byte lowercase text. */
 bool tired_uuid_create(char output[37], TiredError *error);
+/* Validate an exact lowercase UUIDv4 byte view; no terminator is required. */
+bool tired_uuid_valid(const char *data, size_t length);
 #endif
