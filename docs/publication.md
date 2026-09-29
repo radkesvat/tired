@@ -1,4 +1,4 @@
-# Publishing new files
+# Publishing files
 
 `TiredPublication` prepares a complete file in the destination directory under a
 random UUID-based exclusive staging name. It writes at most 16 MiB, applies the
@@ -30,12 +30,30 @@ only closes descriptors and frees memory; callers must surface discard failures
 and the retained temporary name. A cancelled preparation and a published file
 therefore have distinct cleanup paths.
 
-This component handles expected-absent destinations. Replacement of existing
-managed files, expected-content digests, durable manifests and rollback remain
-transaction-controller responsibilities. Metadata checks and advisory locks do
-not make the entire namespace immutable against noncooperating writers.
+`tired_publication_replace` handles an expected-existing destination. It verifies
+the recorded before fingerprint and uses `RENAME_EXCHANGE` to atomically publish
+the prepared file while retaining the displaced inode at the temporary name.
+After syncing the directory it checks both bindings and the displaced fingerprint.
+The controller must first persist intent and verified rollback material.
+
+A foreign writer can race the before-check. If the displaced entry does not match,
+the call fails with `published=true` and retains both entries for recovery; it does
+not blindly exchange them back or delete either one. A retry verifies and syncs
+without another exchange. The expected fingerprint cannot change after exchange,
+and calling ordinary commit on an exchanged handle follows the same checks.
+Discard and destroy preserve the displaced file. Its eventual cleanup requires
+the transaction controller's ownership and retention checks.
+
+After successful exchange, the temporary name contains the before-state, so an
+artifact check against the after-state reports `different`. Recovery must interpret
+that observation with the journal and destination state. Managed-file deletion,
+reopening interrupted replacement handles and complete rollback remain controller
+work. Metadata checks and advisory locks do not make the entire namespace immutable
+against noncooperating writers.
 
 Native tests cover complete-byte visibility, modes, existing-file and dangling-link
 collisions, retry and discard semantics, replaced/modified staging, and injected
 sync failures before publication and after rename. Failure injection verifies
 state reporting and recovery branches; it is not power-loss qualification.
+Replacement tests cover before-state mismatch, retained displaced bytes, sync
+failure/retry, unchanged expectations and detection of displaced-file modification.

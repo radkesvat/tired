@@ -19,6 +19,8 @@ struct TiredPublication
     char temporary[64], name[256];
     struct stat prepared_identity;
     bool staged, ready, published, durable;
+    bool exchanged;
+    TiredFileFingerprint previous;
     unsigned mode;
 };
 static bool io_error(TiredError *error, const char *code, const char *message)
@@ -149,6 +151,8 @@ bool tired_publication_commit(TiredPublication *publication, const TiredOperatio
                               TiredError *error)
 {
     assert(publication != NULL && lock != NULL);
+    if (publication->exchanged)
+        return tired_publication_replace(publication, lock, &publication->previous, error);
     if (!publication->ready || (!publication->staged && !publication->published))
         return tired_error_set(error, TIRED_INVALID, "publication-not-ready",
                                "Publication is not prepared or was discarded.", 0);
@@ -167,6 +171,57 @@ bool tired_publication_commit(TiredPublication *publication, const TiredOperatio
     if (fsync(directory) != 0)
         return io_error(error, "publication-sync",
                         "File is published but directory durability is unknown.");
+    publication->durable = true;
+    tired_error_clear(error);
+    return true;
+}
+bool tired_publication_replace(TiredPublication *publication, const TiredOperationLock *lock,
+                               const TiredFileFingerprint *expected, TiredError *error)
+{
+    assert(publication != NULL && lock != NULL && expected != NULL);
+    if (!expected->exists || !publication->ready ||
+        (!publication->staged && !publication->published) ||
+        (publication->published && !publication->exchanged))
+        return tired_error_set(
+            error, TIRED_INVALID, "replacement-input",
+            "Replacement requires prepared staging and an existing before-state.", 0);
+    if (publication->exchanged && !tired_file_fingerprint_equal(expected, &publication->previous))
+        return tired_error_set(error, TIRED_CONFLICT, "replacement-expected",
+                               "Cannot change replacement expectations after publication.", 0);
+    TiredText encoded = {0};
+    bool valid = tired_file_fingerprint_encode(expected, &encoded, error);
+    tired_text_destroy(&encoded);
+    if (!valid || !tired_operation_lock_check(lock, error) || !binding(publication, true, error))
+        return false;
+    TiredFileFingerprint actual = {0};
+    int directory = tired_directory_fd(publication->directory);
+    if (!publication->exchanged)
+    {
+        if (!tired_file_fingerprint(publication->directory, publication->name,
+                                    (size_t)expected->size, &actual, error))
+            return false;
+        if (!tired_file_fingerprint_equal(expected, &actual))
+            return tired_error_set(error, TIRED_CONFLICT, "replacement-changed",
+                                   "Replacement destination differs from its before-state.", 0);
+        if (renameat2(directory, publication->temporary, directory, publication->name,
+                      RENAME_EXCHANGE) != 0)
+            return io_error(error, "replacement-exchange",
+                            "Cannot atomically exchange managed files.");
+        publication->previous = *expected;
+        publication->exchanged = publication->published = true;
+        publication->staged = false;
+    }
+    if (fsync(directory) != 0)
+        return io_error(error, "replacement-sync",
+                        "Files were exchanged but durability is unknown.");
+    if (!binding(publication, true, error) ||
+        !tired_file_fingerprint(publication->directory, publication->temporary,
+                                (size_t)expected->size, &actual, error))
+        return false;
+    if (!tired_file_fingerprint_equal(expected, &actual))
+        return tired_error_set(
+            error, TIRED_CONFLICT, "replacement-displaced",
+            "Displaced file differs from its before-state; recovery inspection is required.", 0);
     publication->durable = true;
     tired_error_clear(error);
     return true;

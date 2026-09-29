@@ -1,5 +1,6 @@
 #ifndef TIRED_PUBLICATION_H
 #define TIRED_PUBLICATION_H
+#include "tired/file_fingerprint.h"
 #include "tired/operation_lock.h"
 typedef struct TiredPublication TiredPublication;
 /* Stage <=16 MiB in the destination directory under a random exclusive name.
@@ -16,6 +17,15 @@ bool tired_publication_prepare(TiredDirectory *directory, const char *name, cons
  * Controller is responsible for matching the lock/directory to the selected scope. */
 bool tired_publication_commit(TiredPublication *publication, const TiredOperationLock *lock,
                               TiredError *error);
+/* Replace an existing expected file with RENAME_EXCHANGE, retaining its inode at
+ * temporary_name for recovery. Check expected fingerprint before and after the
+ * exchange; never automatically erase/restore the displaced entry. Foreign writers
+ * can race the check: a post-exchange conflict leaves published=true and requires
+ * recovery inspection. Retry validates both bindings and syncs, never exchanges
+ * again. Expected fingerprint cannot change after exchange. Caller must journal
+ * intent and retain verified rollback material before invoking this operation. */
+bool tired_publication_replace(TiredPublication *publication, const TiredOperationLock *lock,
+                               const TiredFileFingerprint *expected, TiredError *error);
 bool tired_publication_published(const TiredPublication *publication);
 bool tired_publication_durable(const TiredPublication *publication);
 const char *tired_publication_temporary_name(const TiredPublication *publication);

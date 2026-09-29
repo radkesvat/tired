@@ -34,6 +34,7 @@ int main(void)
 {
     int result = 1;
     char fixture[] = "publication-test-XXXXXX";
+    char displaced[64] = {0};
     char *created = NULL, *cwd = getcwd(NULL, 0);
     TiredText path = {0}, contents = {0};
     TiredDirectory *directory = NULL;
@@ -124,6 +125,36 @@ int main(void)
     CHECK(!tired_publication_commit(publication, lock, &error));
     CHECK(tired_publication_discard(publication, &error));
     CHECK(fstatat(fd, "prepare-failed", &status, 0) < 0);
+    tired_publication_destroy(publication);
+    publication = NULL;
+    TiredFileFingerprint before = {0}, mismatch = {0};
+    CHECK(tired_file_fingerprint(directory, "record", 100, &before, &error));
+    CHECK(tired_publication_prepare(directory, "record", "replacement", 11, 0600, &publication,
+                                    &error));
+    mismatch = before;
+    ++mismatch.inode;
+    CHECK(!tired_publication_replace(publication, lock, &mismatch, &error));
+    CHECK(!tired_publication_published(publication));
+    fail_sync_fd = fd;
+    CHECK(!tired_publication_replace(publication, lock, &before, &error));
+    CHECK(tired_publication_published(publication) && !tired_publication_durable(publication));
+    (void)snprintf(displaced, sizeof(displaced), "%s",
+                   tired_publication_temporary_name(publication));
+    CHECK(tired_publication_replace(publication, lock, &before, &error));
+    CHECK(tired_publication_durable(publication));
+    CHECK(tired_private_file_read(directory, "record", 100, &contents, &error));
+    CHECK(strcmp(contents.data, "replacement") == 0);
+    CHECK(tired_private_file_read(directory, displaced, 100, &contents, &error));
+    CHECK(strcmp(contents.data, "complete") == 0);
+    CHECK(tired_publication_commit(publication, lock, &error));
+    CHECK(!tired_publication_replace(publication, lock, &mismatch, &error));
+    CHECK(tired_publication_discard(publication, &error));
+    CHECK(fstatat(fd, displaced, &status, 0) == 0);
+    CHECK(fchmodat(fd, displaced, 0644, 0) == 0);
+    CHECK(!tired_publication_commit(publication, lock, &error));
+    CHECK(strcmp(error.code, "replacement-displaced") == 0);
+    CHECK(tired_private_file_read(directory, "record", 100, &contents, &error));
+    CHECK(strcmp(contents.data, "replacement") == 0);
     result = 0;
 cleanup:
     fail_sync_fd = -1;
@@ -134,6 +165,8 @@ cleanup:
     if (directory != NULL)
     {
         int cleanup_fd = tired_directory_fd(directory);
+        if (displaced[0] != '\0')
+            (void)unlinkat(cleanup_fd, displaced, 0);
         const char *files[] = {"record",  "unit.service", "saved",
                                "changed", "modified",     "operation.lock"};
         for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); ++i)
