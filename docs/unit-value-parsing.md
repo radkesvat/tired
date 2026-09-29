@@ -29,3 +29,29 @@ Tests cover source spans, empty words, quote concatenation, byte and Unicode esc
 renderer-token decoding, literal expansion syntax, malformed inputs, count/byte
 limits and failure preservation. Complete installed-file redaction and the `show`
 command remain separate integration work.
+
+`tired_unit_document_parse` supplies the logical assignment layer. It retains each
+section/key/value and every repeated or empty reset assignment in file order.
+Boundary whitespace is trimmed. CR, LF and paired CR/LF delimit physical lines;
+an odd run of trailing backslashes continues a line, replacing the final backslash
+with a space. Comment lines are skipped even during continuation. Blank lines end
+continuation, and an unfinished continuation at EOF is parsed after its trailing
+space is trimmed. A UTF-8 BOM is accepted before a section header.
+
+Each logical value byte has an original file offset. Ordinary bytes map directly;
+an inserted continuation space maps to its replaced backslash. Source offsets are
+strictly increasing but may skip newlines and comments. Combining those offsets
+with a decoded word's start/end yields a complete original span, including any
+continuation/comment bytes inside that word. No file rewrite occurs during parsing.
+
+The document layer accepts at most 4 MiB of source, 1 MiB per logical line,
+4096 assignments and 255 bytes per section/key. Empty/comment-only files have no
+assignments. Malformed headers, assignments outside sections, missing keys or
+equals signs, invalid UTF-8 and NUL fail atomically. This deliberately reports
+syntax it cannot safely map instead of reproducing the manager's warning-and-ignore
+behavior for malformed lines. It is not full semantic unit validation.
+
+Document tests cover continued quoted words across comments, exact source mapping,
+mixed line endings, escaped trailing backslashes, EOF/blank-line continuation,
+reset assignments, syntax failures and size/count limits. Classification of values,
+span replacement, installed-file reading and `show` integration are still pending.
