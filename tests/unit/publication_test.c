@@ -1,3 +1,4 @@
+#include "tired/file_retirement.h"
 #include "tired/io.h"
 #include "tired/private_file.h"
 #include "tired/publication.h"
@@ -184,6 +185,34 @@ int main(void)
     CHECK(!tired_publication_reopen(directory, "record", staging_uuid, &before, &after, lock,
                                     &publication, &error));
     CHECK(publication == NULL && error.status == TIRED_CONFLICT);
+    TiredFileRetirement retirement = {0};
+    CHECK(tired_file_fingerprint(directory, "record", 100, &after, &error));
+    mismatch = after;
+    ++mismatch.inode;
+    const char *retirement_uuid = "01234567-89ab-4cde-8fab-0123456789ab";
+    const char *retained = ".tired-01234567-89ab-4cde-8fab-0123456789ab.removed";
+    CHECK(!tired_file_retire(directory, "record", retirement_uuid, &mismatch, lock, &retirement,
+                             &error));
+    CHECK(!retirement.moved);
+    CHECK(tired_private_file_create(directory, retained, "collision", 9, &error));
+    CHECK(!tired_file_retire(directory, "record", retirement_uuid, &after, lock, &retirement,
+                             &error));
+    CHECK(!retirement.moved && unlinkat(fd, retained, 0) == 0);
+    fail_sync_fd = fd;
+    CHECK(!tired_file_retire(directory, "record", retirement_uuid, &after, lock, &retirement,
+                             &error));
+    CHECK(retirement.moved && !retirement.durable);
+    CHECK(
+        tired_file_retire(directory, "record", retirement_uuid, &after, lock, &retirement, &error));
+    CHECK(retirement.moved && retirement.durable);
+    CHECK(tired_private_file_read(directory, retained, 100, &contents, &error));
+    CHECK(strcmp(contents.data, "replacement") == 0);
+    CHECK(tired_private_file_create(directory, "record", "foreign", 7, &error));
+    CHECK(!tired_file_retire(directory, "record", retirement_uuid, &after, lock, &retirement,
+                             &error));
+    CHECK(!retirement.moved && error.status == TIRED_CONFLICT);
+    CHECK(tired_private_file_read(directory, "record", 100, &contents, &error));
+    CHECK(strcmp(contents.data, "foreign") == 0);
     result = 0;
 cleanup:
     fail_sync_fd = -1;
@@ -194,6 +223,7 @@ cleanup:
     if (directory != NULL)
     {
         int cleanup_fd = tired_directory_fd(directory);
+        (void)unlinkat(cleanup_fd, ".tired-01234567-89ab-4cde-8fab-0123456789ab.removed", 0);
         if (displaced[0] != '\0')
             (void)unlinkat(cleanup_fd, displaced, 0);
         const char *files[] = {"record",  "unit.service", "saved",

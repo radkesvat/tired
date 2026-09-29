@@ -46,8 +46,9 @@ the transaction controller's ownership and retention checks.
 
 After successful exchange, the temporary name contains the before-state, so an
 artifact check against the after-state reports `different`. Recovery must interpret
-that observation with the journal and destination state. Managed-file deletion
-and complete rollback remain controller work. Metadata checks and advisory locks do not make the entire namespace immutable
+that observation with the journal and destination state. File removal uses the
+separate retained-inode operation described in [file retirement](file-retirement.md).
+Complete rollback remains controller work. Metadata checks and advisory locks do not make the entire namespace immutable
 against noncooperating writers.
 
 Native tests cover complete-byte visibility, modes, existing-file and dangling-link
