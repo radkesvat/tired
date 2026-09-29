@@ -1,3 +1,4 @@
+#include "tired/config_frontend.h"
 #include "tired/encode.h"
 #include "tired/io.h"
 #include "tired/profile_frontend.h"
@@ -7,6 +8,13 @@
 
 bool tired_profiles_discover(const char *bundled_directory, bool user_scope,
                              TiredProfileCatalog *catalog, TiredError *error)
+{
+    return tired_profiles_discover_settings(bundled_directory, user_scope, NULL, catalog, error);
+}
+
+bool tired_profiles_discover_settings(const char *bundled_directory, bool user_scope,
+                                      const TiredSettings *settings, TiredProfileCatalog *catalog,
+                                      TiredError *error)
 {
     TiredProfileCatalog loaded = {0};
     TiredAccount account = {0};
@@ -18,6 +26,19 @@ bool tired_profiles_discover(const char *bundled_directory, bool user_scope,
         !tired_catalog_add_directory(&loaded, "/etc/tired/profiles.d", TIRED_PROFILE_ADMIN, 0, true,
                                      error))
         goto fail;
+    if (settings != NULL && settings->profile_directories.count != 0)
+    {
+        if (settings->origins[TIRED_SETTING_PROFILE_DIRECTORIES] != TIRED_SETTINGS_ADMIN)
+        {
+            tired_error_set(error, TIRED_INVALID, "profile-directory-authority",
+                            "Additional profile directories require administrator settings.", 0);
+            goto fail;
+        }
+        for (size_t i = 0; i < settings->profile_directories.count; ++i)
+            if (!tired_catalog_add_directory(&loaded, settings->profile_directories.items[i].data,
+                                             TIRED_PROFILE_ADMIN, 0, false, error))
+                goto fail;
+    }
     if (user_scope)
     {
         if (!tired_account_by_uid(getuid(), &account, error))
@@ -32,12 +53,27 @@ bool tired_profiles_discover(const char *bundled_directory, bool user_scope,
                                 "User configuration directory must be absolute.", 0);
                 goto fail;
             }
-            if (!tired_buffer_append(&path, xdg, size, error))
+            while (size > 1 && xdg[size - 1] == '/')
+                --size;
+            if (size > 1 && !tired_buffer_append(&path, xdg, size, error))
                 goto fail;
         }
-        else if (!tired_buffer_append(&path, account.home.data, account.home.length, error) ||
-                 !tired_buffer_append(&path, "/.config", 8, error))
-            goto fail;
+        else
+        {
+            if (account.home.length == 0 || account.home.data[0] != '/')
+            {
+                tired_error_set(error, TIRED_INVALID, "profile-home",
+                                "Account home directory must be absolute for profile discovery.",
+                                0);
+                goto fail;
+            }
+            size_t size = account.home.length;
+            while (size > 0 && account.home.data[size - 1] == '/')
+                --size;
+            if (!tired_buffer_append(&path, account.home.data, size, error) ||
+                !tired_buffer_append(&path, "/.config", 8, error))
+                goto fail;
+        }
         if (!tired_buffer_append(&path, "/tired/profiles.d", sizeof("/tired/profiles.d") - 1,
                                  error) ||
             !tired_buffer_take(&path, &directory, error) ||
@@ -119,6 +155,7 @@ bool tired_profiles_command(const TiredRequest *request, const char *bundled_dir
         return tired_error_set(error, TIRED_INVALID, "profiles-arguments",
                                "Wrong number of profile command arguments.", 0);
     TiredProfileCatalog catalog = {0};
+    TiredSettings settings = {0};
     TiredProfile profile = {0};
     TiredText contents = {0}, escaped = {0};
     TiredBuffer buffer;
@@ -151,7 +188,8 @@ bool tired_profiles_command(const TiredRequest *request, const char *bundled_dir
     else
     {
         bool user = tired_spec_choice_is(&request->overrides, TIRED_FIELD_SCOPE, "user");
-        if (!tired_profiles_discover(bundled_directory, user, &catalog, error))
+        if (!tired_config_discover(request, &settings, error) ||
+            !tired_profiles_discover_settings(bundled_directory, user, &settings, &catalog, error))
             goto fail;
         if (show)
         {
@@ -235,6 +273,7 @@ bool tired_profiles_command(const TiredRequest *request, const char *bundled_dir
         }
     }
     tired_profile_destroy(&profile);
+    tired_settings_destroy(&settings);
     tired_catalog_destroy(&catalog);
     tired_text_destroy(&contents);
     tired_text_destroy(&escaped);
@@ -248,6 +287,7 @@ allocation:
                     0);
 fail:
     tired_profile_destroy(&profile);
+    tired_settings_destroy(&settings);
     tired_catalog_destroy(&catalog);
     tired_text_destroy(&contents);
     tired_text_destroy(&escaped);

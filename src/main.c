@@ -155,7 +155,8 @@ int main(int argc, char **argv)
         bool user = tired_spec_choice_is(&plan.spec, TIRED_FIELD_SCOPE, "user");
         TiredProfileContext context = {
             .systemd_version = 249}; /* Declared offline target, not a host observation. */
-        if (!tired_profiles_discover(TIRED_BUNDLED_PROFILE_DIRECTORY, user, &catalog, &error) ||
+        if (!tired_profiles_discover_settings(TIRED_BUNDLED_PROFILE_DIRECTORY, user, &settings,
+                                              &catalog, &error) ||
             !tired_plan_apply_profiles(&plan, &catalog, request.profile.data, &context, &error))
             goto failed;
     }

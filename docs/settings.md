@@ -79,6 +79,15 @@ from the resulting policy. Explicit inheritance is preserved like other user
 choices. The low-level generic planning API remains independent of discovery;
 the settings-aware API accepts an already merged configuration.
 
-Approved profile directories and the presentation, history, log-tail and observation
-settings still need integration into their respective operations. Config show
-reports their effective defaults without claiming those consumers are complete.
+The `profile_directories` administrator setting adds locations after bundled and
+standard administrator profiles, before user-scope profiles. Plans with profile
+matching and `profiles list/show` use those locations. Every configured directory
+must exist and pass root ownership and writable-ancestor checks; its files retain
+administrator origin and content digests. Duplicate IDs fail explicitly, including
+duplicates caused by listing the same location twice. An empty list adds no extra
+locations; it does not disable bundled or standard discovery. User settings cannot
+add these roots. `profiles validate FILE` remains independent of settings discovery.
+
+Presentation, history, log-tail and observation settings still need integration into
+their respective operations. Config show reports their effective defaults without
+claiming those consumers are complete.

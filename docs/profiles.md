@@ -137,3 +137,9 @@ Development binaries use their configured install prefix for bundled data. Run
 `cmake --install build/<preset>` to stage the executable and profiles. No source-tree
 or current-directory fallback is compiled into production. `profiles validate FILE`
 and `plan --profile none` work without installed bundled data.
+
+Plans with matching enabled and `profiles list/show` also load additional directories
+from administrator [settings](settings.md). Those directories must exist and pass
+root ownership and permission checks; they do not weaken duplicate-ID rejection or
+grant user profiles system trust. Discovery preserves the prior catalog if any
+location fails. Standalone file validation does not load installed settings.

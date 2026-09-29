@@ -1,5 +1,6 @@
 #include "tired/catalog.h"
 #include "tired/io.h"
+#include "tired/profile_frontend.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +22,7 @@ int main(int argc, char **argv)
     char fixture[] = "catalog-test-XXXXXX";
     char *created = NULL, *cwd = NULL;
     TiredProfileCatalog catalog = {0}, local = {0};
+    TiredSettings settings = {0};
     TiredError error = {0};
     TiredText executable = {0}, directory = {0}, path = {0}, source = {0};
     struct json_object *doc = NULL;
@@ -81,6 +83,33 @@ int main(int argc, char **argv)
     CHECK(tired_path_absolute(&directory, "missing", 7, &path, &error));
     CHECK(
         tired_catalog_add_directory(&local, path.data, TIRED_PROFILE_USER, getuid(), true, &error));
+    tired_settings_defaults(&settings);
+    CHECK(tired_text_list_append(&settings.profile_directories, directory.data, directory.length,
+                                 16, 65536, &error));
+    settings.supplied[TIRED_SETTING_PROFILE_DIRECTORIES] = true;
+    settings.origins[TIRED_SETTING_PROFILE_DIRECTORIES] = TIRED_SETTINGS_USER;
+    CHECK(!tired_profiles_discover_settings(argv[1], false, &settings, &local, &error));
+    CHECK(strcmp(error.code, "profile-directory-authority") == 0);
+    settings.origins[TIRED_SETTING_PROFILE_DIRECTORIES] = TIRED_SETTINGS_ADMIN;
+    if (getuid() == 0)
+    {
+        CHECK(tired_profiles_discover_settings(argv[1], false, &settings, &local, &error));
+        CHECK(local.count == 5);
+        CHECK(tired_catalog_select(&local, &executable, "alternate", false, &selected, &matches,
+                                   &error));
+        CHECK(selected != NULL && selected->origin == TIRED_PROFILE_ADMIN);
+        CHECK(strcmp(selected->profile.id, "alternate") == 0);
+        CHECK(chmod("alternate.json", 0666) == 0);
+        CHECK(!tired_profiles_discover_settings(argv[1], false, &settings, &local, &error));
+        CHECK(local.count == 5);
+        CHECK(chmod("alternate.json", 0600) == 0);
+        CHECK(tired_text_list_append(&settings.profile_directories, path.data, path.length, 16,
+                                     65536, &error));
+        CHECK(!tired_profiles_discover_settings(argv[1], false, &settings, &local, &error));
+        CHECK(local.count == 5);
+    }
+    else
+        CHECK(!tired_profiles_discover_settings(argv[1], false, &settings, &local, &error));
     result = 0;
 cleanup:
     if (created != NULL && original >= 0)
@@ -106,5 +135,6 @@ cleanup:
     tired_text_destroy(&source);
     tired_catalog_destroy(&catalog);
     tired_catalog_destroy(&local);
+    tired_settings_destroy(&settings);
     return result;
 }
