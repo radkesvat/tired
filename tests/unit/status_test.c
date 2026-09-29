@@ -78,6 +78,62 @@ int main(void)
               NULL);
     }
     CHECK(!json_object_object_get_ex(document, "spec", &value));
+    struct json_object *lingering = NULL;
+    CHECK(json_object_object_get_ex(document, "lingering", &lingering));
+    CHECK(json_object_object_get_ex(lingering, "state", &value) &&
+          strcmp(json_object_get_string(value), "unknown") == 0);
+    CHECK(!json_object_object_get_ex(lingering, "enabled", &value));
+    for (unsigned scenario = 0; scenario < 3; ++scenario)
+    {
+        view.linger = (TiredLingerObservation){
+            .attempted = true,
+            .completed_realtime_usec = 999,
+            .result = {.done = true, .known = true, .enabled = scenario != 0, .uid = 1000}};
+        if (scenario == 2)
+            tired_error_set(&view.linger.result.error, TIRED_AUTHORIZATION, "account-denied",
+                            "Account access denied.", 0);
+        CHECK(tired_status_output(&view, true, false, &output, &status, &error) &&
+              status == TIRED_OK);
+        CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &document, &error));
+        CHECK(json_object_object_get_ex(document, "lingering", &lingering));
+        CHECK(json_object_object_get_ex(lingering, "uid", &value) &&
+              json_object_get_uint64(value) == 1000);
+        CHECK(json_object_object_get_ex(lingering, "state", &value) &&
+              strcmp(json_object_get_string(value), scenario == 0   ? "disabled"
+                                                    : scenario == 1 ? "enabled"
+                                                                    : "unknown") == 0);
+        if (scenario < 2)
+        {
+            CHECK(json_object_object_get_ex(lingering, "enabled", &value) &&
+                  json_object_get_type(value) == json_type_boolean &&
+                  json_object_get_boolean(value) == (scenario == 1));
+            CHECK(json_object_object_get_ex(lingering, "completed_realtime_usec", &value) &&
+                  json_object_get_uint64(value) == 999);
+        }
+        else
+        {
+            CHECK(!json_object_object_get_ex(lingering, "enabled", &value));
+            CHECK(!json_object_object_get_ex(lingering, "completed_realtime_usec", &value));
+            CHECK(json_object_object_get_ex(lingering, "error", &value));
+        }
+        CHECK(tired_status_output(&view, false, false, &output, &status, &error));
+        CHECK(strstr(output.data, scenario == 0   ? "User lingering: disabled"
+                                  : scenario == 1 ? "User lingering: enabled"
+                                                  : "User lingering: unknown") != NULL);
+        if (scenario != 1)
+            CHECK(strstr(output.data, "service enablement alone") != NULL);
+    }
+    view.user_scope = false;
+    CHECK(tired_status_output(&view, true, false, &output, &status, &error));
+    CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &document, &error));
+    CHECK(!json_object_object_get_ex(document, "lingering", &value));
+    view.user_scope = true;
+    view.linger = (TiredLingerObservation){0};
+    TiredLingerObservation invalid_observation = {0};
+    tired_linger_observe(0, &invalid_observation);
+    CHECK(invalid_observation.attempted && invalid_observation.result.done &&
+          !invalid_observation.result.known &&
+          invalid_observation.result.error.status == TIRED_INVALID);
     TiredText dropins[] = {
         {.data = "/etc/systemd/system/relay.service.d/custom.conf", .length = 47}};
     observation.fields[TIRED_OBS_DROP_IN_PATHS] =

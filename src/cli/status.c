@@ -55,6 +55,8 @@ bool tired_status_command(const TiredRequest *request, TiredText *output, TiredS
     }
     tired_inspection_live_collect(view.user_scope, &names, &live);
     view.live = tired_inspection_live_item(&live, 0);
+    if (view.user_scope)
+        tired_linger_observe(2000, &view.linger);
     ok = tired_status_output(&view, request->json, request->check_active, output, result, error);
 done:
     tired_inspection_live_destroy(&live);

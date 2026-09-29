@@ -10,6 +10,19 @@ tired status relay --check-active
 starts, loads, reloads, adopts or repairs a service. System scope is the default;
 `--user` selects the invoking user's manager and XDG state/configuration locations.
 
+User-scope status also observes the invoking account's [lingering](lingering.md)
+through the system login manager. Text displays enabled, disabled, or unknown and
+explains that service enablement alone does not establish startup independently of
+login. JSON includes a separate `lingering` object with state, attempted status,
+account UID, a boolean when known, and successful-observation completion time.
+Unavailable observations include an error code and omit the boolean. System-scope
+status does not perform or display this account query.
+
+The account query has a separate two-second deadline. Its availability does not
+change the service query's exit status or `--check-active` semantics; the dedicated
+account diagnostic remains visible. Lingering is not a workload-health check and
+status never enables or disables it.
+
 The report separates current record presence, unit/environment file comparison,
 pending transactions, manager fragment agreement and live observations. A copied
 unit comment does not establish ownership. A missing or unreadable record remains

@@ -85,6 +85,10 @@ bool tired_status_output(const TiredStatusView *view, bool json, bool check_acti
     tired_buffer_init(&buffer, TIRED_INPUT_LIMIT);
     struct json_object *document = NULL;
     bool ok = false;
+    bool linger_known = view->linger.attempted && view->linger.result.done &&
+                        view->linger.result.known && view->linger.result.error.status == TIRED_OK;
+    const char *linger_state =
+        linger_known ? (view->linger.result.enabled ? "enabled" : "disabled") : "unknown";
     if (json)
     {
         document = json_object_new_object();
@@ -99,6 +103,28 @@ bool tired_status_output(const TiredStatusView *view, bool json, bool check_acti
             !add(document, "fragment", json_object_new_string(fragment)) ||
             !add(document, "live", tired_inspection_live_json(&view->live)))
             goto allocation;
+        if (view->user_scope)
+        {
+            struct json_object *linger = json_object_new_object();
+            bool built =
+                linger != NULL && add(linger, "state", json_object_new_string(linger_state)) &&
+                add(linger, "attempted", json_object_new_boolean(view->linger.attempted)) &&
+                (!view->linger.attempted ||
+                 add(linger, "uid", json_object_new_uint64(view->linger.result.uid))) &&
+                (!linger_known ||
+                 (add(linger, "enabled", json_object_new_boolean(view->linger.result.enabled)) &&
+                  add(linger, "completed_realtime_usec",
+                      json_object_new_uint64(view->linger.completed_realtime_usec)))) &&
+                (view->linger.result.error.code == NULL ||
+                 add(linger, "error", json_object_new_string(view->linger.result.error.code)));
+            if (!built)
+            {
+                json_object_put(linger);
+                goto allocation;
+            }
+            if (!add(document, "lingering", linger))
+                goto allocation;
+        }
         if (view->record != NULL)
         {
             if (!add(document, "service_uuid",
@@ -124,8 +150,30 @@ bool tired_status_output(const TiredStatusView *view, bool json, bool check_acti
     else
     {
         if (!line(&buffer, "Unit", view->unit_name, error) ||
-            !line(&buffer, "Scope", view->user_scope ? "user" : "system", error) ||
-            !line(&buffer, "Record", record_state, error) ||
+            !line(&buffer, "Scope", view->user_scope ? "user" : "system", error))
+            goto done;
+        if (view->user_scope)
+        {
+            if (!line(&buffer, "User lingering", linger_state, error))
+                goto done;
+            if (linger_known && view->linger.result.enabled)
+            {
+                if (!line(&buffer, "Account startup",
+                          "user manager may start at boot and remain after logout; workload health "
+                          "is not verified",
+                          error))
+                    goto done;
+            }
+            else if (!line(
+                         &buffer, "Account startup",
+                         "service enablement alone does not establish startup independent of login",
+                         error))
+                goto done;
+            if (view->linger.result.error.message != NULL &&
+                !line(&buffer, "Account observation", view->linger.result.error.message, error))
+                goto done;
+        }
+        if (!line(&buffer, "Record", record_state, error) ||
             !line(&buffer, "Transactions", transaction, error) ||
             !line(&buffer, "Fragment agreement", fragment, error))
             goto done;

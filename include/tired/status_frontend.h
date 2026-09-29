@@ -1,6 +1,7 @@
 #ifndef TIRED_STATUS_FRONTEND_H
 #define TIRED_STATUS_FRONTEND_H
 #include "tired/cli.h"
+#include "tired/linger_observation.h"
 #include "tired/service_files.h"
 #include "tired/unit_batch.h"
 /* Borrowed inputs, valid for the complete rendering call. A NULL record requires
@@ -15,6 +16,7 @@ typedef struct
     bool transaction_pending;
     TiredServiceFiles files;
     TiredUnitBatchItem live;
+    TiredLingerObservation linger;
 } TiredStatusView;
 /* Pure display and exit semantics, no filesystem or manager calls. Outputs are
  * atomic. Contains no argv, environment values, credentials or private model. */

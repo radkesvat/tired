@@ -1,4 +1,5 @@
 #include "../../src/cli/inspection_live.h"
+#include "tired/linger_observation.h"
 #include "tired/linger_query.h"
 #include "tired/load_paths.h"
 #include "tired/manager.h"
@@ -173,6 +174,21 @@ int main(void)
     else if (error.status == TIRED_NOT_FOUND || error.status == TIRED_AUTHORIZATION)
         printf("Login-manager observation unavailable: %s\n", error.code);
     else
+        goto done;
+    TiredLingerObservation account_observation;
+    tired_linger_observe(2000, &account_observation);
+    error = account_observation.result.error;
+    if (!account_observation.attempted || !account_observation.result.done ||
+        account_observation.result.uid != getuid())
+        goto done;
+    if (account_observation.result.known)
+    {
+        if (error.status != TIRED_OK || account_observation.completed_realtime_usec == 0)
+            goto done;
+        printf("Frontend account observation completed.\n");
+    }
+    else if (error.status != TIRED_NOT_FOUND && error.status != TIRED_UNSUPPORTED &&
+             error.status != TIRED_AUTHORIZATION)
         goto done;
     result = 0;
 done:

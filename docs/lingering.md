@@ -22,7 +22,16 @@ Lingering lets the user's manager start at boot and remain after logout. Enabled
 service files alone do not establish that account-level behavior. Even known
 lingering does not prove that a particular workload is healthy or will start
 successfully. This query never calls `SetUserLinger` or changes account state.
-Frontend display and explicitly authorized lingering enablement are separate work.
+User-service status displays this observation. Explicitly authorized lingering
+enablement remains separate work.
+
+The CLI observation driver queries only the invoking account through the system
+bus, without depending on a user runtime-directory path. It uses one two-second
+deadline for login-manager discovery and account reads, separately from service
+manager observation. A successful observation records its completion time. The
+underlying asynchronous API remains available for a terminal event loop; the CLI
+driver itself waits synchronously. Filesystem/transport setup is not a hard
+real-time operation, and late results are rejected by the deadline checks.
 
 Broker fixtures cover the three-stage protocol, pinned destination and request
 flags, true/false, account absence/mismatch/disappearance, malformed replies,
