@@ -108,3 +108,33 @@ controller must still validate the full approved plan and distinguish runtime
 failure from installation failure. Native tests cover unresolved starts, invalid
 commit attempts, matching reconciliation outcomes, inverse-action journaling,
 terminal boundaries and invalid transitions injected directly into stored history.
+
+## Pending transaction inventory
+
+The inventory reads `<transaction-uuid>/journal` entries below a validated private
+transactions root, without creating or removing anything. It sorts entries by raw
+directory name and retains per-entry diagnostics, so one invalid transaction does
+not hide valid neighbors. Raw names must be escaped before terminal/JSON display.
+The directory name must match the canonical UUID in its first record and the
+record's scope must match the scope being inspected.
+
+A structurally valid nonterminal journal reserves its unit name. Committed and
+rolled-back journals do not reserve names. Missing/empty/corrupt journals, scope
+or identity mismatches, unexplained staging and exhausted scan budgets make the
+inventory incomplete. The reservation accessor rejects an incomplete inventory
+with recovery-required; partial results must never establish name availability.
+Pending renames also remain incomplete until manifest loading supplies both names.
+The single progress-envelope name is insufficient for that operation.
+
+Discovery accepts at most 1024 transaction entries and a 16,384-record work budget.
+Before reading another journal it reserves room for that journal's full 4096-record
+bound; a successful read charges its actual count, while a failed read charges the
+full bound. Exhausted entries retain a diagnostic. Root namespace changes observed
+during discovery reject the snapshot. This is not an atomic snapshot against
+noncooperating edits inside previously read journals: commit must rescan under the
+scope lock and verify manifests and actual state.
+
+Tests cover empty inventories, unfinished-name reservations, terminal exclusion,
+scope mismatch, missing/empty neighboring journals and the refusal to treat an
+unfinished rename's single name as a complete reservation inventory. CLI routing,
+manifest loading and recovery choices remain controller work.
