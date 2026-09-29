@@ -160,6 +160,17 @@ bool tired_status_output(const TiredStatusView *view, bool json, bool check_acti
                 char number[32];
                 if (value != NULL && value->known)
                 {
+                    if (field->type == TIRED_OBS_TEXT_LIST)
+                    {
+                        if (value->value.list.count == 0 &&
+                            !line(&buffer, field->property, "none", error))
+                            goto done;
+                        for (size_t j = 0; j < value->value.list.count; ++j)
+                            if (!line(&buffer, field->property, value->value.list.items[j].data,
+                                      error))
+                                goto done;
+                        continue;
+                    }
                     if (field->type == TIRED_OBS_TEXT)
                         display = value->value.text.data;
                     else

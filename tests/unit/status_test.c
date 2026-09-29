@@ -57,7 +57,31 @@ int main(void)
     CHECK(json_object_object_get_ex(properties, "MainPID", &value) &&
           json_object_get_int(value) == 0);
     CHECK(!json_object_object_get_ex(properties, "Result", &value));
+    CHECK(!json_object_object_get_ex(properties, "DropInPaths", &value));
     CHECK(!json_object_object_get_ex(document, "spec", &value));
+    TiredText dropins[] = {
+        {.data = "/etc/systemd/system/relay.service.d/custom.conf", .length = 47}};
+    observation.fields[TIRED_OBS_DROP_IN_PATHS] =
+        (TiredObservedValue){.known = true, .value.list = {.items = dropins, .count = 1}};
+    dropins[0].length = strlen(dropins[0].data);
+    CHECK(tired_status_output(&view, true, false, &output, &status, &error));
+    CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &document, &error));
+    CHECK(json_object_object_get_ex(document, "live", &live) &&
+          json_object_object_get_ex(live, "properties", &properties) &&
+          json_object_object_get_ex(properties, "DropInPaths", &value) &&
+          json_object_array_length(value) == 1);
+    CHECK(tired_status_output(&view, false, false, &output, &status, &error));
+    CHECK(strstr(output.data, "DropInPaths: /etc/systemd/system/relay.service.d/custom.conf") !=
+          NULL);
+    observation.fields[TIRED_OBS_DROP_IN_PATHS].value.list.count = 0;
+    CHECK(tired_status_output(&view, false, false, &output, &status, &error));
+    CHECK(strstr(output.data, "DropInPaths: none") != NULL);
+    CHECK(tired_status_output(&view, true, false, &output, &status, &error));
+    CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &document, &error));
+    CHECK(json_object_object_get_ex(document, "live", &live) &&
+          json_object_object_get_ex(live, "properties", &properties) &&
+          json_object_object_get_ex(properties, "DropInPaths", &value) &&
+          json_object_array_length(value) == 0);
     CHECK(tired_status_output(&view, true, true, &output, &status, &error));
     CHECK(status == TIRED_RUNTIME_FAILED && strstr(output.data, "\"exit_code\":7") != NULL);
     observation.fields[TIRED_OBS_ACTIVE_STATE].value.text =

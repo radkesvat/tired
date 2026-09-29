@@ -97,6 +97,10 @@ static bool row_text(TiredBuffer *buffer, struct json_object *row, TiredError *e
         if (value != NULL && (!text(buffer, "  ", error) || !cell(buffer, value, error)))
             return false;
     }
+    struct json_object *dropins = member(properties, "DropInPaths");
+    if (dropins != NULL && json_object_array_length(dropins) != 0 &&
+        !text(buffer, "  drop-ins=present", error))
+        return false;
     return text(buffer, "\n", error);
 }
 bool tired_list_command(const TiredRequest *request, TiredText *output, TiredStatus *result,

@@ -65,6 +65,9 @@ static int properties(sd_bus_message *request, Broker *broker)
         rc = sd_bus_message_append(message, "{sv}", "Id", "s", "fixture.service");
     if (rc >= 0 && !service)
         rc = sd_bus_message_append(message, "{sv}", "ActiveState", "s", "active");
+    if (rc >= 0 && !service)
+        rc = sd_bus_message_append(message, "{sv}", "DropInPaths", "as", 1,
+                                   "/etc/systemd/system/fixture.service.d/custom.conf");
     if (rc >= 0)
         rc = sd_bus_message_close_container(message);
     if (rc >= 0)
@@ -729,9 +732,14 @@ int main(void)
                             CHECK(item.query.error.status == TIRED_AUTHORIZATION &&
                                   item.query.observation == NULL);
                         else
+                        {
                             CHECK(item.query.error.status == TIRED_OK && item.query.object_found &&
                                   item.query.observation->fields[TIRED_OBS_MAIN_PID]
                                           .value.unsigned_value == 42);
+                            CHECK(item.query.observation->fields[TIRED_OBS_DROP_IN_PATHS].known &&
+                                  item.query.observation->fields[TIRED_OBS_DROP_IN_PATHS]
+                                          .value.list.count == 1);
+                        }
                     }
                 }
                 if (batch_case != 3)

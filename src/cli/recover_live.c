@@ -162,13 +162,32 @@ struct json_object *tired_recover_live_json(const TiredUnitBatchItem *item)
             if (!value->known)
                 continue;
             const TiredObservationField *field = tired_observation_field((TiredObservationId)i);
-            struct json_object *encoded =
-                field->type == TIRED_OBS_TEXT
-                    ? json_object_new_string_len(value->value.text.data,
-                                                 (int)value->value.text.length)
-                : field->type == TIRED_OBS_I32
-                    ? json_object_new_int64(value->value.signed_value)
-                    : json_object_new_uint64(value->value.unsigned_value);
+            struct json_object *encoded = NULL;
+            if (field->type == TIRED_OBS_TEXT_LIST)
+            {
+                encoded = json_object_new_array();
+                if (encoded == NULL)
+                    goto failed;
+                for (size_t j = 0; j < value->value.list.count; ++j)
+                {
+                    const TiredText *path = &value->value.list.items[j];
+                    struct json_object *element =
+                        json_object_new_string_len(path->data, (int)path->length);
+                    if (element == NULL || json_object_array_add(encoded, element) != 0)
+                    {
+                        json_object_put(element);
+                        json_object_put(encoded);
+                        goto failed;
+                    }
+                }
+            }
+            else
+                encoded = field->type == TIRED_OBS_TEXT
+                              ? json_object_new_string_len(value->value.text.data,
+                                                           (int)value->value.text.length)
+                          : field->type == TIRED_OBS_I32
+                              ? json_object_new_int64(value->value.signed_value)
+                              : json_object_new_uint64(value->value.unsigned_value);
             if (!add(properties, field->property, encoded))
                 goto failed;
         }

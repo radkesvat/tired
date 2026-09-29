@@ -13,6 +13,7 @@ default values that could imply success.
 | Interface | Fields and wire types |
 | --- | --- |
 | Unit | Id, LoadState, ActiveState, SubState, UnitFileState, FragmentPath: strings |
+| Unit | DropInPaths: ordered array of strings |
 | Unit | ActiveEnter/ExitTimestamp and InactiveEnter/ExitTimestamp, including each Monotonic counterpart: unsigned 64-bit |
 | Service | Result: string; MainPID and NRestarts: unsigned 32-bit |
 | Service | ExecMainCode and ExecMainStatus: signed 32-bit |
@@ -21,6 +22,15 @@ default values that could imply success.
 These types follow the baseline manager interfaces. Timestamps retain native
 microseconds and their wall-clock/monotonic distinction. State strings are retained
 without assuming that the vocabulary will never grow.
+
+Drop-in paths retain manager order and are copied into owned storage. A known empty
+array differs from an absent property. The decoder accepts at most 256 absolute
+paths, each at most 4096 bytes, with a 256 KiB combined budget including terminators.
+Invalid text, relative paths, wrong wire types and excessive lists fail atomically.
+An update to Service properties deep-copies the existing Unit path array; partial
+decode/copy failures release all newly owned items. Paths are observations, not
+permission to read, edit or delete those files. They do not prove disk contents or
+effective directive values.
 
 Decoding replaces the selected interface's fields as a group, clearing properties
 absent from the new response. It preserves the other interface's existing values.

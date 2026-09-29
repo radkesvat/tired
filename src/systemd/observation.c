@@ -26,7 +26,8 @@ static const TiredObservationField fields[TIRED_OBS_COUNT] = {
     {"ExecMainStartTimestamp", TIRED_OBSERVE_SERVICE, TIRED_OBS_U64},
     {"ExecMainStartTimestampMonotonic", TIRED_OBSERVE_SERVICE, TIRED_OBS_U64},
     {"ExecMainExitTimestamp", TIRED_OBSERVE_SERVICE, TIRED_OBS_U64},
-    {"ExecMainExitTimestampMonotonic", TIRED_OBSERVE_SERVICE, TIRED_OBS_U64}};
+    {"ExecMainExitTimestampMonotonic", TIRED_OBSERVE_SERVICE, TIRED_OBS_U64},
+    {"DropInPaths", TIRED_OBSERVE_UNIT, TIRED_OBS_TEXT_LIST}};
 const TiredObservationField *tired_observation_field(TiredObservationId id)
 {
     return (unsigned)id < TIRED_OBS_COUNT ? &fields[id] : NULL;
@@ -38,6 +39,8 @@ void tired_observation_destroy(TiredUnitObservation *observation)
     for (unsigned i = 0; i < TIRED_OBS_COUNT; ++i)
         if (observation->fields[i].known && fields[i].type == TIRED_OBS_TEXT)
             tired_text_destroy(&observation->fields[i].value.text);
+        else if (observation->fields[i].known && fields[i].type == TIRED_OBS_TEXT_LIST)
+            tired_text_list_destroy(&observation->fields[i].value.list);
     *observation = (TiredUnitObservation){0};
 }
 static bool protocol(TiredError *error)
@@ -49,7 +52,7 @@ static bool protocol(TiredError *error)
 static bool read_value(sd_bus_message *message, unsigned id, TiredObservedValue *value,
                        TiredError *error)
 {
-    static const char *signatures[] = {"s", "u", "i", "t"};
+    static const char *signatures[] = {"s", "u", "i", "t", "as"};
     const char *signature = signatures[fields[id].type];
     if (sd_bus_message_enter_container(message, SD_BUS_TYPE_VARIANT, signature) <= 0)
         return protocol(error);
@@ -65,6 +68,30 @@ static bool read_value(sd_bus_message *message, unsigned id, TiredObservedValue 
             return protocol(error);
         if (!tired_text_set(&value->value.text, text, length, limit, error))
             return false;
+        rc = 1;
+    }
+    else if (fields[id].type == TIRED_OBS_TEXT_LIST)
+    {
+        if (sd_bus_message_enter_container(message, SD_BUS_TYPE_ARRAY, "s") <= 0)
+            return protocol(error);
+        value->known = true; /* Partial list owns allocations even if a later item fails. */
+        for (;;)
+        {
+            const char *path = NULL;
+            rc = sd_bus_message_read_basic(message, 's', &path);
+            if (rc < 0)
+                return protocol(error);
+            if (rc == 0)
+                break;
+            size_t length = strnlen(path, 4097);
+            if (length == 0 || length > 4096 || path[0] != '/' ||
+                !tired_validate_text(path, length, true, error))
+                return protocol(error);
+            if (!tired_text_list_append(&value->value.list, path, length, 256, 256U * 1024U, error))
+                return false;
+        }
+        if (sd_bus_message_exit_container(message) < 0)
+            return protocol(error);
         rc = 1;
     }
     else if (fields[id].type == TIRED_OBS_I32)
@@ -110,6 +137,15 @@ bool tired_observation_read(sd_bus_message *message, TiredObservationInterface i
                                 error))
                 goto done;
             result.fields[i].known = true;
+        }
+        else if (fields[i].type == TIRED_OBS_TEXT_LIST)
+        {
+            result.fields[i].known = true;
+            const TiredTextList *list = &observation->fields[i].value.list;
+            for (size_t j = 0; j < list->count; ++j)
+                if (!tired_text_list_append(&result.fields[i].value.list, list->items[j].data,
+                                            list->items[j].length, 256, 256U * 1024U, error))
+                    goto done;
         }
         else
             result.fields[i] = observation->fields[i];

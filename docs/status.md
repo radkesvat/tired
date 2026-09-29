@@ -25,6 +25,10 @@ and shown as unknown in text; a known zero is retained. Text escapes terminal
 controls. The report does not expose captured argv, environment values, credentials
 or the private saved model.
 
+`DropInPaths` reports the manager's ordered list of additional unit configuration
+files. Text repeats the label for each path, or shows `none` for a known empty list.
+An absent property remains unknown. Status does not read or adopt these files.
+
 A valid ordinary query returns 0 even for failed, inactive or missing installed
 services. `--check-active` returns 7 unless the service is observed in `active`
 state; this includes active oneshot services whose work has completed. It does not
@@ -36,7 +40,7 @@ they remain explicit in the report.
 
 Disk and manager observations happen at different instants. Fragment agreement is
 a lexical comparison with the recorded destination. It does not prove loaded bytes
-match disk, enumerate effective drop-ins, prove lingering/boot guarantees or
+match disk, interpret drop-in directives, prove lingering/boot guarantees or
 authorize a mutation. Those checks and richer installation diagnostics remain
 under implementation. Status reads no cached live state and performs no automatic
 elevation when private system records are inaccessible.

@@ -12,7 +12,8 @@ typedef enum
     TIRED_OBS_TEXT,
     TIRED_OBS_U32,
     TIRED_OBS_I32,
-    TIRED_OBS_U64
+    TIRED_OBS_U64,
+    TIRED_OBS_TEXT_LIST
 } TiredObservationType;
 typedef enum
 {
@@ -39,6 +40,7 @@ typedef enum
     TIRED_OBS_EXEC_START_MONOTONIC,
     TIRED_OBS_EXEC_EXIT,
     TIRED_OBS_EXEC_EXIT_MONOTONIC,
+    TIRED_OBS_DROP_IN_PATHS,
     TIRED_OBS_COUNT
 } TiredObservationId;
 typedef struct
@@ -53,6 +55,7 @@ typedef struct
     union
     {
         TiredText text;
+        TiredTextList list;
         uint64_t unsigned_value;
         int64_t signed_value;
     } value;

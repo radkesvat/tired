@@ -38,6 +38,7 @@ returns zero without opening a manager connection. Pending transactions are expl
 states; they do not alone make read-only listing fail. An inaccessible records root
 fails with its trust/access diagnostic rather than claiming an empty inventory.
 
-Listing inherits status's current limits: it does not enumerate effective drop-ins,
-prove loaded bytes equal disk, or report account lingering. Run-as identity is the
+JSON includes manager-reported drop-in paths; text flags nonempty lists with
+`drop-ins=present`. Listing inherits status's current limits: it does not interpret
+drop-in directives, prove loaded bytes equal disk, or report account lingering. Run-as identity is the
 saved numeric UID, which does not depend on a potentially changed account name.

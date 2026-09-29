@@ -26,6 +26,20 @@ static bool seal(sd_bus_message *message)
     return sd_bus_message_close_container(message) >= 0 &&
            sd_bus_message_seal(message, 1, 0) >= 0 && sd_bus_message_rewind(message, true) >= 0;
 }
+static bool repeated_paths(sd_bus_message *message, const char *path, unsigned count)
+{
+    if (sd_bus_message_open_container(message, SD_BUS_TYPE_DICT_ENTRY, "sv") < 0 ||
+        sd_bus_message_append(message, "s", "DropInPaths") < 0 ||
+        sd_bus_message_open_container(message, SD_BUS_TYPE_VARIANT, "as") < 0 ||
+        sd_bus_message_open_container(message, SD_BUS_TYPE_ARRAY, "s") < 0)
+        return false;
+    for (unsigned i = 0; i < count; ++i)
+        if (sd_bus_message_append(message, "s", path) < 0)
+            return false;
+    return sd_bus_message_close_container(message) >= 0 &&
+           sd_bus_message_close_container(message) >= 0 &&
+           sd_bus_message_close_container(message) >= 0;
+}
 int main(void)
 {
     sd_bus *bus = NULL;
@@ -40,6 +54,9 @@ int main(void)
     CHECK(sd_bus_message_append(message, "{sv}", "Id", "s", "fixture.service") >= 0);
     CHECK(sd_bus_message_append(message, "{sv}", "LoadState", "s", "loaded") >= 0);
     CHECK(sd_bus_message_append(message, "{sv}", "FragmentPath", "s", "") >= 0);
+    CHECK(sd_bus_message_append(message, "{sv}", "DropInPaths", "as", 2,
+                                "/etc/systemd/system/fixture.service.d/10-first.conf",
+                                "/run/systemd/system/fixture.service.d/20-second.conf") >= 0);
     CHECK(sd_bus_message_append(message, "{sv}", "ActiveEnterTimestamp", "t",
                                 UINT64_C(9000000000)) >= 0);
     CHECK(sd_bus_message_append(message, "{sv}", "FutureDependency", "as", 2, "one", "two") >= 0);
@@ -51,6 +68,8 @@ int main(void)
     CHECK(observation.fields[TIRED_OBS_FRAGMENT_PATH].known &&
           observation.fields[TIRED_OBS_FRAGMENT_PATH].value.text.length == 0);
     CHECK(observation.fields[TIRED_OBS_ACTIVE_ENTER].value.unsigned_value == UINT64_C(9000000000));
+    CHECK(observation.fields[TIRED_OBS_DROP_IN_PATHS].known &&
+          observation.fields[TIRED_OBS_DROP_IN_PATHS].value.list.count == 2);
     sd_bus_message_unref(message);
     message = dictionary(bus);
     CHECK(message != NULL);
@@ -68,6 +87,9 @@ int main(void)
     CHECK(observation.fields[TIRED_OBS_EXIT_CODE].value.signed_value == -1);
     CHECK(observation.fields[TIRED_OBS_RESTARTS].value.unsigned_value == UINT32_MAX);
     CHECK(observation.fields[TIRED_OBS_ID].known);
+    CHECK(observation.fields[TIRED_OBS_DROP_IN_PATHS].value.list.count == 2 &&
+          strcmp(observation.fields[TIRED_OBS_DROP_IN_PATHS].value.list.items[1].data,
+                 "/run/systemd/system/fixture.service.d/20-second.conf") == 0);
     sd_bus_message_unref(message);
     for (unsigned scenario = 0; scenario < 4; ++scenario)
     {
@@ -101,6 +123,43 @@ int main(void)
     CHECK(!observation.fields[TIRED_OBS_MAIN_PID].known &&
           !observation.fields[TIRED_OBS_RESULT].known);
     CHECK(observation.fields[TIRED_OBS_ID].known);
+    sd_bus_message_unref(message);
+    for (unsigned scenario = 0; scenario < 5; ++scenario)
+    {
+        message = dictionary(bus);
+        CHECK(message != NULL);
+        char path[4097];
+        memset(path, 'a', sizeof(path) - 1);
+        path[0] = '/';
+        path[sizeof(path) - 1] = '\0';
+        if (scenario == 0)
+            CHECK(sd_bus_message_append(message, "{sv}", "DropInPaths", "s", "/wrong-type") >= 0);
+        else if (scenario == 1)
+            CHECK(sd_bus_message_append(message, "{sv}", "DropInPaths", "as", 2, "/valid",
+                                        "relative") >= 0);
+        else if (scenario == 2)
+            CHECK(repeated_paths(message, "/path", 257));
+        else if (scenario == 3)
+            CHECK(repeated_paths(message, path, 65));
+        else
+            CHECK(sd_bus_message_append(message, "{sv}", "DropInPaths", "as", 2, "/valid",
+                                        "/bad\npath") >= 0);
+        CHECK(seal(message));
+        CHECK(!tired_observation_read(message, TIRED_OBSERVE_UNIT, &observation, &error));
+        CHECK(observation.fields[TIRED_OBS_DROP_IN_PATHS].known &&
+              observation.fields[TIRED_OBS_DROP_IN_PATHS].value.list.count == 2);
+        sd_bus_message_unref(message);
+    }
+    message = dictionary(bus);
+    CHECK(message != NULL && repeated_paths(message, "/unused", 0) && seal(message));
+    CHECK(tired_observation_read(message, TIRED_OBSERVE_UNIT, &observation, &error));
+    CHECK(observation.fields[TIRED_OBS_DROP_IN_PATHS].known &&
+          observation.fields[TIRED_OBS_DROP_IN_PATHS].value.list.count == 0);
+    sd_bus_message_unref(message);
+    message = dictionary(bus);
+    CHECK(message != NULL && seal(message));
+    CHECK(tired_observation_read(message, TIRED_OBSERVE_UNIT, &observation, &error));
+    CHECK(!observation.fields[TIRED_OBS_DROP_IN_PATHS].known);
     sd_bus_message_unref(message);
     tired_observation_destroy(&observation);
     tired_observation_destroy(&observation);
