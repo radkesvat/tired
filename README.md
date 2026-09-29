@@ -1,8 +1,9 @@
 # tired
 
-C17 service-management project under implementation. Offline planning and profile
-inspection are available; service installation, live validation, and lifecycle
-management are not implemented yet. No public release is available.
+C17 service-management project under implementation. Offline planning and profile,
+configuration, and stored-journal inspection are available; service installation,
+live validation, and lifecycle management are not implemented yet. No public release
+is available.
 
 ```sh
 ./build/linux-clang-x64-debug/tired plan --offline --profile none -- /usr/bin/sleep 60
@@ -10,6 +11,9 @@ management are not implemented yet. No public release is available.
 cmake --install build/linux-clang-x64-debug
 ./build/linux-clang-x64-debug/tired profiles list
 ```
+
+`tired recover [--user] [--json]` provides [stored-journal inspection](docs/recovery-inspection.md).
+Live reconciliation and recovery resolutions remain under implementation.
 
 Plans perform no service changes and do not execute the workload. After staging
 installation, omit `--profile none` to use installed

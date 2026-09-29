@@ -22,6 +22,11 @@ static bool invalid(TiredError *error)
         error, TIRED_INVALID, "transaction-record-schema",
         "Transaction progress record contains missing, unknown or invalid fields.", 0);
 }
+const char *tired_transaction_action_name(TiredTransactionAction action)
+{
+    assert((unsigned)action < TIRED_ACTION_COUNT);
+    return actions[action];
+}
 static bool hex(char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }
 static bool uuid(const char value[37])
 {

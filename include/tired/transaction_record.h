@@ -62,4 +62,5 @@ bool tired_transaction_record_parse(const char *data, size_t length, TiredTransa
 bool tired_transaction_record_encode(const TiredTransactionRecord *record, TiredText *output,
                                      TiredError *error);
 void tired_transaction_record_destroy(TiredTransactionRecord *record);
+const char *tired_transaction_action_name(TiredTransactionAction action);
 #endif

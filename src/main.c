@@ -2,6 +2,7 @@
 #include "tired/io.h"
 #include "tired/plan_output.h"
 #include "tired/profile_frontend.h"
+#include "tired/recover_frontend.h"
 #include <json-c/json.h>
 #include <signal.h>
 #include <stdio.h>
@@ -94,9 +95,12 @@ int main(int argc, char **argv)
               "       tired profiles list | show ID | validate FILE [--json]\n"
               "       tired profiles explain [options] -- COMMAND [ARG...]\n"
               "       tired config show | validate FILE [--user] [--json]\n"
+              "       tired recover [--user] [--json]  (stored-journal inspection)\n"
               "       tired --help | --version\n\n"
-              "Offline planning and profile inspection are implemented. Service installation,\n"
-              "live validation, and management commands are still under implementation.\n"
+              "Offline planning and profile, configuration, and stored-journal inspection are "
+              "available.\n"
+              "Service installation, live validation, and recovery resolutions are still under "
+              "implementation.\n"
               "Options: --user, --name NAME, --run-as USER, --group GROUP,\n"
               "  --working-directory PATH, --type TYPE, --restart POLICY, --restart-sec TIME,\n"
               "  --retry-policy persistent|limited, --nofile SOFT:HARD, --set FIELD=VALUE, --unset "
@@ -117,14 +121,19 @@ int main(int argc, char **argv)
     }
     if (request.command != TIRED_COMMAND_PLAN || !request.offline)
     {
-        if (request.command == TIRED_COMMAND_PROFILES || request.command == TIRED_COMMAND_CONFIG)
+        if (request.command == TIRED_COMMAND_PROFILES || request.command == TIRED_COMMAND_CONFIG ||
+            request.command == TIRED_COMMAND_RECOVER)
         {
-            bool ok = request.command == TIRED_COMMAND_CONFIG
+            TiredStatus command_status = TIRED_OK;
+            bool ok = request.command == TIRED_COMMAND_RECOVER
+                          ? tired_recover_command(&request, &output, &command_status, &error)
+                      : request.command == TIRED_COMMAND_CONFIG
                           ? tired_config_command(&request, &output, &error)
                           : tired_profiles_command(&request, TIRED_BUNDLED_PROFILE_DIRECTORY,
                                                    &output, &error);
             if (!ok)
                 goto failed;
+            result = command_status;
             if (fwrite(output.data, 1, output.length, stdout) != output.length)
             {
                 json = false;
@@ -134,10 +143,9 @@ int main(int argc, char **argv)
             }
             goto done;
         }
-        tired_error_set(&error, TIRED_UNSUPPORTED, "implementation-incomplete",
-                        "This build currently supports offline planning only; use plan --offline "
-                        "--profile none.",
-                        0);
+        tired_error_set(
+            &error, TIRED_UNSUPPORTED, "implementation-incomplete",
+            "This command is not implemented in this build; use --help for available commands.", 0);
         goto failed;
     }
     if (request.include_sensitive &&
