@@ -104,3 +104,30 @@ Native coverage includes binary/empty reads, limits and preserved output, existi
 entry refusal, permissions, owner changes, symlinks, hard links, FIFOs, directories,
 and a child process file-size limit that forces a partial write and verifies that
 the incomplete file remains without being overwritten.
+
+## File fingerprints
+
+Recovery and mutation revalidation can observe a single file through a validated
+directory descriptor. A fingerprint contains known absence, or the regular file's
+device/inode identity, owner/group, permission bits, size and SHA-256 digest.
+It retains no file contents. Fingerprints themselves belong in private control-plane
+state; a digest is neither encryption nor proof of authenticity against root.
+
+Inspection refuses symlinks, nonregular files and multiple hard links. It streams
+at most the caller's byte limit, capped at 16 MiB, checks metadata before/after
+reading, and checks that the directory entry still denotes the open inode. Detected
+replacement, growth or other changes fail without replacing the previous result.
+Only ENOENT establishes absence; errors never become an absent-file observation.
+
+Equality compares absence or identity, owner/group, mode, size and digest. File
+timestamps are used to detect changes during reading, not for equality: touching
+unchanged content is not drift, but replacing an inode with identical bytes is.
+Observed ownership and permissions are descriptive, not write authorization.
+Controllers must still verify managed ownership, expected manifests and scope,
+hold the mutation lock, and publish with the required filesystem safeguards.
+The observations do not make a concurrently writable file immutable.
+
+Native tests cover known SHA-256 vectors, absent/empty files, byte limits, mode
+changes, same-content replacement, symlinks/hard links/FIFOs and deterministic
+replacement/growth during reading. Manifest storage and recovery comparisons
+remain subsequent integration work.
