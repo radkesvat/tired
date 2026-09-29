@@ -92,6 +92,7 @@ int main(int argc, char **argv)
     {
         fputs("Usage: tired plan --offline [--profile auto|none|ID] [options] -- COMMAND [ARG...]\n"
               "       tired profiles list | show ID | validate FILE [--json]\n"
+              "       tired profiles explain [options] -- COMMAND [ARG...]\n"
               "       tired config show | validate FILE [--user] [--json]\n"
               "       tired --help | --version\n\n"
               "Offline planning and profile inspection are implemented. Service installation,\n"

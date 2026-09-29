@@ -28,7 +28,8 @@ The parser currently covers creation options, common flags, reserved dispatch, a
 basic management operand counts. Command-specific management filters/actions and
 nested commands beyond the implemented handlers remain under implementation. The executable
 currently exposes help/version, offline planning with profile selection, and
-profiles list/show/validate and config show/validate.
+profiles list/show/explain/validate and config show/validate. Profile explanation
+requires an explicit `--` before the workload and preserves all following arguments.
 Other commands fail explicitly as unavailable. Successful parse recognition does
 not imply that a corresponding service-management handler is complete.
 

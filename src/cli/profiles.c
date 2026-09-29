@@ -1,6 +1,7 @@
 #include "tired/config_frontend.h"
 #include "tired/encode.h"
 #include "tired/io.h"
+#include "tired/plan_output.h"
 #include "tired/profile_frontend.h"
 #include <stdlib.h>
 #include <string.h>
@@ -137,20 +138,46 @@ static bool json_output(struct json_object *object, TiredText *output, TiredErro
     return ok;
 }
 
+static bool explain(const TiredRequest *request, const char *bundled_directory, TiredText *output,
+                    TiredError *error)
+{
+    TiredPlan plan = {0};
+    TiredSettings settings = {0};
+    TiredProfileCatalog catalog = {0};
+    TiredProfileContext context = {.systemd_version = 249};
+    bool user = tired_spec_choice_is(&request->overrides, TIRED_FIELD_SCOPE, "user");
+    bool ok = tired_config_discover(request, &settings, error) &&
+              tired_plan_prepare_settings(request, &settings, &plan, error);
+    if (ok && (request->profile.data == NULL || strcmp(request->profile.data, "none") != 0))
+        ok =
+            tired_profiles_discover_settings(bundled_directory, user, &settings, &catalog, error) &&
+            tired_plan_apply_profiles(&plan, &catalog, request->profile.data, &context, error);
+    if (ok)
+        ok = tired_plan_explain_output(&plan, request->json, output, error);
+    tired_plan_destroy(&plan);
+    tired_settings_destroy(&settings);
+    tired_catalog_destroy(&catalog);
+    return ok;
+}
+
 bool tired_profiles_command(const TiredRequest *request, const char *bundled_directory,
                             TiredText *output, TiredError *error)
 {
+    if (request->profile_explain)
+        return explain(request, bundled_directory, output, error);
     if (request->arguments.count == 0)
-        return tired_error_set(error, TIRED_INVALID, "profiles-command",
-                               "Expected profiles list, show ID, or validate FILE.", 0);
+        return tired_error_set(
+            error, TIRED_INVALID, "profiles-command",
+            "Expected profiles list, show ID, explain -- COMMAND, or validate FILE.", 0);
     const char *operation = request->arguments.items[0].data;
     bool validate = strcmp(operation, "validate") == 0, show = strcmp(operation, "show") == 0,
          list = strcmp(operation, "list") == 0;
     if (!validate && !show && !list)
-        return tired_error_set(error, TIRED_UNSUPPORTED, "profiles-command",
-                               "This build supports profiles list, show, and validate; other "
-                               "profile operations are pending.",
-                               0);
+        return tired_error_set(
+            error, TIRED_UNSUPPORTED, "profiles-command",
+            "This build supports profiles list, show, explain, and validate; other "
+            "profile operations are pending.",
+            0);
     if (request->arguments.count != (list ? 1U : 2U))
         return tired_error_set(error, TIRED_INVALID, "profiles-arguments",
                                "Wrong number of profile command arguments.", 0);

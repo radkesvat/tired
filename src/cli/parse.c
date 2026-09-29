@@ -172,6 +172,18 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
                 parsed.command = TIRED_COMMAND_CREATE;
                 selected = true;
             }
+            if (parsed.command == TIRED_COMMAND_PROFILES && parsed.arguments.count == 0 &&
+                !parsed.profile_explain && strcmp(arg, "explain") == 0)
+            {
+                parsed.profile_explain = true;
+                continue;
+            }
+            if (parsed.profile_explain)
+            {
+                tired_error_set(error, TIRED_INVALID, "explain-boundary",
+                                "Use profiles explain [options] -- COMMAND [ARG...].", 0);
+                goto fail;
+            }
             if (parsed.command == TIRED_COMMAND_CREATE || parsed.command == TIRED_COMMAND_PLAN)
             {
                 for (; i < argc; ++i)
@@ -370,7 +382,8 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
         parsed.command != TIRED_COMMAND_SHOW)
         goto inappropriate;
     if (creation_options && parsed.command != TIRED_COMMAND_CREATE &&
-        parsed.command != TIRED_COMMAND_PLAN && parsed.command != TIRED_COMMAND_EDIT)
+        parsed.command != TIRED_COMMAND_PLAN && parsed.command != TIRED_COMMAND_EDIT &&
+        !parsed.profile_explain)
         goto inappropriate;
     if (parsed.quiet && parsed.verbose)
         goto inappropriate;
@@ -400,6 +413,8 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
             valid = count == 2;
             break;
         case TIRED_COMMAND_PROFILES:
+            valid = parsed.profile_explain ? parsed.explicit_boundary && count > 0 : count >= 1;
+            break;
         case TIRED_COMMAND_CONFIG:
             valid = count >= 1;
             break;

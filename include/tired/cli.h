@@ -39,6 +39,7 @@ typedef struct
     bool help, version, json, no_tui, yes, quiet, verbose, offline, unit, dry_run,
         include_sensitive;
     bool explicit_boundary;
+    bool profile_explain;
 } TiredRequest;
 /* Parse argv including the frontend executable. No filesystem, environment,
  * manager, or workload access. Output is atomic and owns copies. */

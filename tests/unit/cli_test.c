@@ -68,6 +68,13 @@ int main(void)
     CHECK(!PARSE("tired", "--env-file", "env", "--unset", "environment_files", "./server"));
     CHECK(!PARSE("tired", "rename", "old"));
     CHECK(PARSE("tired", "rename", "old", "new"));
+    CHECK(PARSE("tired", "profiles", "explain", "--profile", "backhaul", "--json", "--",
+                "/bin/true", "--help", "--json"));
+    CHECK(request.profile_explain && request.json && !request.help);
+    CHECK(request.arguments.count == 3 && strcmp(request.arguments.items[1].data, "--help") == 0);
+    CHECK(!PARSE("tired", "profiles", "explain", "/bin/true"));
+    CHECK(!PARSE("tired", "profiles", "explain", "--"));
+    CHECK(!PARSE("tired", "profiles", "explain", "--output", "file", "--", "/bin/true"));
     CHECK(PARSE("tired", "--help"));
     CHECK(request.help);
     CHECK(PARSE("tired"));

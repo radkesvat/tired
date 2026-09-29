@@ -107,6 +107,11 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_profile_explain_test tests/unit/profile_explain_test.c)
+    target_compile_definitions(tired_profile_explain_test PRIVATE _POSIX_C_SOURCE=200809L)
+    target_link_libraries(tired_profile_explain_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.profile_explain COMMAND tired_profile_explain_test "${CMAKE_CURRENT_SOURCE_DIR}/profiles")
+    set_tests_properties(tired.profile_explain PROPERTIES LABELS unit TIMEOUT 10)
     add_executable(tired_config_show_test tests/unit/config_show_test.c)
     target_compile_definitions(tired_config_show_test PRIVATE _POSIX_C_SOURCE=200809L)
     target_link_libraries(tired_config_show_test PRIVATE tired_core tired_build_options)

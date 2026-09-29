@@ -6,4 +6,8 @@
  * private export authorization at the frontend boundary. */
 bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool include_sensitive,
                        TiredText *output, TiredError *error);
+/* Same evaluated proposal and evidence, labeled as profiles explain; always uses
+ * the ordinary redaction policy and never enables sensitive export. */
+bool tired_plan_explain_output(const TiredPlan *plan, bool json, TiredText *output,
+                               TiredError *error);
 #endif

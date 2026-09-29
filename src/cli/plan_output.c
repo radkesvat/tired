@@ -112,8 +112,8 @@ static struct json_object *field_value(const TiredField *field, const TiredField
 static const char *field_origins[] = {"unset",       "inherited", "default", "administrator-config",
                                       "user-config", "profile",   "user",    "capture"};
 
-bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool include_sensitive,
-                       TiredText *output, TiredError *error)
+static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool include_sensitive,
+                        bool explain, TiredText *output, TiredError *error)
 {
     assert(plan != NULL && output != NULL);
     TiredServiceSpec display = {0};
@@ -210,7 +210,7 @@ bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool in
             !push(warnings, json_object_new_string("rapid-persistent-retry")))
             goto allocation;
         if (!add(root, "schema_version", json_object_new_int(1)) ||
-            !add(root, "command", json_object_new_string("plan")) ||
+            !add(root, "command", json_object_new_string(explain ? "profiles explain" : "plan")) ||
             !add(root, "ok", json_object_new_boolean(true)) ||
             !add(root, "exit_code", json_object_new_int(0)) ||
             !add(root, "live_validation", json_object_new_string("not_performed")) ||
@@ -335,6 +335,9 @@ bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool in
                      : "# Offline proposal; live validation and collision checks not performed\n";
         if (!tired_buffer_append(&text, heading, strlen(heading), error))
             goto fail;
+        if (explain && !comment(&text, "Profile explanation",
+                                "Passive evaluation; target not executed", error))
+            goto fail;
         if (!unit_only)
         {
             if (!comment(&text, "Retry policy origin",
@@ -347,6 +350,9 @@ bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool in
                          plan->profile.name == NULL ? "Generic; application requirements unknown"
                                                     : plan->profile.name,
                          error))
+                goto fail;
+            if (!plan->profile_matching &&
+                !comment(&text, "Match", "Profile matching disabled", error))
                 goto fail;
             if (plan->profile.document != NULL)
             {
@@ -428,4 +434,16 @@ fail:
     json_object_put(environment);
     json_object_put(warnings);
     return false;
+}
+
+bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool include_sensitive,
+                       TiredText *output, TiredError *error)
+{
+    return output_plan(plan, json, unit_only, include_sensitive, false, output, error);
+}
+
+bool tired_plan_explain_output(const TiredPlan *plan, bool json, TiredText *output,
+                               TiredError *error)
+{
+    return output_plan(plan, json, false, false, true, output, error);
 }

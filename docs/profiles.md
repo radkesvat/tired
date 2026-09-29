@@ -138,6 +138,22 @@ Development binaries use their configured install prefix for bundled data. Run
 or current-directory fallback is compiled into production. `profiles validate FILE`
 and `plan --profile none` work without installed bundled data.
 
+`tired profiles explain [options] -- COMMAND [ARG...]` evaluates a captured invocation
+without executing it or writing files. The explicit `--` is required; everything
+after it belongs to the workload, including strings that resemble frontend flags.
+Creation options such as `--profile ID`, `--user`, `--restart`, and `--set` let you
+inspect how explicit selections affect advice. `--json` emits the evaluated proposal
+with `command: "profiles explain"`, match candidates, retained profile evidence and
+recommendation dispositions. Text output includes the match basis, source, digest,
+evidence and suppressed advice. Both use ordinary plan redaction; unknown secret
+forms may evade that heuristic. Output-file and sensitive-export options are not
+accepted for this command.
+
+Explanation uses the declared systemd 249 baseline and leaves unobserved host facts
+unknown. It does not establish live compatibility or installation readiness. Use
+`profiles show ID` to inspect a profile document without a workload. Explain with
+`--profile none` bypasses catalog discovery and shows the generic configured proposal.
+
 Plans with matching enabled and `profiles list/show` also load additional directories
 from administrator [settings](settings.md). Those directories must exist and pass
 root ownership and permission checks; they do not weaken duplicate-ID rejection or
