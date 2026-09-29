@@ -47,3 +47,18 @@ excessive arrays, failure preservation, destination/authorization flags, cancell
 timeout and invalidation. Live manager integration retrieves the host's UnitPath.
 The naming controller still needs to combine these paths with the intended write
 destination, transaction inventory and suffix selection under commit-time locking.
+# Candidate selection
+
+`TiredNameSelection` copies the complete location and pending-name inventories
+and proposes the unsuffixed name first. Feed it a successful manager query for
+that exact name. It combines the observation with filesystem inspection, then
+either reports tentative availability or advances automatic names to `-2`,
+`-3`, and so on. Explicit names return a conflict without changing the candidate.
+Unknown manager or filesystem results do not advance or approve a name.
+
+The controller schedules each asynchronous manager query and imposes a deadline
+and cancellation; selection itself has no arbitrary suffix search cutoff. The
+candidate accessor returns a full unit name, whereas the unit-query API accepts
+a normalized base without the final `.service` suffix. A successful selection
+does not reserve the name. Commit-time locking, fresh inventories, rechecking,
+and approval invalidation remain the mutation controller's responsibility.
