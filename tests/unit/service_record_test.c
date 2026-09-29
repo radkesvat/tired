@@ -1,5 +1,8 @@
+#include "tired/file_target.h"
 #include "tired/io.h"
 #include "tired/private_file.h"
+#include "tired/render.h"
+#include "tired/service_files.h"
 #include "tired/service_inventory.h"
 #include "tired/service_record.h"
 #include "tired/service_record_storage.h"
@@ -22,6 +25,116 @@
 static bool set(TiredText *output, const char *text, TiredError *error)
 {
     return tired_text_set(output, text, strlen(text), TIRED_INPUT_LIMIT, error);
+}
+static int file_checks(TiredLayout *layout, TiredServiceRecord *record, TiredDirectory *directory)
+{
+    int result = 1;
+    TiredError error = {0};
+    TiredText unit = {0};
+    TiredServiceFiles files = {0};
+    TiredFileFingerprint fingerprint = {0};
+    TiredDirectory *service = NULL, *revisions = NULL, *revision = NULL;
+    TiredResolvedFile resolved = {0};
+    int fd = tired_directory_fd(directory);
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.unit.state == TIRED_SERVICE_FILE_MISSING &&
+          files.environment.state == TIRED_SERVICE_FILE_NOT_REQUIRED);
+    CHECK(tired_render_unit(&record->spec, record->metadata.service_uuid, NULL,
+                            &record->credentials, &unit, &error));
+    CHECK(tired_private_file_create(directory, "relay.service", unit.data, unit.length, &error));
+    CHECK(fchmodat(fd, "relay.service", 0644, 0) == 0);
+    CHECK(tired_file_fingerprint(directory, "relay.service", TIRED_INPUT_LIMIT, &fingerprint,
+                                 &error));
+    memcpy(record->metadata.unit_sha256, fingerprint.sha256, 65);
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.unit.state == TIRED_SERVICE_FILE_MATCH && files.unit.marker_matches);
+    CHECK(fchmodat(fd, "relay.service", 0600, 0) == 0);
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.unit.state == TIRED_SERVICE_FILE_DRIFTED && !files.unit.mode_matches &&
+          files.unit.digest_matches && files.unit.owner_matches);
+    CHECK(fchmodat(fd, "relay.service", 0644, 0) == 0);
+    record->metadata.unit_sha256[0] = fingerprint.sha256[0] == '0' ? '1' : '0';
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.unit.state == TIRED_SERVICE_FILE_DRIFTED && !files.unit.digest_matches);
+    memcpy(record->metadata.unit_sha256, fingerprint.sha256, 65);
+    record->metadata.service_uuid[0] = '1';
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.unit.state == TIRED_SERVICE_FILE_DRIFTED && !files.unit.marker_matches &&
+          files.unit.digest_matches);
+    record->metadata.service_uuid[0] = '0';
+    CHECK(linkat(fd, "relay.service", fd, "extra-link", 0) == 0);
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.unit.state == TIRED_SERVICE_FILE_UNKNOWN && files.unit.error.status != TIRED_OK);
+    CHECK(unlinkat(fd, "extra-link", 0) == 0 && unlinkat(fd, "relay.service", 0) == 0);
+    CHECK(symlinkat("missing", fd, "relay.service") == 0);
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.unit.state == TIRED_SERVICE_FILE_UNKNOWN);
+    CHECK(unlinkat(fd, "relay.service", 0) == 0);
+    CHECK(tired_private_file_create(directory, "relay.service", unit.data, unit.length, &error));
+    CHECK(fchmodat(fd, "relay.service", 0644, 0) == 0);
+    CHECK(set(&layout->paths[TIRED_PATH_ENVIRONMENT_SERVICES], layout->paths[TIRED_PATH_UNITS].data,
+              &error));
+    record->has_environment = true;
+    memcpy(record->environment_revision, "31234567-89ab-4cde-8fab-0123456789ab", 37);
+    TiredFileTarget target = {.role = TIRED_FILE_TARGET_ENVIRONMENT};
+    memcpy(target.service_uuid, record->metadata.service_uuid, 37);
+    memcpy(target.revision_uuid, record->environment_revision, 37);
+    CHECK(tired_file_target_resolve(layout, &target, &resolved, &error));
+    CHECK(tired_path_absolute(&resolved.directory, "environment", 11, &record->environment_path,
+                              &error));
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.unit.state == TIRED_SERVICE_FILE_MATCH &&
+          files.environment.state == TIRED_SERVICE_FILE_MISSING);
+    CHECK(tired_directory_child(directory, record->metadata.service_uuid, true, true, &service,
+                                &error));
+    CHECK(tired_directory_child(service, "revisions", true, true, &revisions, &error));
+    CHECK(tired_directory_child(revisions, record->environment_revision, true, true, &revision,
+                                &error));
+    CHECK(tired_private_file_create(revision, "environment", "TOKEN=secret\n", 13, &error));
+    CHECK(tired_file_fingerprint(revision, "environment", TIRED_INPUT_LIMIT, &fingerprint, &error));
+    memcpy(record->environment_sha256, fingerprint.sha256, 65);
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.environment.state == TIRED_SERVICE_FILE_MATCH);
+    record->environment_sha256[0] = fingerprint.sha256[0] == '0' ? '1' : '0';
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.environment.state == TIRED_SERVICE_FILE_DRIFTED &&
+          !files.environment.digest_matches && files.unit.state == TIRED_SERVICE_FILE_MATCH);
+    memcpy(record->environment_sha256, fingerprint.sha256, 65);
+    CHECK(fchmodat(tired_directory_fd(revision), "environment", 0644, 0) == 0);
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.environment.state == TIRED_SERVICE_FILE_DRIFTED &&
+          !files.environment.mode_matches && files.environment.digest_matches);
+    CHECK(fchmod(tired_directory_fd(revision), 0755) == 0);
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.unit.state == TIRED_SERVICE_FILE_MATCH &&
+          files.environment.state == TIRED_SERVICE_FILE_UNKNOWN);
+    TiredServiceFiles saved = files;
+    record->metadata.user_scope = false;
+    CHECK(!tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(memcmp(&files, &saved, sizeof(files)) == 0);
+    record->metadata.user_scope = true;
+    uid_t owner = record->metadata.owner_uid;
+    record->metadata.owner_uid = owner == 0 ? 1 : 0;
+    CHECK(!tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(error.status == TIRED_CONFLICT && memcmp(&files, &saved, sizeof(files)) == 0);
+    record->metadata.owner_uid = owner;
+    result = 0;
+cleanup:
+    (void)unlinkat(fd, "relay.service", 0);
+    (void)unlinkat(fd, "extra-link", 0);
+    if (revision != NULL)
+        (void)unlinkat(tired_directory_fd(revision), "environment", 0);
+    if (revisions != NULL)
+        (void)unlinkat(tired_directory_fd(revisions), record->environment_revision, AT_REMOVEDIR);
+    if (service != NULL)
+        (void)unlinkat(tired_directory_fd(service), "revisions", AT_REMOVEDIR);
+    (void)unlinkat(fd, record->metadata.service_uuid, AT_REMOVEDIR);
+    tired_directory_destroy(revision);
+    tired_directory_destroy(revisions);
+    tired_directory_destroy(service);
+    tired_resolved_file_destroy(&resolved);
+    tired_text_destroy(&unit);
+    return result;
 }
 int main(int argc, char **argv)
 {
@@ -207,6 +320,7 @@ int main(int argc, char **argv)
     CHECK(fchmodat(fd, name, 0644, 0) == 0);
     CHECK(!tired_service_record_load(&layout, source.metadata.service_uuid, &parsed, &error));
     CHECK(fchmodat(fd, name, 0600, 0) == 0);
+    CHECK(file_checks(&layout, &source, directory) == 0);
     CHECK(set(&layout.paths[TIRED_PATH_UNITS], "/wrong", &error));
     CHECK(!tired_service_record_load(&layout, source.metadata.service_uuid, &parsed, &error));
     CHECK(!tired_service_record_load(&layout, "../escape", &parsed, &error));
