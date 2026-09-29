@@ -24,6 +24,23 @@ static bool text(TiredBuffer *buffer, const char *value, TiredError *error)
     return tired_buffer_append(buffer, value, strlen(value), error);
 }
 static const char *const file_states[] = {"unknown", "before", "after", "foreign"};
+static const char *const artifact_states[] = {"unknown", "match", "missing", "different"};
+static struct json_object *artifact_json(const TiredArtifactObservation *observed,
+                                         const TiredError *error, bool required)
+{
+    struct json_object *result = json_object_new_object();
+    if (result == NULL)
+        return NULL;
+    if (!add(
+            result, "state",
+            json_object_new_string(required ? artifact_states[observed->state] : "not_required")) ||
+        (error->status != TIRED_OK && !add(result, "error", json_object_new_string(error->code))))
+    {
+        json_object_put(result);
+        return NULL;
+    }
+    return result;
+}
 static struct json_object *file_json(const TiredRecoveryFiles *files)
 {
     struct json_object *result = json_object_new_object(), *rows = json_object_new_array();
@@ -31,8 +48,9 @@ static struct json_object *file_json(const TiredRecoveryFiles *files)
         goto fail;
     if (!add(result, "status",
              json_object_new_string(files->error.status != TIRED_OK ? "unknown"
-                                    : files->observations.complete  ? "completed"
-                                                                    : "partial")))
+                                    : files->observations.complete && files->artifacts_complete
+                                        ? "completed"
+                                        : "partial")))
         goto fail;
     if (files->error.status != TIRED_OK)
     {
@@ -50,6 +68,15 @@ static struct json_object *file_json(const TiredRecoveryFiles *files)
                       add(row, "state", json_object_new_string(file_states[observed->state]));
             if (ok && observed->error.status != TIRED_OK)
                 ok = add(row, "error", json_object_new_string(observed->error.code));
+            const TiredRecoveryArtifacts *artifacts = &files->artifacts[i];
+            const TiredFileChange *change = &files->manifest.files[i];
+            if (ok)
+                ok = add(row, "staging",
+                         artifact_json(&artifacts->staging, &artifacts->staging_error,
+                                       change->after.exists)) &&
+                     add(row, "rollback",
+                         artifact_json(&artifacts->rollback, &artifacts->rollback_error,
+                                       change->before.exists));
             if (!ok || json_object_array_add(rows, row) != 0)
             {
                 json_object_put(row);
@@ -308,9 +335,16 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
                 else
                     for (size_t j = 0; j < files.observations.count; ++j)
                     {
-                        char line[96];
-                        (void)snprintf(line, sizeof(line), "  file[%zu]=%s\n", j,
-                                       file_states[files.observations.files[j].state]);
+                        char line[160];
+                        const TiredFileChange *change = &files.manifest.files[j];
+                        const TiredRecoveryArtifacts *artifacts = &files.artifacts[j];
+                        (void)snprintf(
+                            line, sizeof(line), "  file[%zu]=%s staging=%s rollback=%s\n", j,
+                            file_states[files.observations.files[j].state],
+                            change->after.exists ? artifact_states[artifacts->staging.state]
+                                                 : "not_required",
+                            change->before.exists ? artifact_states[artifacts->rollback.state]
+                                                  : "not_required");
                         if (!text(&buffer, line, error))
                             goto done;
                     }

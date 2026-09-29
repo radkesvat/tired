@@ -2,6 +2,7 @@
 #include "tired/io.h"
 #include "tired/json.h"
 #include "tired/manifest_storage.h"
+#include "tired/private_file.h"
 #include "tired/recover_frontend.h"
 #include "tired/transaction_journal.h"
 #include <fcntl.h>
@@ -27,7 +28,7 @@ int main(void)
     char bad_name[] = {'b', 'a', 'd', 27, (char)255, 0};
     const char *uuid = "01234567-89ab-4cde-8fab-0123456789ab";
     TiredDirectory *root = NULL, *state = NULL, *transactions = NULL, *transaction = NULL,
-                   *journal = NULL;
+                   *journal = NULL, *artifacts = NULL;
     TiredOperationLock *lock = NULL;
     TiredPublication *publication = NULL;
     TiredRequest request = {0};
@@ -146,10 +147,19 @@ int main(void)
           strcmp(json_object_get_string(file_state), "after") == 0);
     CHECK(json_object_object_get_ex(json_object_array_get_idx(value, 1), "state", &file_state) &&
           strcmp(json_object_get_string(file_state), "before") == 0);
+    struct json_object *artifact = NULL;
+    CHECK(json_object_object_get_ex(json_object_array_get_idx(value, 0), "staging", &artifact));
+    CHECK(json_object_object_get_ex(artifact, "state", &file_state) &&
+          strcmp(json_object_get_string(file_state), "not_required") == 0);
+    CHECK(json_object_object_get_ex(json_object_array_get_idx(value, 0), "rollback", &artifact));
+    CHECK(json_object_object_get_ex(artifact, "state", &file_state) &&
+          strcmp(json_object_get_string(file_state), "missing") == 0);
     CHECK(json_object_object_get_ex(row, "previous_live", &live_row));
     CHECK(json_object_object_get_ex(live_row, "status", &value) &&
           strcmp(json_object_get_string(value), "unknown") == 0);
     CHECK(!json_object_object_get_ex(live_row, "object_found", &value));
+    CHECK(tired_directory_child(transaction, "artifacts", true, true, &artifacts, &error));
+    CHECK(tired_private_file_create(artifacts, changes[0].rollback_uuid, "", 0, &error));
     CHECK(mkdirat(tired_directory_fd(transactions), bad_name, 0700) == 0);
     CHECK(tired_recover_command(&request, &output, &status, &error));
     CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &document, &error));
@@ -167,6 +177,7 @@ int main(void)
     CHECK(strstr(output.data, "previous_unit=old.service") != NULL);
     CHECK(strstr(output.data, "file[0]=after") != NULL &&
           strstr(output.data, "file[1]=before") != NULL);
+    CHECK(strstr(output.data, "file[0]=after staging=not_required rollback=match") != NULL);
     CHECK(memchr(output.data, 27, output.length) == NULL &&
           memchr(output.data, 255, output.length) == NULL);
     CHECK(setenv("XDG_STATE_HOME", "relative", 1) == 0);
@@ -192,6 +203,9 @@ int main(void)
     CHECK(!json_object_object_get_ex(document, "object_found", &value));
     result = 0;
 cleanup:
+    if (artifacts != NULL)
+        (void)unlinkat(tired_directory_fd(artifacts), "a1234567-89ab-4cde-8fab-0123456789ab", 0);
+    tired_directory_destroy(artifacts);
     json_object_put(document);
     tired_publication_destroy(publication);
     tired_operation_lock_destroy(lock);
@@ -201,6 +215,7 @@ cleanup:
     if (transaction != NULL)
     {
         (void)unlinkat(tired_directory_fd(transaction), "files.json", 0);
+        (void)unlinkat(tired_directory_fd(transaction), "artifacts", AT_REMOVEDIR);
         (void)unlinkat(tired_directory_fd(transaction), "journal", AT_REMOVEDIR);
     }
     tired_directory_destroy(transaction);

@@ -24,11 +24,16 @@ and selected scope, and compare destination fingerprints. JSON `files` reports
 `completed`, `partial` or `unknown`, with per-destination manifest indices and
 `before`, `after`, `foreign` or `unknown` states. A top-level file error preserves
 the journal and manager diagnostics. Text output reports the same indexed states.
-All transactions share a 64 MiB content budget; exhausted entries stay unknown.
+Each destination also has `staging` and `rollback` observations with `match`,
+`missing`, `different`, `unknown` or `not_required` states. Artifact failures retain
+their error codes. Text output includes both artifact states next to each file.
+All destination and artifact reads share a 64 MiB content budget; exhausted entries stay unknown.
 Completed inspection can still find foreign changes and never authorizes mutation.
 
 Manager and file observations are not complete recovery reconciliation. The command
-does not yet inspect all recovery artifacts or offer finish/rollback actions.
+does not yet decide which artifacts are required for a particular recovery action
+or offer finish/rollback actions. A missing staged file can be expected after
+publication; a matching backup alone does not authorize overwriting a destination.
 `live_reconciliation` remains `not_performed` until controller reconciliation exists;
 `live_observations` separately reports `not_needed`, `completed`, `partial` or
 `unavailable` for the selected units.
