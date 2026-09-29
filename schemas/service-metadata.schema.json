@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Service identity and revision metadata",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "service_uuid", "current_revision", "last_transaction", "unit_sha256", "unit_name", "writer_version", "created_usec", "updated_usec", "owner_uid", "invoking_uid", "invoking_gid", "service_uid", "service_gid", "scope", "creation_mode"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "service_uuid": {"$ref": "transaction-progress.schema.json#/$defs/uuid"},
+    "current_revision": {"$ref": "transaction-progress.schema.json#/$defs/uuid"},
+    "last_transaction": {"$ref": "transaction-progress.schema.json#/$defs/uuid"},
+    "unit_sha256": {"type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}$"},
+    "unit_name": {"$ref": "transaction-progress.schema.json#/properties/unit_name"},
+    "writer_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "created_usec": {"$ref": "#/$defs/time"},
+    "updated_usec": {"$ref": "#/$defs/time"},
+    "owner_uid": {"$ref": "#/$defs/id"},
+    "invoking_uid": {"$ref": "#/$defs/id"},
+    "invoking_gid": {"$ref": "#/$defs/id"},
+    "service_uid": {"$ref": "#/$defs/id"},
+    "service_gid": {"$ref": "#/$defs/id"},
+    "scope": {"enum": ["system", "user"]},
+    "creation_mode": {"enum": ["interactive", "headless"]}
+  },
+  "$defs": {
+    "id": {"type": "integer", "minimum": 0, "maximum": 4294967294},
+    "time": {"type": "integer", "minimum": 1, "maximum": 18446744073709551615}
+  }
+}
