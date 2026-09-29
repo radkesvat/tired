@@ -46,9 +46,8 @@ the transaction controller's ownership and retention checks.
 
 After successful exchange, the temporary name contains the before-state, so an
 artifact check against the after-state reports `different`. Recovery must interpret
-that observation with the journal and destination state. Managed-file deletion,
-reopening interrupted replacement handles and complete rollback remain controller
-work. Metadata checks and advisory locks do not make the entire namespace immutable
+that observation with the journal and destination state. Managed-file deletion
+and complete rollback remain controller work. Metadata checks and advisory locks do not make the entire namespace immutable
 against noncooperating writers.
 
 Native tests cover complete-byte visibility, modes, existing-file and dangling-link
@@ -57,3 +56,13 @@ sync failures before publication and after rename. Failure injection verifies
 state reporting and recovery branches; it is not power-loss qualification.
 Replacement tests cover before-state mismatch, retained displaced bytes, sync
 failure/retry, unchanged expectations and detection of displaced-file modification.
+
+`tired_publication_reopen` uses the original staging UUID and journal-bound before/
+after fingerprints under the scope lock. It accepts prepared staging, published
+creation with no staging entry, or exchanged replacement with the before inode
+still at the staging name. Missing, foreign or ambiguous combinations fail without
+returning a handle. It pins and rechecks the after inode without renaming or deleting
+anything. Reopened durability starts false; commit syncs the file and directory and
+uses the same retry checks. A prepared replacement still requires the replacement
+commit API with its expected before-state. The controller must establish journal
+identity, approval and action ordering before reopening.

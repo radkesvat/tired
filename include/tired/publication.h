@@ -3,6 +3,15 @@
 #include "tired/file_fingerprint.h"
 #include "tired/operation_lock.h"
 typedef struct TiredPublication TiredPublication;
+/* Reopen an interrupted publication under the scope lock using journal-bound
+ * before/after fingerprints and the original staging UUID. Accept only prepared
+ * staging, published creation, or exchanged replacement with retained before-state.
+ * No rename/cleanup occurs; durability remains false until commit is retried.
+ * Failure preserves a null output. Does not establish transaction authorization. */
+bool tired_publication_reopen(TiredDirectory *directory, const char *name, const char *staging_uuid,
+                              const TiredFileFingerprint *before, const TiredFileFingerprint *after,
+                              const TiredOperationLock *lock, TiredPublication **publication,
+                              TiredError *error);
 /* Stage <=16 MiB in the destination directory under a random exclusive name.
  * mode is 0600 for private data or 0644 for nonsecret unit bytes. Directory must
  * outlive the handle. On failure a handle may be returned: discard, then destroy.

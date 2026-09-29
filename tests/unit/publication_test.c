@@ -35,6 +35,8 @@ int main(void)
     int result = 1;
     char fixture[] = "publication-test-XXXXXX";
     char displaced[64] = {0};
+    char staging_uuid[37] = {0};
+    TiredFileFingerprint after = {0}, absent_before = {0};
     char *created = NULL, *cwd = getcwd(NULL, 0);
     TiredText path = {0}, contents = {0};
     TiredDirectory *directory = NULL;
@@ -55,6 +57,14 @@ int main(void)
     CHECK(tired_private_file_read(directory, tired_publication_temporary_name(publication), 100,
                                   &contents, &error));
     CHECK(strcmp(contents.data, "complete") == 0);
+    memcpy(staging_uuid, tired_publication_temporary_name(publication) + 7, 36);
+    CHECK(tired_file_fingerprint(directory, tired_publication_temporary_name(publication), 100,
+                                 &after, &error));
+    tired_publication_destroy(publication);
+    publication = NULL;
+    CHECK(tired_publication_reopen(directory, "record", staging_uuid, &absent_before, &after, lock,
+                                   &publication, &error));
+    CHECK(!tired_publication_published(publication));
     fail_sync_fd = fd;
     CHECK(!tired_publication_commit(publication, lock, &error));
     CHECK(tired_publication_published(publication) && !tired_publication_durable(publication));
@@ -66,6 +76,12 @@ int main(void)
     CHECK(tired_publication_discard(publication, &error));
     CHECK(tired_private_file_read(directory, "record", 100, &contents, &error));
     CHECK(strcmp(contents.data, "complete") == 0);
+    tired_publication_destroy(publication);
+    publication = NULL;
+    CHECK(tired_publication_reopen(directory, "record", staging_uuid, &absent_before, &after, lock,
+                                   &publication, &error));
+    CHECK(tired_publication_published(publication) && !tired_publication_durable(publication));
+    CHECK(tired_publication_commit(publication, lock, &error));
     tired_publication_destroy(publication);
     publication = NULL;
     CHECK(tired_publication_prepare(directory, "record", "other", 5, 0600, &publication, &error));
@@ -131,6 +147,9 @@ int main(void)
     CHECK(tired_file_fingerprint(directory, "record", 100, &before, &error));
     CHECK(tired_publication_prepare(directory, "record", "replacement", 11, 0600, &publication,
                                     &error));
+    memcpy(staging_uuid, tired_publication_temporary_name(publication) + 7, 36);
+    CHECK(tired_file_fingerprint(directory, tired_publication_temporary_name(publication), 100,
+                                 &after, &error));
     mismatch = before;
     ++mismatch.inode;
     CHECK(!tired_publication_replace(publication, lock, &mismatch, &error));
@@ -140,6 +159,11 @@ int main(void)
     CHECK(tired_publication_published(publication) && !tired_publication_durable(publication));
     (void)snprintf(displaced, sizeof(displaced), "%s",
                    tired_publication_temporary_name(publication));
+    tired_publication_destroy(publication);
+    publication = NULL;
+    CHECK(tired_publication_reopen(directory, "record", staging_uuid, &before, &after, lock,
+                                   &publication, &error));
+    CHECK(tired_publication_published(publication) && !tired_publication_durable(publication));
     CHECK(tired_publication_replace(publication, lock, &before, &error));
     CHECK(tired_publication_durable(publication));
     CHECK(tired_private_file_read(directory, "record", 100, &contents, &error));
@@ -155,6 +179,11 @@ int main(void)
     CHECK(strcmp(error.code, "replacement-displaced") == 0);
     CHECK(tired_private_file_read(directory, "record", 100, &contents, &error));
     CHECK(strcmp(contents.data, "replacement") == 0);
+    tired_publication_destroy(publication);
+    publication = NULL;
+    CHECK(!tired_publication_reopen(directory, "record", staging_uuid, &before, &after, lock,
+                                    &publication, &error));
+    CHECK(publication == NULL && error.status == TIRED_CONFLICT);
     result = 0;
 cleanup:
     fail_sync_fd = -1;

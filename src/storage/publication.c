@@ -19,7 +19,7 @@ struct TiredPublication
     char temporary[64], name[256];
     struct stat prepared_identity;
     bool staged, ready, published, durable;
-    bool exchanged;
+    bool exchanged, needs_sync;
     TiredFileFingerprint previous;
     unsigned mode;
 };
@@ -70,6 +70,79 @@ static bool binding(TiredPublication *publication, bool unchanged, TiredError *e
         return tired_error_set(error, TIRED_CONFLICT, "publication-modified",
                                "Staged file changed after preparation.", 0);
     return true;
+}
+bool tired_publication_reopen(TiredDirectory *directory, const char *name, const char *staging_uuid,
+                              const TiredFileFingerprint *before, const TiredFileFingerprint *after,
+                              const TiredOperationLock *lock, TiredPublication **output,
+                              TiredError *error)
+{
+    assert(directory != NULL && name != NULL && staging_uuid != NULL && before != NULL &&
+           after != NULL && lock != NULL && output != NULL && *output == NULL);
+    TiredText encoded = {0};
+    bool valid = tired_file_fingerprint_encode(before, &encoded, error) &&
+                 tired_file_fingerprint_encode(after, &encoded, error);
+    tired_text_destroy(&encoded);
+    if (!valid || !tired_operation_lock_check(lock, error))
+        return false;
+    if (!after->exists || (after->mode != 0600 && after->mode != 0644) ||
+        !tired_uuid_valid(staging_uuid, strnlen(staging_uuid, 37)))
+        return tired_error_set(error, TIRED_INVALID, "publication-reopen-input",
+                               "Reopening requires an after-state and canonical staging UUID.", 0);
+    TiredFileFingerprint destination = {0}, staged = {0};
+    char temporary[48];
+    (void)snprintf(temporary, sizeof(temporary), ".tired-%s.tmp", staging_uuid);
+    if (!tired_file_fingerprint(directory, name, TIRED_PRIVATE_FILE_LIMIT, &destination, error) ||
+        !tired_file_fingerprint(directory, temporary, TIRED_PRIVATE_FILE_LIMIT, &staged, error))
+        return false;
+    bool prepared = tired_file_fingerprint_equal(&destination, before) &&
+                    tired_file_fingerprint_equal(&staged, after);
+    bool published = tired_file_fingerprint_equal(&destination, after) &&
+                     tired_file_fingerprint_equal(&staged, before);
+    if ((!prepared && !published) || (prepared && published))
+        return tired_error_set(error, TIRED_CONFLICT, "publication-reopen-state",
+                               "Stored publication does not match its recorded file states.", 0);
+    TiredPublication *publication = calloc(1, sizeof(*publication));
+    if (publication == NULL)
+        return tired_error_set(error, TIRED_INTERNAL, "allocation", "Cannot reopen publication.",
+                               0);
+    *publication = (TiredPublication){.directory = directory,
+                                      .fd = -1,
+                                      .ready = true,
+                                      .staged = prepared,
+                                      .published = published,
+                                      .exchanged = published && before->exists,
+                                      .needs_sync = true,
+                                      .previous = *before,
+                                      .mode = (unsigned)after->mode};
+    (void)snprintf(publication->name, sizeof(publication->name), "%s", name);
+    (void)snprintf(publication->temporary, sizeof(publication->temporary), "%s", temporary);
+    const char *bound = published ? name : temporary;
+    publication->fd = openat(tired_directory_fd(directory), bound,
+                             O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK | O_NOCTTY);
+    bool ok = false;
+    if (publication->fd < 0 || fstat(publication->fd, &publication->prepared_identity) != 0)
+    {
+        io_error(error, "publication-reopen", "Cannot pin reopened publication.");
+        goto done;
+    }
+    if (!binding(publication, true, error) ||
+        !tired_file_fingerprint(directory, bound, TIRED_PRIVATE_FILE_LIMIT, &staged, error))
+        goto done;
+    if (!tired_file_fingerprint_equal(after, &staged) ||
+        publication->prepared_identity.st_dev != after->device ||
+        publication->prepared_identity.st_ino != after->inode)
+    {
+        tired_error_set(error, TIRED_CONFLICT, "publication-reopen-changed",
+                        "Publication changed while reopening its file handle.", 0);
+        goto done;
+    }
+    *output = publication;
+    publication = NULL;
+    tired_error_clear(error);
+    ok = true;
+done:
+    tired_publication_destroy(publication);
+    return ok;
 }
 bool tired_publication_prepare(TiredDirectory *directory, const char *name, const char *data,
                                size_t length, unsigned mode, TiredPublication **output,
@@ -158,6 +231,13 @@ bool tired_publication_commit(TiredPublication *publication, const TiredOperatio
                                "Publication is not prepared or was discarded.", 0);
     if (!tired_operation_lock_check(lock, error) || !binding(publication, true, error))
         return false;
+    if (publication->needs_sync)
+    {
+        if (fsync(publication->fd) != 0)
+            return io_error(error, "publication-file-sync",
+                            "Cannot sync reopened publication bytes.");
+        publication->needs_sync = false;
+    }
     int directory = tired_directory_fd(publication->directory);
     if (!publication->published)
     {
@@ -193,6 +273,13 @@ bool tired_publication_replace(TiredPublication *publication, const TiredOperati
     tired_text_destroy(&encoded);
     if (!valid || !tired_operation_lock_check(lock, error) || !binding(publication, true, error))
         return false;
+    if (publication->needs_sync)
+    {
+        if (fsync(publication->fd) != 0)
+            return io_error(error, "publication-file-sync",
+                            "Cannot sync reopened publication bytes.");
+        publication->needs_sync = false;
+    }
     TiredFileFingerprint actual = {0};
     int directory = tired_directory_fd(publication->directory);
     if (!publication->exchanged)
