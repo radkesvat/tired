@@ -50,7 +50,7 @@ Native message fixtures exercise known-zero versus absent values, exact integer
 width/sign, large timestamps, unknown variants, duplicate keys, type errors,
 property-count limits, preservation on failure and clearing stale fields.
 
-The asynchronous query layer performs GetUnitFileState, GetUnit and (when an object
+The default asynchronous query performs GetUnitFileState, GetUnit and (when an object
 exists) Unit and Service GetAll. It targets the verified unique manager name and
 checks identity readiness at each stage. One deadline covers the entire sequence;
 late replies, cancellation, access errors, disappearing objects or malformed
@@ -60,9 +60,28 @@ File-state availability and manager-object existence are separate. A manager may
 report an installed unit's file state while GetUnit reports no loaded object; its
 runtime fields then remain unknown. Conversely, generated or transient units may
 have state without an ordinary persistent file. `file_found` means GetUnitFileState
-returned a state, not that tired proved a regular file exists. The query does not
+returned a state, not that tired proved a regular file exists. The default query does not
 call LoadUnit or reserve a name. Missing manager entries are not sufficient proof
 that a filesystem pathname is safe to overwrite.
+
+Explicit configuration inspection can instead call `tired_unit_query_start_lookup`
+with `TIRED_UNIT_LOAD_CONFIGURATION`. This replaces GetUnit with LoadUnit so an
+installed but unloaded unit can expose its configuration. LoadUnit may create an
+in-memory manager unit object; it does not start/stop a workload, enqueue a job,
+enable a unit or reload an already loaded configuration. This distinction follows
+the baseline manager interface. The request still targets the pinned unique owner,
+disables bus activation and interactive authorization, and shares one deadline with
+the subsequent property reads.
+
+`configuration_load_queued` records asynchronous submission; it does not prove
+delivery. `configuration_load_acknowledged` records a valid object-path reply. These
+historical flags survive a later property failure or cancellation, while failed
+queries continue to hide partial observations. Cancellation cannot undo manager
+configuration loading. A missing-unit reply retains ordinary known absence; a
+denial, timeout or malformed reply retains its error. Broker fixtures cover those
+cases, inactive loaded configuration, and cancellation after submission. Existing
+status/list/recovery callers keep the default loaded-only lookup. CLI effective
+configuration inspection remains integration work.
 
 The identity tracker must outlive its queries. Destroy/cancel detaches pending
 callbacks. Results borrow query storage and are available only after successful

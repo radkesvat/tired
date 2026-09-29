@@ -32,6 +32,7 @@ typedef struct
 {
     uint32_t uid;
     unsigned unit_case;
+    unsigned configuration_loads;
     unsigned path_mode;
     unsigned reload_case;
     unsigned job_case;
@@ -64,7 +65,8 @@ static int properties(sd_bus_message *request, Broker *broker)
     if (rc >= 0 && !service)
         rc = sd_bus_message_append(message, "{sv}", "Id", "s", "fixture.service");
     if (rc >= 0 && !service)
-        rc = sd_bus_message_append(message, "{sv}", "ActiveState", "s", "active");
+        rc = sd_bus_message_append(message, "{sv}", "ActiveState", "s",
+                                   broker->unit_case == 2 ? "inactive" : "active");
     if (rc >= 0 && !service)
         rc = sd_bus_message_append(message, "{sv}", "DropInPaths", "as", 1,
                                    "/etc/systemd/system/fixture.service.d/custom.conf");
@@ -233,9 +235,11 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
                                                     "GetUnitFileState") > 0;
     bool object_query =
         sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager", "GetUnit") > 0;
+    bool load_query =
+        sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager", "LoadUnit") > 0;
     bool property_query =
         sd_bus_message_is_method_call(message, "org.freedesktop.DBus.Properties", "GetAll") > 0;
-    if (file_query || object_query || property_query)
+    if (file_query || object_query || load_query || property_query)
     {
         const char *destination = sd_bus_message_get_destination(message);
         if (destination == NULL || strcmp(destination, ":1.42") != 0 ||
@@ -272,7 +276,17 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
             return sd_bus_reply_method_return(message, "s",
                                               broker->unit_case == 2 ? "disabled" : "enabled");
         }
-        if (broker->unit_case == 1 || broker->unit_case == 2)
+        if (load_query)
+        {
+            ++broker->configuration_loads;
+            if (broker->unit_case == 9)
+                return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_ACCESS_DENIED, "Denied");
+            if (broker->unit_case == 10 || broker->unit_case == 12)
+                return 1;
+            if (broker->unit_case == 11)
+                return sd_bus_reply_method_return(message, "o", "/outside");
+        }
+        if (broker->unit_case == 1 || (broker->unit_case == 2 && !load_query))
             return sd_bus_reply_method_errorf(message, "org.freedesktop.systemd1.NoSuchUnit",
                                               "Absent");
         return sd_bus_reply_method_return(message, "o",
@@ -641,6 +655,8 @@ int main(void)
                 }
                 TiredUnitQueryResult observation = tired_unit_query_result(query);
                 CHECK(observation.done);
+                CHECK(!observation.configuration_load_queued &&
+                      !observation.configuration_load_acknowledged);
                 if (unit_case < 3)
                 {
                     CHECK(observation.error.status == TIRED_OK && observation.observation != NULL);
@@ -663,6 +679,56 @@ int main(void)
                 tired_unit_query_destroy(query);
                 query = NULL;
             }
+            CHECK(broker.configuration_loads == 0);
+            CHECK(!tired_unit_query_start_lookup(identity, &unit_base, (TiredUnitLookup)99, 1000,
+                                                 &query, &error));
+            const unsigned load_cases[] = {2, 1, 9, 10, 11, 3, 12};
+            for (size_t load_case = 0; load_case < sizeof(load_cases) / sizeof(load_cases[0]);
+                 ++load_case)
+            {
+                broker.unit_case = load_cases[load_case];
+                CHECK(tired_unit_query_start_lookup(
+                    identity, &unit_base, TIRED_UNIT_LOAD_CONFIGURATION,
+                    broker.unit_case == 10 ? 20 : 1000, &query, &error));
+                for (unsigned i = 0; i < 2000; ++i)
+                {
+                    CHECK(sd_bus_process(server, NULL) >= 0);
+                    bool done = tired_unit_query_step(query);
+                    TiredUnitQueryResult current = tired_unit_query_result(query);
+                    if (broker.unit_case == 12 && current.configuration_load_queued)
+                    {
+                        tired_unit_query_cancel(query);
+                        break;
+                    }
+                    if (done)
+                        break;
+                    struct timespec delay = {.tv_nsec = 1000000};
+                    (void)nanosleep(&delay, NULL);
+                }
+                TiredUnitQueryResult observed = tired_unit_query_result(query);
+                CHECK(observed.done && observed.configuration_load_queued);
+                const TiredStatus expected[] = {
+                    TIRED_OK,      TIRED_OK,      TIRED_AUTHORIZATION, TIRED_RUNTIME_FAILED,
+                    TIRED_INVALID, TIRED_INVALID, TIRED_CANCELLED};
+                CHECK(observed.error.status == expected[load_case]);
+                CHECK(observed.configuration_load_acknowledged ==
+                      (broker.unit_case == 2 || broker.unit_case == 3));
+                if (broker.unit_case == 2)
+                {
+                    CHECK(observed.file_found && observed.object_found &&
+                          observed.observation != NULL);
+                    CHECK(
+                        strcmp(observed.observation->fields[TIRED_OBS_ACTIVE_STATE].value.text.data,
+                               "inactive") == 0);
+                }
+                else if (broker.unit_case == 1)
+                    CHECK(!observed.file_found && !observed.object_found);
+                else
+                    CHECK(observed.observation == NULL);
+                tired_unit_query_destroy(query);
+                query = NULL;
+            }
+            broker.unit_case = 0;
             TiredText batch_names[3072];
             for (size_t i = 0; i < 3072; ++i)
                 batch_names[i] = (TiredText){.data = "fixture.service", .length = 15};

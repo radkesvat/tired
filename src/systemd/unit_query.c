@@ -24,6 +24,8 @@ struct TiredUnitQuery
     TiredError error;
     uint64_t deadline;
     Phase phase;
+    TiredUnitLookup lookup;
+    bool configuration_load_queued, configuration_load_acknowledged;
     bool done, file_found, object_found;
 };
 static bool now_usec(uint64_t *now)
@@ -145,7 +147,10 @@ static int reply(sd_bus_message *message, void *userdata, sd_bus_error *error)
         if (file)
             query->file_found = true;
         else
+        {
             query->object_found = true;
+            query->configuration_load_acknowledged = query->lookup == TIRED_UNIT_LOAD_CONFIGURATION;
+        }
         (void)queue(query, file ? OBJECT_PATH : UNIT_PROPERTIES);
     }
     else
@@ -186,9 +191,10 @@ static bool queue(TiredUnitQuery *query, Phase phase)
         query->bus, &message, query->owner.data,
         properties ? query->object_path.data : "/org/freedesktop/systemd1",
         properties ? "org.freedesktop.DBus.Properties" : "org.freedesktop.systemd1.Manager",
-        properties            ? "GetAll"
-        : phase == FILE_STATE ? "GetUnitFileState"
-                              : "GetUnit");
+        properties                                       ? "GetAll"
+        : phase == FILE_STATE                            ? "GetUnitFileState"
+        : query->lookup == TIRED_UNIT_LOAD_CONFIGURATION ? "LoadUnit"
+                                                         : "GetUnit");
     if (rc >= 0)
         rc = sd_bus_message_set_auto_start(message, 0);
     if (rc >= 0)
@@ -204,6 +210,8 @@ static bool queue(TiredUnitQuery *query, Phase phase)
         rc = sd_bus_call_async(query->bus, &query->slot, message, reply, query,
                                query->deadline - now);
     sd_bus_message_unref(message);
+    if (rc >= 0 && phase == OBJECT_PATH && query->lookup == TIRED_UNIT_LOAD_CONFIGURATION)
+        query->configuration_load_queued = true;
     if (rc < 0)
     {
         fail(query, TIRED_RUNTIME_FAILED, "unit-query-io", "Cannot queue unit observation.");
@@ -212,12 +220,14 @@ static bool queue(TiredUnitQuery *query, Phase phase)
     }
     return true;
 }
-bool tired_unit_query_start(TiredManagerIdentity *identity, const TiredText *base,
-                            unsigned timeout_ms, TiredUnitQuery **output, TiredError *error)
+bool tired_unit_query_start_lookup(TiredManagerIdentity *identity, const TiredText *base,
+                                   TiredUnitLookup lookup, unsigned timeout_ms,
+                                   TiredUnitQuery **output, TiredError *error)
 {
     assert(identity != NULL && base != NULL && output != NULL && *output == NULL);
     TiredManagerIdentityResult owner = tired_manager_identity_result(identity);
-    if (!owner.ready || owner.error.status != TIRED_OK || timeout_ms == 0 || timeout_ms > 300000)
+    if (!owner.ready || owner.error.status != TIRED_OK ||
+        (unsigned)lookup > TIRED_UNIT_LOAD_CONFIGURATION || timeout_ms == 0 || timeout_ms > 300000)
         return tired_error_set(error, TIRED_INVALID, "unit-query-input",
                                "Unit query requires a ready manager identity and bounded deadline.",
                                0);
@@ -226,6 +236,7 @@ bool tired_unit_query_start(TiredManagerIdentity *identity, const TiredText *bas
         return tired_error_set(error, TIRED_INTERNAL, "allocation", "Cannot allocate unit query.",
                                errno);
     query->identity = identity;
+    query->lookup = lookup;
     query->bus = sd_bus_ref(tired_manager_identity_bus(identity));
     if (!tired_name_candidate(base, 1, &query->name, error) ||
         !tired_text_set(&query->owner, owner.unique_name, strlen(owner.unique_name), 255, error))
@@ -249,6 +260,12 @@ bool tired_unit_query_start(TiredManagerIdentity *identity, const TiredText *bas
 fail:
     tired_unit_query_destroy(query);
     return false;
+}
+bool tired_unit_query_start(TiredManagerIdentity *identity, const TiredText *base,
+                            unsigned timeout_ms, TiredUnitQuery **output, TiredError *error)
+{
+    return tired_unit_query_start_lookup(identity, base, TIRED_UNIT_LOADED_ONLY, timeout_ms, output,
+                                         error);
 }
 bool tired_unit_query_step(TiredUnitQuery *query)
 {
@@ -299,7 +316,11 @@ void tired_unit_query_cancel(TiredUnitQuery *query)
 TiredUnitQueryResult tired_unit_query_result(const TiredUnitQuery *query)
 {
     assert(query != NULL);
-    TiredUnitQueryResult result = {.done = query->done, .error = query->error};
+    TiredUnitQueryResult result = {.done = query->done,
+                                   .error = query->error,
+                                   .configuration_load_queued = query->configuration_load_queued,
+                                   .configuration_load_acknowledged =
+                                       query->configuration_load_acknowledged};
     TiredManagerIdentityResult owner = tired_manager_identity_result(query->identity);
     if (result.error.status == TIRED_OK && owner.error.status != TIRED_OK)
     {
