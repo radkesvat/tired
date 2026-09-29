@@ -34,7 +34,17 @@ in owner-0700 state directories and apply existing sensitivity rules to display.
 Input/output are limited to 16 MiB, with stricter nested codec and JSON structural
 limits. Encode/parse failures preserve prior owned output.
 
+`tired_service_record_load` opens the selected layout's existing private records
+directory and reads only a canonical `<uuid>.json` filename. It applies private-file
+owner/mode/single-link/no-follow checks, then binds the embedded UUID, scope and
+owner to the requested record and checks derived paths. Missing records return
+not-found; inaccessible or unsafe storage is never treated as empty. No directories
+are created or repaired. The descriptor-based read variant permits inventory code
+to reuse an already trusted records directory associated with that layout.
+
 Native tests compose and round-trip the components, exercise optional profile and
 environment references, verify trusted-layout agreement, and reject mismatched
-review counts and missing environment references. Persistence, discovery, record
+review counts and missing environment references. Filesystem fixtures cover trusted
+loading, renamed UUID files, symlinks, unsafe permissions, layout mismatch and
+failure preservation. Transactional record publication, inventory discovery, record
 creation from a reviewed plan and ownership-aware status remain integration work.

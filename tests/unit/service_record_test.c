@@ -1,7 +1,13 @@
 #include "tired/io.h"
+#include "tired/private_file.h"
 #include "tired/service_record.h"
+#include "tired/service_record_storage.h"
+#include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #define CHECK(expression)                                                                          \
     do                                                                                             \
     {                                                                                              \
@@ -19,6 +25,10 @@ static bool set(TiredText *output, const char *text, TiredError *error)
 int main(int argc, char **argv)
 {
     int result = 1;
+    char fixture[] = "record-storage-XXXXXX", name[42], other[42];
+    char *created = NULL, *cwd = NULL;
+    TiredDirectory *directory = NULL;
+    TiredText directory_path = {0};
     TiredServiceRecord
         source =
             {.metadata = {.service_uuid = "01234567-89ab-4cde-8fab-0123456789ab",
@@ -117,8 +127,54 @@ int main(int argc, char **argv)
     CHECK(tired_service_record_parse(encoded.data, encoded.length, &parsed, &error));
     CHECK(parsed.has_profile && !parsed.has_environment &&
           strcmp(parsed.profile.profile.id, "generic") == 0);
+    cwd = getcwd(NULL, 0);
+    CHECK(cwd != NULL && (created = mkdtemp(fixture)) != NULL);
+    TiredText base = {.data = cwd, .length = strlen(cwd)};
+    CHECK(tired_path_absolute(&base, created, strlen(created), &directory_path, &error));
+    CHECK(tired_directory_open(directory_path.data, getuid(), true, &directory, &error));
+    CHECK(set(&layout.paths[TIRED_PATH_RECORDS], directory_path.data, &error));
+    CHECK(set(&layout.paths[TIRED_PATH_UNITS], directory_path.data, &error));
+    CHECK(tired_path_absolute(&directory_path, "relay.service", 13, &source.unit_path, &error));
+    source.metadata.owner_uid = source.metadata.invoking_uid = source.metadata.service_uid =
+        getuid();
+    CHECK(tired_service_record_encode(&source, &encoded, &error));
+    (void)snprintf(name, sizeof(name), "%s.json", source.metadata.service_uuid);
+    (void)snprintf(other, sizeof(other), "%s.json", source.metadata.revision_uuid);
+    CHECK(!tired_service_record_load(&layout, source.metadata.service_uuid, &parsed, &error));
+    CHECK(error.status == TIRED_NOT_FOUND);
+    CHECK(tired_private_file_create(directory, name, encoded.data, encoded.length, &error));
+    CHECK(tired_service_record_load(&layout, source.metadata.service_uuid, &parsed, &error));
+    CHECK(parsed.metadata.owner_uid == getuid());
+    int fd = tired_directory_fd(directory);
+    CHECK(renameat(fd, name, fd, other) == 0);
+    CHECK(!tired_service_record_load(&layout, source.metadata.revision_uuid, &parsed, &error));
+    CHECK(error.status == TIRED_CONFLICT &&
+          strcmp(parsed.metadata.service_uuid, source.metadata.service_uuid) == 0);
+    CHECK(symlinkat(other, fd, name) == 0);
+    CHECK(!tired_service_record_load(&layout, source.metadata.service_uuid, &parsed, &error));
+    CHECK(unlinkat(fd, name, 0) == 0 && renameat(fd, other, fd, name) == 0);
+    CHECK(fchmodat(fd, name, 0644, 0) == 0);
+    CHECK(!tired_service_record_load(&layout, source.metadata.service_uuid, &parsed, &error));
+    CHECK(fchmodat(fd, name, 0600, 0) == 0);
+    CHECK(set(&layout.paths[TIRED_PATH_UNITS], "/wrong", &error));
+    CHECK(!tired_service_record_load(&layout, source.metadata.service_uuid, &parsed, &error));
+    CHECK(!tired_service_record_load(&layout, "../escape", &parsed, &error));
     result = 0;
 cleanup:
+    if (directory != NULL)
+    {
+        char cleanup_name[42];
+        (void)snprintf(cleanup_name, sizeof(cleanup_name), "%s.json", source.metadata.service_uuid);
+        (void)unlinkat(tired_directory_fd(directory), cleanup_name, 0);
+        (void)snprintf(cleanup_name, sizeof(cleanup_name), "%s.json",
+                       source.metadata.revision_uuid);
+        (void)unlinkat(tired_directory_fd(directory), cleanup_name, 0);
+    }
+    tired_directory_destroy(directory);
+    if (created != NULL)
+        (void)rmdir(created);
+    free(cwd);
+    tired_text_destroy(&directory_path);
     json_object_put(document);
     tired_service_record_destroy(&source);
     tired_service_record_destroy(&parsed);
