@@ -15,9 +15,11 @@ int main(void)
     TiredSettings defaults = {0}, input = {0};
     TiredError error = {0};
     tired_settings_defaults(&defaults);
+    CHECK(defaults.history_revisions == 5);
     CHECK(defaults.tui && defaults.restart_usec == 5000000 && defaults.observation_usec == 3000000);
     const char *valid = "{\"schema_version\":1,\"color\":\"never\",\"log_tail\":500,\"retry_"
-                        "policy\":\"limited\",\"profile_directories\":[\"/etc/site/profiles\"]}";
+                        "policy\":\"limited\",\"history_revisions\":9,\"profile_directories\":[\"/"
+                        "etc/site/profiles\"]}";
     CHECK(tired_settings_parse(valid, strlen(valid), &input, &error));
     CHECK(!tired_settings_merge(&defaults, &input, TIRED_SETTINGS_USER, &error));
     CHECK(defaults.log_tail == 200);
@@ -29,6 +31,8 @@ int main(void)
     CHECK(tired_settings_merge(&defaults, &input, TIRED_SETTINGS_USER, &error));
     CHECK(defaults.ascii && defaults.log_tail == 20 && defaults.profile_directories.count == 1);
     CHECK(defaults.origins[TIRED_SETTING_LOG_TAIL] == TIRED_SETTINGS_USER);
+    CHECK(defaults.history_revisions == 9 &&
+          defaults.origins[TIRED_SETTING_HISTORY] == TIRED_SETTINGS_ADMIN);
     const char *bad[] = {
         "{}",
         "{\"schema_version\":2}",

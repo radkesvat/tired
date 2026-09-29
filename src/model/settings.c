@@ -22,7 +22,7 @@ void tired_settings_defaults(TiredSettings *settings)
     tired_settings_destroy(settings);
     settings->tui = true;
     settings->restart_usec = 5000000;
-    settings->history_revisions = 32;
+    settings->history_revisions = 5;
     settings->log_tail = 200;
     settings->observation_usec = 3000000;
 }

@@ -13,7 +13,7 @@ path, memory-budget and authority constraints.
 | `tui` | `true` | Boolean |
 | `retry_policy` | `persistent` | `persistent`, `limited` |
 | `restart_sec` | `5s` | Duration from zero through one day |
-| `history_revisions` | `32` | Integer 1–1000 |
+| `history_revisions` | `5` | Integer 1–1000 |
 | `log_tail` | `200` | Integer 1–10000 |
 | `observation_sec` | `3s` | Duration from 100 ms through 300 s |
 | `profile_directories` | Empty | Up to 16 absolute paths, 64 KiB combined |
