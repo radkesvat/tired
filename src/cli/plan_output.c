@@ -1,6 +1,7 @@
 #include "tired/plan_output.h"
 #include "tired/encode.h"
 #include "tired/render.h"
+#include "tired/risk.h"
 #include <assert.h>
 #include <json-c/json.h>
 #include <string.h>
@@ -154,6 +155,12 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
                                                                   : &plan->managed_environment,
                            &plan->credentials, &unit, error))
         goto fail;
+    TiredRiskFacts facts = {.invoking_uid = plan->invoking.uid,
+                            .service_uid = plan->service.uid,
+                            .sensitive_command = sensitive,
+                            .sensitive_export = include_sensitive};
+    TiredRiskReport risks;
+    tired_risk_assess(&plan->spec, &facts, &risks);
     if (json)
     {
         root = json_object_new_object();
@@ -199,19 +206,37 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
             if (!push(environment, item))
                 goto allocation;
         }
-        if (sensitive && !push(warnings, json_object_new_string("sensitive-command-data")))
+        struct json_object *checks = json_object_new_array();
+        if (checks == NULL)
             goto allocation;
-        if (plan->service.uid == 0 && plan->invoking.uid != 0 &&
-            !push(warnings, json_object_new_string("run-as-root")))
+        if (!add(root, "risk_checks", checks))
             goto allocation;
-        if (tired_field_has_value(&plan->spec.fields[TIRED_FIELD_AMBIENT_CAPABILITIES]) &&
-            plan->spec.fields[TIRED_FIELD_AMBIENT_CAPABILITIES].value.list.count != 0 &&
-            !push(warnings, json_object_new_string("privileged-capabilities")))
-            goto allocation;
-        if (tired_spec_choice_is(&plan->spec, TIRED_FIELD_RETRY_POLICY, "persistent") &&
-            plan->spec.fields[TIRED_FIELD_RESTART_SEC].value.microseconds < 1000000 &&
-            !push(warnings, json_object_new_string("rapid-persistent-retry")))
-            goto allocation;
+        for (unsigned i = 0; i < TIRED_RISK_COUNT; ++i)
+        {
+            if (!risks.present[i] && !risks.pending[i])
+                continue;
+            const TiredRisk *risk = tired_risk_get((TiredRiskId)i);
+            if (risks.present[i] && !push(warnings, json_object_new_string(risk->code)))
+                goto allocation;
+            struct json_object *entry = json_object_new_object();
+            if (entry == NULL)
+                goto allocation;
+            if (!add(entry, "code", json_object_new_string(risk->code)) ||
+                !add(entry, "state",
+                     json_object_new_string(risks.pending[i] ? "inspection-pending"
+                                                             : "acknowledgment-required")) ||
+                !add(entry, "message",
+                     json_object_new_string(
+                         risks.pending[i]
+                             ? "Privileged code ownership and writability have not been inspected."
+                             : risk->message)))
+            {
+                json_object_put(entry);
+                goto allocation;
+            }
+            if (!push(checks, entry))
+                goto allocation;
+        }
         if (!add(root, "schema_version", json_object_new_int(1)) ||
             !add(root, "command", json_object_new_string(explain ? "profiles explain" : "plan")) ||
             !add(root, "ok", json_object_new_boolean(true)) ||
@@ -343,6 +368,18 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
             goto fail;
         if (!unit_only)
         {
+            for (unsigned i = 0; i < TIRED_RISK_COUNT; ++i)
+            {
+                if (!risks.present[i] && !risks.pending[i])
+                    continue;
+                const TiredRisk *risk = tired_risk_get((TiredRiskId)i);
+                if (!comment(&text, risk->code,
+                             risks.pending[i]
+                                 ? "Inspection pending: privileged code ownership and writability."
+                                 : risk->message,
+                             error))
+                    goto fail;
+            }
             if (!comment(&text, "Retry policy origin",
                          field_origins[plan->spec.fields[TIRED_FIELD_RETRY_POLICY].origin],
                          error) ||

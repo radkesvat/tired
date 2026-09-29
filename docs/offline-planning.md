@@ -29,6 +29,8 @@ JSON fields preserve origins and typed values. Durations are integer microsecond
 CPU quotas are hundredths of a percent, permission modes are numeric bitmasks, and
 infinite limits use the string `infinity`. Inherited/unset fields omit a value.
 Environment entries have independent origins and sensitivity classifications.
+The [risk inventory](risks.md) reports identified risks and pending privileged-code
+inspection separately; it does not claim approval or installation readiness.
 
 Default output masks recognized password/token/secret/api-key command flags and
 classified environment values. Redacted unit views are labeled non-installable.

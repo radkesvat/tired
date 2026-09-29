@@ -59,6 +59,8 @@ int main(int argc, char **argv)
           strstr(output.data, "command-secret") == NULL &&
           strstr(output.data, "attached-secret") == NULL);
     CHECK(strstr(output.data, "\\u009b") != NULL);
+    CHECK(strstr(output.data, "risk_checks") != NULL);
+    CHECK(strstr(output.data, "acknowledgment-required") != NULL);
     CHECK(strstr(output.data, "\xc2\x9b") == NULL);
     /* Output may exceed generic input limit in general; this fixture is small. */
     CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &json, &error));

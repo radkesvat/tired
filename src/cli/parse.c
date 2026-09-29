@@ -1,5 +1,6 @@
 #include "tired/capture.h"
 #include "tired/cli.h"
+#include "tired/risk.h"
 #include <assert.h>
 #include <string.h>
 
@@ -281,6 +282,13 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
         }
         else if (strcmp(option, "--allow-risk") == 0)
         {
+            TiredRiskId id;
+            if (!tired_risk_find(value, strlen(value), &id))
+            {
+                tired_error_set(error, TIRED_INVALID, "unknown-risk",
+                                "Risk acknowledgment names an unsupported code.", 0);
+                goto fail;
+            }
             if (!list_add(&parsed.allowed_risks, value, error))
                 goto fail;
         }
