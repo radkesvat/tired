@@ -51,6 +51,12 @@ int main(void)
     CHECK(!PARSE("tired", "--set", "restart=always", "--restart", "no", "./server"));
     CHECK(!PARSE("tired", "--name"));
     CHECK(!PARSE("tired", "--unknown", "./server"));
+    CHECK(PARSE("tired", "--sensitive-arg", "1", "--sensitive-arg", "1", "./server", "value"));
+    CHECK(request.sensitive_arguments[1]);
+    CHECK(!PARSE("tired", "--sensitive-arg", "0", "./server", "value"));
+    CHECK(!PARSE("tired", "--sensitive-arg", "2", "./server", "value"));
+    CHECK(!PARSE("tired", "--sensitive-arg", "-1", "./server", "value"));
+    CHECK(!PARSE("tired", "--sensitive-arg", "1", "edit", "service"));
     CHECK(!PARSE("tired", "--allow-risk", "invented-risk", "./server"));
     CHECK(PARSE("tired", "--allow-risk", "run-as-root", "./server"));
     CHECK(!PARSE("tired", "--yes=false", "./server"));

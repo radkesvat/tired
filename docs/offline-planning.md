@@ -29,6 +29,24 @@ JSON fields preserve origins and typed values. Durations are integer microsecond
 CPU quotas are hundredths of a percent, permission modes are numeric bitmasks, and
 infinite limits use the string `infinity`. Inherited/unset fields omit a value.
 Environment entries have independent origins and sensitivity classifications.
+Use repeatable `--sensitive-arg INDEX` to classify arguments that the heuristic does
+not recognize. Index 1 is the first workload argument after the executable; index 0
+and nonexistent arguments are errors. For example:
+
+```console
+tired plan --offline --profile none --sensitive-arg 2 -- /opt/service login private-value
+```
+
+The classified argument is masked in text, unit previews and JSON field values.
+JSON retains the explicit indices in `sensitive_argument_indices`. Classification
+does not alter the actual workload argument, remove secrets from its process
+arguments, or make the eventual unit metadata private. It raises the
+`sensitive-command-data` risk. The same option works with `profiles explain`.
+Repeated classification of one index is harmless. Private authorized exports may
+reveal classified arguments; ordinary previews remain labeled non-installable when
+redacted. Classifications are currently retained in the proposal; persisted service
+records and editor handling are still pending.
+
 The [risk inventory](risks.md) reports identified risks and pending privileged-code
 inspection separately; it does not claim approval or installation readiness.
 

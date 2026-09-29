@@ -103,6 +103,7 @@ int main(int argc, char **argv)
               "FIELD,\n"
               "  --env KEY=VALUE, --pass-env KEY, --env-file PATH, --import-env-file PATH,\n"
               "  --credential NAME=PATH, --unit, --json, --output NEW_FILE.\n"
+              "  --sensitive-arg INDEX masks a workload argument (1 is the first after COMMAND).\n"
               "Sensitive exports: --include-sensitive --allow-risk sensitive-export --output "
               "NEW_FILE.\n"
               "Arguments after COMMAND or -- belong to the workload. Planning never executes it.\n",

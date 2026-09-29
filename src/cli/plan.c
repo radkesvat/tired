@@ -66,6 +66,8 @@ bool tired_plan_prepare_settings(const TiredRequest *request, const TiredSetting
 {
     assert(request != NULL && output != NULL);
     TiredPlan plan = {0};
+    memcpy(plan.sensitive_arguments, request->sensitive_arguments,
+           sizeof(plan.sensitive_arguments));
     TiredText path = {0}, contents = {0};
     TiredBuffer buffer;
     tired_buffer_init(&buffer, TIRED_INPUT_LIMIT);

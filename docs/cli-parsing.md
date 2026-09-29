@@ -30,6 +30,9 @@ nested commands beyond the implemented handlers remain under implementation. The
 currently exposes help/version, offline planning with profile selection, and
 profiles list/show/explain/validate and config show/validate. Profile explanation
 requires an explicit `--` before the workload and preserves all following arguments.
+`--sensitive-arg INDEX` is repeatable for creation, planning and profile explanation.
+It accepts existing workload argument indices after the executable, preserves the
+argument bytes, and marks those indices for display redaction.
 Other commands fail explicitly as unavailable. Successful parse recognition does
 not imply that a corresponding service-management handler is complete.
 

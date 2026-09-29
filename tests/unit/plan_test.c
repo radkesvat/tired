@@ -151,6 +151,23 @@ int main(int argc, char **argv)
     tired_catalog_destroy(&catalog);
     tired_settings_destroy(&layer);
     tired_settings_destroy(&settings);
+    const char *classified[] = {
+        "tired",           "plan", "--offline", "--profile",     "none",
+        "--sensitive-arg", "1",    "--",        "/usr/bin/true", "unrecognized-private-value"};
+    CHECK(tired_cli_parse(10, classified, &request, &error));
+    CHECK(tired_plan_prepare(&request, &plan, &error));
+    CHECK(plan.sensitive_arguments[1]);
+    CHECK(tired_plan_output(&plan, true, false, false, &output, &error));
+    CHECK(strstr(output.data, "unrecognized-private-value") == NULL);
+    CHECK(strstr(output.data, "sensitive_argument_indices") != NULL);
+    CHECK(strstr(output.data, "sensitive-command-data") != NULL);
+    CHECK(tired_plan_output(&plan, false, true, false, &output, &error));
+    CHECK(strstr(output.data, "unrecognized-private-value") == NULL);
+    CHECK(strstr(output.data, "Redacted non-installable") != NULL);
+    CHECK(strcmp(plan.spec.fields[TIRED_FIELD_ARGV].value.list.items[1].data,
+                 "unrecognized-private-value") == 0);
+    CHECK(tired_plan_output(&plan, true, false, true, &output, &error));
+    CHECK(strstr(output.data, "unrecognized-private-value") != NULL);
     tired_text_destroy(&output);
     tired_plan_destroy(&plan);
     tired_request_destroy(&request);

@@ -252,9 +252,10 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
             }
         if (handled)
             continue;
-        const char *taking[] = {"--set",        "--nofile",   "--profile",         "--env",
-                                "--pass-env",   "--env-file", "--import-env-file", "--credential",
-                                "--allow-risk", "--output",   "--color",           "--unset"};
+        const char *taking[] = {"--set",          "--nofile",   "--profile",         "--env",
+                                "--pass-env",     "--env-file", "--import-env-file", "--credential",
+                                "--allow-risk",   "--output",   "--color",           "--unset",
+                                "--sensitive-arg"};
         for (size_t j = 0; j < sizeof(taking) / sizeof(taking[0]); ++j)
             if (strcmp(option, taking[j]) == 0)
                 handled = true;
@@ -295,6 +296,15 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
         else
         {
             creation_options = true;
+            if (strcmp(option, "--sensitive-arg") == 0)
+            {
+                uint64_t index;
+                if (!tired_parse_u64(value, strlen(value), 1, TIRED_ARGUMENT_LIMIT - 1, &index,
+                                     error))
+                    goto fail;
+                parsed.sensitive_arguments[index] = true;
+                continue;
+            }
             if (strcmp(option, "--unset") == 0)
             {
                 const TiredField *field = tired_field_find(value, strlen(value));
@@ -402,6 +412,17 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
     if (!parsed.help && !parsed.version)
     {
         size_t count = parsed.arguments.count;
+        for (size_t i = 1; i < TIRED_ARGUMENT_LIMIT; ++i)
+            if (parsed.sensitive_arguments[i] &&
+                (i >= count || (parsed.command != TIRED_COMMAND_CREATE &&
+                                parsed.command != TIRED_COMMAND_PLAN && !parsed.profile_explain)))
+            {
+                tired_error_set(error, TIRED_INVALID, "sensitive-argument-index",
+                                "Sensitive argument index must identify an existing workload "
+                                "argument after the executable.",
+                                0);
+                goto fail;
+            }
         bool valid;
         switch (parsed.command)
         {

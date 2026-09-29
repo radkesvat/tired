@@ -25,6 +25,7 @@ typedef struct
     TiredRecommendationDisposition *profile_decisions;
     bool profile_matching;
     bool profile_explicit;
+    bool sensitive_arguments[TIRED_ARGUMENT_LIMIT];
 } TiredPlan;
 /* Read-only preparation. Reads only explicit inputs/account database and captures
  * PATH once. Produces no files or manager changes. Profile selection is supplied

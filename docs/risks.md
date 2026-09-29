@@ -33,8 +33,9 @@ require acknowledgments merely to inspect a proposal. Unknown `--allow-risk` cod
 are rejected by the CLI. Sensitive exports retain their separate private-file and
 explicit-acknowledgment checks.
 
-Command sensitivity currently comes from the preview's flag heuristic; it can miss
-unknown secret forms. Manual classification, privileged code/dependency inspection,
-durable approval records and installation-time enforcement remain to be integrated.
+Command sensitivity comes from explicit `--sensitive-arg INDEX` classifications and
+the preview's flag heuristic; the heuristic can miss unknown secret forms.
+Privileged code/dependency inspection, durable classification and approval records,
+and installation-time enforcement remain to be integrated.
 Offline privileged-code checks therefore remain explicitly pending. This inventory
 does not imply that a proposal is ready to install.

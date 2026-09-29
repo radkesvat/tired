@@ -40,6 +40,7 @@ typedef struct
         include_sensitive;
     bool explicit_boundary;
     bool profile_explain;
+    bool sensitive_arguments[TIRED_ARGUMENT_LIMIT]; /* Workload argv indices; index 0 excluded. */
 } TiredRequest;
 /* Parse argv including the frontend executable. No filesystem, environment,
  * manager, or workload access. Output is atomic and owns copies. */

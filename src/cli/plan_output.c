@@ -138,7 +138,7 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
         const TiredText *arg = &original->items[i];
         bool flag = i != 0 && secret_flag(arg);
         bool attached = flag && memchr(arg->data, '=', arg->length) != NULL;
-        bool hide = hide_next || attached;
+        bool hide = hide_next || attached || plan->sensitive_arguments[i];
         if (hide || flag)
             sensitive = true;
         const char *value = !include_sensitive && hide ? "[redacted]" : arg->data;
@@ -211,6 +211,14 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
             goto allocation;
         if (!add(root, "risk_checks", checks))
             goto allocation;
+        struct json_object *classified = json_object_new_array();
+        if (classified == NULL)
+            goto allocation;
+        if (!add(root, "sensitive_argument_indices", classified))
+            goto allocation;
+        for (size_t i = 1; i < original->count; ++i)
+            if (plan->sensitive_arguments[i] && !push(classified, json_object_new_uint64(i)))
+                goto allocation;
         for (unsigned i = 0; i < TIRED_RISK_COUNT; ++i)
         {
             if (!risks.present[i] && !risks.pending[i])
