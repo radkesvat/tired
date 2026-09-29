@@ -41,7 +41,7 @@ supported. Failures preserve the previous output and result flags.
 The result distinguishes sensitive input from actual redaction. A caller-authorized
 private export can retain sensitive argv while still reporting its presence.
 Authorization belongs to the frontend; this helper does not grant it. Offline
-previews use the helper. Saved-record display integration remains pending, and
-arbitrary installed unit bytes require separate redaction: regenerating a model
-is not a substitute for displaying the installed file. Environment values and
+previews and `show` use the helper. Installed unit bytes use separate source-span
+redaction: regenerating a model is not a substitute for displaying the installed
+file. Environment values and
 other text fields are outside this argument-only helper's scope.

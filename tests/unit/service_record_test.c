@@ -8,6 +8,7 @@
 #include "tired/service_inventory.h"
 #include "tired/service_record.h"
 #include "tired/service_record_storage.h"
+#include "tired/show_frontend.h"
 #include "tired/status_frontend.h"
 #include <fcntl.h>
 #include <stdio.h>
@@ -160,6 +161,88 @@ cleanup:
     free(large_unit);
     return result;
 }
+static int show_checks(TiredDirectory *root, const TiredText *path, TiredServiceRecord *record)
+{
+    int result = 1;
+    TiredError error = {0};
+    TiredRequest request = {0};
+    TiredText output = {0}, rendered = {0}, exported = {0};
+    TiredDirectory *systemd = NULL, *units = NULL;
+    TiredBuffer original;
+    tired_buffer_init(&original, TIRED_UNIT_LIMIT);
+    TiredStatus status = TIRED_INTERNAL;
+    const char *args[] = {"tired", "show", "relay", "--user", "--json"};
+    CHECK(tired_cli_parse((int)(sizeof(args) / sizeof(args[0])), args, &request, &error));
+    CHECK(tired_show_command(&request, &output, &status, &error));
+    CHECK(status == TIRED_OK && strstr(output.data, "\"status\":\"missing\"") != NULL &&
+          strstr(output.data, "\"command\":\"show\"") != NULL &&
+          strstr(output.data, "secret") == NULL);
+    CHECK(tired_directory_child(root, "systemd", true, true, &systemd, &error));
+    CHECK(tired_directory_child(systemd, "user", true, true, &units, &error));
+    CHECK(tired_render_unit(&record->spec, record->metadata.service_uuid, NULL,
+                            &record->credentials, &rendered, &error));
+    const char extra[] = "\n# installed comment \x1b[31m\n";
+    CHECK(tired_buffer_append(&original, rendered.data, rendered.length, &error) &&
+          tired_buffer_append(&original, extra, sizeof(extra) - 1, &error));
+    CHECK(
+        tired_private_file_create(units, "relay.service", original.data, original.length, &error));
+    CHECK(fchmodat(tired_directory_fd(units), "relay.service", 0644, 0) == 0);
+    CHECK(tired_show_command(&request, &output, &status, &error));
+    CHECK(status == TIRED_OK && strstr(output.data, "\"digest_matches\":false") != NULL &&
+          strstr(output.data, "\"marker_matches\":true") != NULL &&
+          strstr(output.data, "installed comment") != NULL &&
+          strstr(output.data, "secret") == NULL && memchr(output.data, 27, output.length) == NULL);
+    request.json = false;
+    request.unit = true;
+    CHECK(tired_show_command(&request, &output, &status, &error));
+    CHECK(strstr(output.data, "Terminal-escaped, non-installable") != NULL &&
+          strstr(output.data, "Redacted, non-installable") != NULL &&
+          strstr(output.data, "installed comment") != NULL &&
+          strstr(output.data, "secret") == NULL && memchr(output.data, 27, output.length) == NULL);
+    char *previous = output.data;
+    request.include_sensitive = true;
+    CHECK(!tired_show_command(&request, &output, &status, &error));
+    CHECK(output.data == previous && error.status == TIRED_INVALID);
+    CHECK(tired_path_absolute(path, "export.unit", 11, &request.output, &error));
+    CHECK(!tired_show_command(&request, &output, &status, &error));
+    CHECK(tired_text_list_append(&request.allowed_risks, "sensitive-export", 16, 16, 1024, &error));
+    CHECK(tired_show_command(&request, &output, &status, &error));
+    CHECK(strstr(output.data, "secret") == NULL && status == TIRED_OK);
+    struct stat info;
+    CHECK(fstatat(tired_directory_fd(root), "export.unit", &info, AT_SYMLINK_NOFOLLOW) == 0 &&
+          (info.st_mode & 0777) == 0600);
+    CHECK(tired_read_file(request.output.data, TIRED_UNIT_LIMIT, &exported, &error));
+    CHECK(exported.length == original.length &&
+          memcmp(exported.data, original.data, exported.length) == 0);
+    CHECK(!tired_show_command(&request, &output, &status, &error));
+    CHECK(error.status == TIRED_CONFLICT);
+    request.include_sensitive = false;
+    tired_text_destroy(&request.output);
+    CHECK(unlinkat(tired_directory_fd(units), "relay.service", 0) == 0);
+    CHECK(symlinkat("missing", tired_directory_fd(units), "relay.service") == 0);
+    CHECK(!tired_show_command(&request, &output, &status, &error));
+    request.unit = false;
+    request.json = true;
+    CHECK(tired_show_command(&request, &output, &status, &error));
+    CHECK(status == TIRED_RECOVERY_REQUIRED &&
+          strstr(output.data, "\"status\":\"unknown\"") != NULL);
+    result = 0;
+cleanup:
+    (void)unlinkat(tired_directory_fd(root), "export.unit", 0);
+    if (units != NULL)
+        (void)unlinkat(tired_directory_fd(units), "relay.service", 0);
+    if (systemd != NULL)
+        (void)unlinkat(tired_directory_fd(systemd), "user", AT_REMOVEDIR);
+    (void)unlinkat(tired_directory_fd(root), "systemd", AT_REMOVEDIR);
+    tired_directory_destroy(units);
+    tired_directory_destroy(systemd);
+    tired_request_destroy(&request);
+    tired_text_destroy(&output);
+    tired_text_destroy(&rendered);
+    tired_text_destroy(&exported);
+    tired_buffer_destroy(&original);
+    return result;
+}
 static int status_checks(TiredDirectory *root, const TiredText *path, TiredServiceRecord *record)
 {
     int result = 1;
@@ -195,6 +278,7 @@ static int status_checks(TiredDirectory *root, const TiredText *path, TiredServi
           strstr(output.data, "\"record\":\"present\"") != NULL &&
           strstr(output.data, "\"profile\":\"generic\"") != NULL &&
           strstr(output.data, "secret") == NULL && status != TIRED_OK);
+    CHECK(show_checks(root, path, record) == 0);
     int bad = openat(tired_directory_fd(records), "bad\n\xff",
                      O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC, 0600);
     CHECK(bad >= 0 && close(bad) == 0);

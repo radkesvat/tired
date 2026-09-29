@@ -4,6 +4,7 @@
 #include "tired/plan_output.h"
 #include "tired/profile_frontend.h"
 #include "tired/recover_frontend.h"
+#include "tired/show_frontend.h"
 #include "tired/status_frontend.h"
 #include <json-c/json.h>
 #include <signal.h>
@@ -100,6 +101,7 @@ int main(int argc, char **argv)
               "       tired recover [--user] [--json]  (read-only inspection)\n"
               "       tired status NAME [--user] [--json] [--check-active]\n"
               "       tired list [--user] [--json]\n"
+              "       tired show NAME [--user] [--json | --unit] [--output NEW_FILE]\n"
               "       tired --help | --version\n\n"
               "Offline planning and profile, configuration, and stored-journal inspection are "
               "available.\n"
@@ -127,10 +129,12 @@ int main(int argc, char **argv)
     {
         if (request.command == TIRED_COMMAND_PROFILES || request.command == TIRED_COMMAND_CONFIG ||
             request.command == TIRED_COMMAND_RECOVER || request.command == TIRED_COMMAND_STATUS ||
-            request.command == TIRED_COMMAND_LIST)
+            request.command == TIRED_COMMAND_LIST || request.command == TIRED_COMMAND_SHOW)
         {
             TiredStatus command_status = TIRED_OK;
-            bool ok = request.command == TIRED_COMMAND_LIST
+            bool ok = request.command == TIRED_COMMAND_SHOW
+                          ? tired_show_command(&request, &output, &command_status, &error)
+                      : request.command == TIRED_COMMAND_LIST
                           ? tired_list_command(&request, &output, &command_status, &error)
                       : request.command == TIRED_COMMAND_STATUS
                           ? tired_status_command(&request, &output, &command_status, &error)

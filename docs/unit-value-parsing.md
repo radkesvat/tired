@@ -27,8 +27,8 @@ as sensitive and must not print them without appropriate redaction/escaping.
 
 Tests cover source spans, empty words, quote concatenation, byte and Unicode escapes,
 renderer-token decoding, literal expansion syntax, malformed inputs, count/byte
-limits and failure preservation. Installed-file access and the `show` command
-remain frontend integration work.
+limits and failure preservation. The `show` frontend combines these components
+with trusted installed-file access.
 
 `tired_unit_document_parse` supplies the logical assignment layer. It retains each
 section/key/value and every repeated or empty reset assignment in file order.
@@ -81,6 +81,6 @@ buffers are cleared before release.
 This is display redaction, not a secret-proof unit sanitizer: it does not recognize
 every secret form, inspect arbitrary directive values/comments, or match saved
 secrets embedded inside larger unrelated strings. It neither reads nor adopts
-external files. Returned bytes still require terminal control escaping. Unredacted
-private export authorization, installed-file reading, effective-view handling and
-the `show` command remain frontend integration work.
+external files. Returned bytes still require terminal control escaping. The `show`
+frontend performs installed-file reads, terminal escaping and private export
+authorization. Effective-view handling remains under implementation.
