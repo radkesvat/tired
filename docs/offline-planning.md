@@ -6,6 +6,14 @@ a unit view. Installed profiles are matched automatically. `--profile none` disa
 matching; `--profile ID` selects a profile explicitly for renamed workloads. Live
 planning remains unfinished.
 
+Planning first discovers and validates administrator and invoking-user settings as
+described in [Settings](settings.md). Malformed or unsafe settings fail explicitly,
+including when profile matching is disabled. Configured retry policy and restart
+delay replace generic defaults; compatible profile recommendations can replace
+configured values, while explicit CLI choices take precedence over both. JSON
+reports `administrator-config` or `user-config` field origins. Text summaries show
+the effective retry policy and restart delay origins.
+
 Preparation captures the command once, resolves account/group choices, applies typed
 CLI overrides, recomputes dependent retry/scope/name defaults, imports only selected
 environment inputs, and derives private environment revision paths. Relative input

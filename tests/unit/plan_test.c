@@ -96,6 +96,44 @@ int main(int argc, char **argv)
           strstr(output.data, "Evidence:") != NULL);
     CHECK(strstr(output.data, "\nRestart=") == NULL);
     json_object_put(json);
+    TiredSettings settings = {0}, layer = {0};
+    tired_settings_defaults(&settings);
+    const char *configuration =
+        "{\"schema_version\":1,\"retry_policy\":\"limited\",\"restart_sec\":\"7s\"}";
+    CHECK(tired_settings_parse(configuration, strlen(configuration), &layer, &error));
+    CHECK(tired_settings_merge(&settings, &layer, TIRED_SETTINGS_ADMIN, &error));
+    const char *configured[] = {"tired", "plan", "--offline",    "--profile",
+                                "none",  "--",   "/usr/bin/true"};
+    CHECK(tired_cli_parse(7, configured, &request, &error));
+    CHECK(tired_plan_prepare_settings(&request, &settings, &plan, &error));
+    CHECK(tired_spec_choice_is(&plan.spec, TIRED_FIELD_RETRY_POLICY, "limited"));
+    CHECK(plan.spec.fields[TIRED_FIELD_RESTART_SEC].value.microseconds == 7000000);
+    CHECK(plan.spec.fields[TIRED_FIELD_RESTART_SEC].origin == TIRED_ORIGIN_CONFIG_ADMIN);
+    CHECK(plan.spec.fields[TIRED_FIELD_START_LIMIT_INTERVAL].value.microseconds == 300000000);
+    CHECK(plan.spec.fields[TIRED_FIELD_START_LIMIT_BURST].value.integer == 10);
+    CHECK(tired_plan_output(&plan, true, false, false, &output, &error));
+    CHECK(strstr(output.data, "administrator-config") != NULL);
+    CHECK(tired_catalog_add_directory(&catalog, argv[1], TIRED_PROFILE_BUNDLED, getuid(), false,
+                                      &error));
+    CHECK(tired_plan_apply_profiles(&plan, &catalog, "backhaul", &context, &error));
+    CHECK(plan.spec.fields[TIRED_FIELD_RESTART_SEC].value.microseconds == 3000000);
+    CHECK(plan.spec.fields[TIRED_FIELD_RESTART_SEC].origin == TIRED_ORIGIN_PROFILE);
+    const char *explicit_args[] = {"tired",        "plan",          "--offline", "--retry-policy",
+                                   "persistent",   "--restart-sec", "9s",        "--",
+                                   "/usr/bin/true"};
+    CHECK(tired_cli_parse(9, explicit_args, &request, &error));
+    CHECK(tired_plan_prepare_settings(&request, &settings, &plan, &error));
+    CHECK(plan.spec.fields[TIRED_FIELD_START_LIMIT_INTERVAL].value.microseconds == 0);
+    CHECK(tired_plan_apply_profiles(&plan, &catalog, "backhaul", &context, &error));
+    CHECK(plan.spec.fields[TIRED_FIELD_RESTART_SEC].value.microseconds == 9000000);
+    CHECK(plan.spec.fields[TIRED_FIELD_RESTART_SEC].origin == TIRED_ORIGIN_USER);
+    CHECK(tired_settings_merge(&settings, &layer, TIRED_SETTINGS_USER, &error));
+    CHECK(tired_cli_parse(7, configured, &request, &error));
+    CHECK(tired_plan_prepare_settings(&request, &settings, &plan, &error));
+    CHECK(plan.spec.fields[TIRED_FIELD_RESTART_SEC].origin == TIRED_ORIGIN_CONFIG_USER);
+    tired_catalog_destroy(&catalog);
+    tired_settings_destroy(&layer);
+    tired_settings_destroy(&settings);
     tired_text_destroy(&output);
     tired_plan_destroy(&plan);
     tired_request_destroy(&request);

@@ -73,6 +73,12 @@ effective field and its `default`, `administrator`, `user`, or `cli` origin.
 Durations are shown as exact microsecond strings. Neither format contacts systemd.
 Malformed or unsafe installed settings fail the command without partial output.
 
-Applying these defaults to planning and other operations remains under
-implementation. Config show reports the settings model; it does not claim that
-unimplemented commands already consume it.
+Offline plans consume configured retry policy and restart delay before profile
+recommendations and CLI selections. Dependent start-limit defaults are recomputed
+from the resulting policy. Explicit inheritance is preserved like other user
+choices. The low-level generic planning API remains independent of discovery;
+the settings-aware API accepts an already merged configuration.
+
+Approved profile directories and the presentation, history, log-tail and observation
+settings still need integration into their respective operations. Config show
+reports their effective defaults without claiming those consumers are complete.

@@ -4,6 +4,7 @@
 #include "tired/cli.h"
 #include "tired/profile_merge.h"
 #include "tired/proposal.h"
+#include "tired/settings.h"
 
 typedef struct
 {
@@ -29,6 +30,10 @@ typedef struct
  * PATH once. Produces no files or manager changes. Profile selection is supplied
  * by the profile layer; this constructor builds a generic proposal plus overrides. */
 bool tired_plan_prepare(const TiredRequest *request, TiredPlan *output, TiredError *error);
+/* Apply effective configured retry defaults before explicit request overrides.
+ * Does not discover settings files; caller supplies an already validated layer. */
+bool tired_plan_prepare_settings(const TiredRequest *request, const TiredSettings *settings,
+                                 TiredPlan *output, TiredError *error);
 void tired_plan_destroy(TiredPlan *plan);
 /* Apply a selected catalog snapshot atomically and retain provenance. */
 bool tired_plan_apply_profiles(TiredPlan *plan, const TiredProfileCatalog *catalog,

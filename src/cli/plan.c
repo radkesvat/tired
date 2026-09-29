@@ -2,6 +2,8 @@
 #include "tired/encode.h"
 #include "tired/io.h"
 #include <assert.h>
+#include <inttypes.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -50,6 +52,18 @@ static bool absolute(const TiredPlan *plan, const TiredText *text, TiredText *ou
 
 bool tired_plan_prepare(const TiredRequest *request, TiredPlan *output, TiredError *error)
 {
+    return tired_plan_prepare_settings(request, NULL, output, error);
+}
+
+static TiredFieldOrigin configured_origin(TiredSettingsOrigin origin)
+{
+    assert(origin == TIRED_SETTINGS_ADMIN || origin == TIRED_SETTINGS_USER);
+    return origin == TIRED_SETTINGS_ADMIN ? TIRED_ORIGIN_CONFIG_ADMIN : TIRED_ORIGIN_CONFIG_USER;
+}
+
+bool tired_plan_prepare_settings(const TiredRequest *request, const TiredSettings *settings,
+                                 TiredPlan *output, TiredError *error)
+{
     assert(request != NULL && output != NULL);
     TiredPlan plan = {0};
     TiredText path = {0}, contents = {0};
@@ -60,6 +74,26 @@ bool tired_plan_prepare(const TiredRequest *request, TiredPlan *output, TiredErr
         !tired_proposal_generic(&plan.invocation, user, &plan.spec, &plan.invoking,
                                 &plan.name_basis, error))
         goto fail;
+    if (settings != NULL)
+    {
+        if (settings->supplied[TIRED_SETTING_RETRY])
+        {
+            const char *policy = settings->limited_retries ? "limited" : "persistent";
+            if (!tired_spec_set(&plan.spec, TIRED_FIELD_RETRY_POLICY, policy, strlen(policy),
+                                configured_origin(settings->origins[TIRED_SETTING_RETRY]), true,
+                                error))
+                goto fail;
+        }
+        if (settings->supplied[TIRED_SETTING_RESTART_DELAY])
+        {
+            char delay[32];
+            int length = snprintf(delay, sizeof(delay), "%" PRIu64 "us", settings->restart_usec);
+            if (!tired_spec_set(&plan.spec, TIRED_FIELD_RESTART_SEC, delay, (size_t)length,
+                                configured_origin(settings->origins[TIRED_SETTING_RESTART_DELAY]),
+                                true, error))
+                goto fail;
+        }
+    }
     for (unsigned i = 0; i < TIRED_FIELD_COUNT; ++i)
         if (request->overrides.fields[i].origin == TIRED_ORIGIN_USER &&
             !tired_spec_copy_field(&plan.spec, &request->overrides, (TiredFieldId)i, error))

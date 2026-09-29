@@ -109,6 +109,9 @@ static struct json_object *field_value(const TiredField *field, const TiredField
     return NULL;
 }
 
+static const char *field_origins[] = {"unset",       "inherited", "default", "administrator-config",
+                                      "user-config", "profile",   "user",    "capture"};
+
 bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool include_sensitive,
                        TiredText *output, TiredError *error)
 {
@@ -156,7 +159,6 @@ bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool in
         warnings = json_object_new_array();
         if (root == NULL || fields == NULL || environment == NULL || warnings == NULL)
             goto allocation;
-        const char *origins[] = {"unset", "inherited", "default", "profile", "user", "capture"};
         for (unsigned i = 0; i < TIRED_FIELD_COUNT; ++i)
         {
             const TiredField *field = tired_field_get((TiredFieldId)i);
@@ -164,7 +166,7 @@ bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool in
             struct json_object *item = json_object_new_object();
             if (item == NULL)
                 goto allocation;
-            if (!add(item, "origin", json_object_new_string(origins[value->origin])) ||
+            if (!add(item, "origin", json_object_new_string(field_origins[value->origin])) ||
                 !add(item, "inherit", json_object_new_boolean(value->inherit)) ||
                 (tired_field_has_value(value) && !add(item, "value", field_value(field, value))))
             {
@@ -335,6 +337,12 @@ bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool in
             goto fail;
         if (!unit_only)
         {
+            if (!comment(&text, "Retry policy origin",
+                         field_origins[plan->spec.fields[TIRED_FIELD_RETRY_POLICY].origin],
+                         error) ||
+                !comment(&text, "Restart delay origin",
+                         field_origins[plan->spec.fields[TIRED_FIELD_RESTART_SEC].origin], error))
+                goto fail;
             if (!comment(&text, "Profile",
                          plan->profile.name == NULL ? "Generic; application requirements unknown"
                                                     : plan->profile.name,

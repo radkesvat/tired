@@ -80,6 +80,7 @@ int main(int argc, char **argv)
     (void)signal(SIGPIPE, SIG_IGN);
     TiredRequest request = {0};
     TiredPlan plan = {0};
+    TiredSettings settings = {0};
     TiredProfileCatalog catalog = {0};
     TiredText output = {0};
     TiredError error = {0};
@@ -146,7 +147,8 @@ int main(int argc, char **argv)
                         0);
         goto failed;
     }
-    if (!tired_plan_prepare(&request, &plan, &error))
+    if (!tired_config_discover(&request, &settings, &error) ||
+        !tired_plan_prepare_settings(&request, &settings, &plan, &error))
         goto failed;
     if (request.profile.data == NULL || strcmp(request.profile.data, "none") != 0)
     {
@@ -185,6 +187,7 @@ failed:
 done:
     tired_text_destroy(&output);
     tired_plan_destroy(&plan);
+    tired_settings_destroy(&settings);
     tired_catalog_destroy(&catalog);
     tired_request_destroy(&request);
     if (fflush(stdout) != 0)

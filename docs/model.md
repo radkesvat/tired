@@ -7,7 +7,8 @@ there is no raw directive or hook field.
 
 The current scalar model contains owned UTF-8 text, enum choices, booleans, signed
 bounded integers, and exact microsecond durations. Values record whether they are
-unset, inherited, defaulted, profile-derived, user-selected, or captured. Explicit
+unset, inherited, defaulted, administrator-configured, user-configured,
+profile-derived, user-selected, or captured. Explicit
 false, zero, and empty text are different from inherited or unset fields. Text
 ownership and failure behavior follow the internal value APIs.
 
