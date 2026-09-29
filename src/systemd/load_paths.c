@@ -142,7 +142,8 @@ bool tired_load_paths_start(TiredManagerIdentity *identity, unsigned timeout_ms,
 {
     assert(identity != NULL && output != NULL && *output == NULL);
     TiredManagerIdentityResult owner = tired_manager_identity_result(identity);
-    if (!owner.ready || owner.error.status != TIRED_OK || timeout_ms == 0 || timeout_ms > 300000)
+    if (!owner.ready || owner.kind != TIRED_MANAGER_SYSTEMD || owner.error.status != TIRED_OK ||
+        timeout_ms == 0 || timeout_ms > 300000)
         return tired_error_set(error, TIRED_INVALID, "manager-paths-input",
                                "Load-path query requires a ready identity and bounded deadline.",
                                0);

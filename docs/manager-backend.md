@@ -82,3 +82,21 @@ and frontend wiring remain under implementation.
 Native [load-path discovery](collisions.md) queries UnitPath through the same
 verified identity for upcoming collision/name-selection orchestration.
 This probe alone is not a completed live validation or service-management backend.
+
+## Login-manager identity
+
+Login-manager discovery uses the same bounded broker owner/UID verification and
+owner-change subscription ordering for `org.freedesktop.login1`. It requires a
+peer-validated system bus and a root-owned service name, independently of the UID
+of the account being inspected. It neither activates logind nor requests
+interactive authorization.
+
+The identity result carries an immutable manager kind. Unit queries, batches,
+load-path/name discovery, reloads, jobs, and enablement reject login-manager
+identities before issuing unit operations. Login-manager consumers must likewise
+require the login kind and address its captured unique name. Ownership changes
+invalidate readiness rather than silently switching to a new owner.
+
+This supplies the identity prerequisite for user lingering observation; it does
+not read or change the account's Linger property by itself. Missing logind remains
+an unavailable observation, not evidence that lingering is disabled.

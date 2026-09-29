@@ -226,7 +226,7 @@ bool tired_unit_query_start_lookup(TiredManagerIdentity *identity, const TiredTe
 {
     assert(identity != NULL && base != NULL && output != NULL && *output == NULL);
     TiredManagerIdentityResult owner = tired_manager_identity_result(identity);
-    if (!owner.ready || owner.error.status != TIRED_OK ||
+    if (!owner.ready || owner.kind != TIRED_MANAGER_SYSTEMD || owner.error.status != TIRED_OK ||
         (unsigned)lookup > TIRED_UNIT_LOAD_CONFIGURATION || timeout_ms == 0 || timeout_ms > 300000)
         return tired_error_set(error, TIRED_INVALID, "unit-query-input",
                                "Unit query requires a ready manager identity and bounded deadline.",

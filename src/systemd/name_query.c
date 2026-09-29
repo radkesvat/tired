@@ -266,7 +266,8 @@ bool tired_name_query_discover(TiredManagerIdentity *identity, const TiredText *
 {
     assert(identity != NULL && base != NULL && output != NULL && *output == NULL);
     TiredManagerIdentityResult owner = tired_manager_identity_result(identity);
-    if (!owner.ready || owner.error.status != TIRED_OK || timeout_ms == 0 || timeout_ms > 300000)
+    if (!owner.ready || owner.kind != TIRED_MANAGER_SYSTEMD || owner.error.status != TIRED_OK ||
+        timeout_ms == 0 || timeout_ms > 300000)
         return tired_error_set(
             error, TIRED_INVALID, "name-discovery-input",
             "Name discovery requires a ready manager identity and bounded deadline.", 0);

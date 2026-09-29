@@ -14,8 +14,14 @@ struct TiredManagerIdentity
     uid_t expected, uid;
     uint64_t deadline;
     bool ready, changed, user_scope;
+    TiredManagerKind kind;
     TiredError error;
 };
+static const char *service_name(const TiredManagerIdentity *identity)
+{
+    return identity->kind == TIRED_MANAGER_LOGIN ? "org.freedesktop.login1"
+                                                 : "org.freedesktop.systemd1";
+}
 static bool now_usec(uint64_t *value)
 {
     struct timespec now;
@@ -145,7 +151,7 @@ static int match_installed(sd_bus_message *message, void *userdata, sd_bus_error
         fail(identity, TIRED_INVALID, "manager-owner-protocol",
              "Broker returned an invalid match acknowledgment.");
     else
-        (void)queue(identity, "GetNameOwner", "org.freedesktop.systemd1", owner_reply);
+        (void)queue(identity, "GetNameOwner", service_name(identity), owner_reply);
     return 1;
 }
 static int owner_changed(sd_bus_message *message, void *userdata, sd_bus_error *error)
@@ -163,7 +169,7 @@ static int owner_changed(sd_bus_message *message, void *userdata, sd_bus_error *
         (next[0] != '\0' && (next[0] != ':' || sd_bus_service_name_is_valid(next) <= 0)))
         fail(identity, TIRED_INVALID, "manager-owner-protocol",
              "Broker returned an invalid owner-change signal.");
-    else if (strcmp(name, "org.freedesktop.systemd1") == 0 && strcmp(previous, next) != 0)
+    else if (strcmp(name, service_name(identity)) == 0 && strcmp(previous, next) != 0)
     {
         identity->changed = true;
         fail(identity, TIRED_CONFLICT, "manager-owner-changed",
@@ -171,8 +177,8 @@ static int owner_changed(sd_bus_message *message, void *userdata, sd_bus_error *
     }
     return 0; /* Other observers must also see invalidation. */
 }
-bool tired_manager_identity_start(sd_bus *bus, bool user_scope, unsigned timeout_ms,
-                                  TiredManagerIdentity **output, TiredError *error)
+static bool identity_start(sd_bus *bus, bool user_scope, TiredManagerKind kind, unsigned timeout_ms,
+                           TiredManagerIdentity **output, TiredError *error)
 {
     assert(bus != NULL && output != NULL && *output == NULL);
     if (timeout_ms == 0 || timeout_ms > 300000 || sd_bus_is_open(bus) <= 0 ||
@@ -186,6 +192,7 @@ bool tired_manager_identity_start(sd_bus *bus, bool user_scope, unsigned timeout
     identity->bus = sd_bus_ref(bus);
     identity->expected = user_scope ? getuid() : 0;
     identity->user_scope = user_scope;
+    identity->kind = kind;
     if (!now_usec(&identity->deadline))
     {
         tired_manager_identity_destroy(identity);
@@ -195,9 +202,13 @@ bool tired_manager_identity_start(sd_bus *bus, bool user_scope, unsigned timeout
     identity->deadline += (uint64_t)timeout_ms * 1000;
     int rc = sd_bus_add_match_async(
         bus, &identity->watch,
-        "type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',"
-        "interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop."
-        "systemd1'",
+        kind == TIRED_MANAGER_LOGIN
+            ? "type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',"
+              "interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop."
+              "login1'"
+            : "type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',"
+              "interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop."
+              "systemd1'",
         owner_changed, match_installed, identity);
     if (rc < 0)
     {
@@ -208,6 +219,16 @@ bool tired_manager_identity_start(sd_bus *bus, bool user_scope, unsigned timeout
     *output = identity;
     tired_error_clear(error);
     return true;
+}
+bool tired_manager_identity_start(sd_bus *bus, bool user_scope, unsigned timeout_ms,
+                                  TiredManagerIdentity **output, TiredError *error)
+{
+    return identity_start(bus, user_scope, TIRED_MANAGER_SYSTEMD, timeout_ms, output, error);
+}
+bool tired_login_identity_start(sd_bus *bus, unsigned timeout_ms, TiredManagerIdentity **output,
+                                TiredError *error)
+{
+    return identity_start(bus, false, TIRED_MANAGER_LOGIN, timeout_ms, output, error);
 }
 bool tired_manager_identity_step(TiredManagerIdentity *identity)
 {
@@ -277,6 +298,7 @@ TiredManagerIdentityResult tired_manager_identity_result(const TiredManagerIdent
                                         .unique_name = identity->owner.data,
                                         .uid = identity->uid,
                                         .user_scope = identity->user_scope,
+                                        .kind = identity->kind,
                                         .error = identity->error};
 }
 void tired_manager_identity_destroy(TiredManagerIdentity *identity)

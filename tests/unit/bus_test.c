@@ -40,7 +40,7 @@ typedef struct
     bool job_match, subscribed;
     unsigned name_mode, name_requests;
     const char *name_directory;
-    bool matched, change_during_uid, silent_match, pinned_version;
+    bool matched, change_during_uid, silent_match, pinned_version, login;
 } Broker;
 static int properties(sd_bus_message *request, Broker *broker)
 {
@@ -77,7 +77,7 @@ static int properties(sd_bus_message *request, Broker *broker)
     sd_bus_message_unref(message);
     return rc;
 }
-static int changed(sd_bus *bus)
+static int changed_service(sd_bus *bus, const char *service)
 {
     sd_bus_message *message = NULL;
     int rc = sd_bus_message_new_signal(bus, &message, "/org/freedesktop/DBus",
@@ -85,12 +85,13 @@ static int changed(sd_bus *bus)
     if (rc >= 0)
         rc = sd_bus_message_set_sender(message, "org.freedesktop.DBus");
     if (rc >= 0)
-        rc = sd_bus_message_append(message, "sss", "org.freedesktop.systemd1", ":1.42", ":1.43");
+        rc = sd_bus_message_append(message, "sss", service, ":1.42", ":1.43");
     if (rc >= 0)
         rc = sd_bus_send(bus, message, NULL);
     sd_bus_message_unref(message);
     return rc;
 }
+static int changed(sd_bus *bus) { return changed_service(bus, "org.freedesktop.systemd1"); }
 static int job_signal(sd_bus *bus, uint32_t id, const char *result)
 {
     sd_bus_message *message = NULL;
@@ -299,6 +300,9 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
         const char *rule = NULL;
         if (sd_bus_message_read(message, "s", &rule) <= 0)
             return -1;
+        if (broker->login && strstr(rule, "arg0='org.freedesktop.login1'") == NULL)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_INVALID_ARGS,
+                                              "Wrong login match");
         if (strstr(rule, "JobRemoved") != NULL)
             broker->job_match = true;
         broker->matched = true;
@@ -307,12 +311,23 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
     if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus", "RemoveMatch") > 0)
         return sd_bus_reply_method_return(message, "");
     if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus", "GetNameOwner") > 0)
+    {
+        const char *service = NULL;
+        if (sd_bus_message_read(message, "s", &service) <= 0 ||
+            strcmp(service,
+                   broker->login ? "org.freedesktop.login1" : "org.freedesktop.systemd1") != 0)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_INVALID_ARGS,
+                                              "Wrong owner query");
         return broker->matched
                    ? sd_bus_reply_method_return(message, "s", ":1.42")
                    : sd_bus_reply_method_errorf(message, SD_BUS_ERROR_FAILED, "Match missing");
+    }
     if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus", "GetConnectionUnixUser") > 0)
     {
-        if (broker->change_during_uid && changed(sd_bus_message_get_bus(message)) < 0)
+        if (broker->change_during_uid &&
+            changed_service(sd_bus_message_get_bus(message),
+                            broker->login ? "org.freedesktop.login1" : "org.freedesktop.systemd1") <
+                0)
             return -1;
         return sd_bus_reply_method_return(message, "u", broker->uid);
     }
@@ -940,6 +955,64 @@ int main(void)
                   tired_unit_query_result(query).observation == NULL);
             tired_unit_query_destroy(query);
             query = NULL;
+        }
+        else if (scenario == 1)
+            CHECK(!owner.ready && owner.error.status == TIRED_AUTHORIZATION);
+        else if (scenario == 2)
+            CHECK(!owner.ready && owner.changed && owner.error.status == TIRED_CONFLICT);
+        else
+            CHECK(!owner.ready && strcmp(owner.error.code, "manager-owner-timeout") == 0);
+        tired_manager_identity_destroy(identity);
+        identity = NULL;
+    }
+    for (unsigned scenario = 0; scenario < 4; ++scenario)
+    {
+        broker.login = true;
+        broker.uid = scenario == 1 ? 1000U : 0U;
+        broker.change_during_uid = scenario == 2;
+        broker.silent_match = scenario == 3;
+        broker.matched = false;
+        CHECK(tired_login_identity_start(client, scenario == 3 ? 20 : 1000, &identity, &error));
+        for (unsigned i = 0; i < 2000; ++i)
+        {
+            CHECK(sd_bus_process(server, NULL) >= 0);
+            if (tired_manager_identity_step(identity))
+                break;
+            struct timespec delay = {.tv_nsec = 1000000};
+            (void)nanosleep(&delay, NULL);
+        }
+        TiredManagerIdentityResult owner = tired_manager_identity_result(identity);
+        CHECK(owner.kind == TIRED_MANAGER_LOGIN && !owner.user_scope);
+        if (scenario == 0)
+        {
+            CHECK(owner.ready && owner.uid == 0 && owner.error.status == TIRED_OK);
+            TiredText unit_base = {.data = "fixture", .length = 7};
+            TiredTextList pending = {0};
+            CHECK(!tired_unit_batch_start(identity, &pending, 1000, &batch, &error) &&
+                  batch == NULL);
+            CHECK(!tired_unit_query_start(identity, &unit_base, 1000, &query, &error) &&
+                  query == NULL);
+            CHECK(!tired_load_paths_start(identity, 1000, &paths, &error) && paths == NULL);
+            CHECK(!tired_name_query_start(identity, &unit_base, true, &directory, &pending, 1000,
+                                          &names, &error) &&
+                  names == NULL);
+            CHECK(!tired_manager_reload_start(identity, 1000, &reload, &error) && reload == NULL);
+            CHECK(!tired_manager_job_start(identity, "fixture.service", TIRED_JOB_START, 1000, &job,
+                                           &error) &&
+                  job == NULL);
+            CHECK(!tired_manager_enablement_start(identity, "fixture.service", true, 1000,
+                                                  &enablement, &error) &&
+                  enablement == NULL);
+            CHECK(changed_service(server, "org.freedesktop.login1") >= 0);
+            for (unsigned i = 0; i < 100 && !tired_manager_identity_result(identity).changed; ++i)
+            {
+                CHECK(sd_bus_process(server, NULL) >= 0);
+                (void)tired_manager_identity_step(identity);
+                struct timespec delay = {.tv_nsec = 1000000};
+                (void)nanosleep(&delay, NULL);
+            }
+            CHECK(tired_manager_identity_result(identity).changed &&
+                  !tired_manager_identity_result(identity).ready);
         }
         else if (scenario == 1)
             CHECK(!owner.ready && owner.error.status == TIRED_AUTHORIZATION);

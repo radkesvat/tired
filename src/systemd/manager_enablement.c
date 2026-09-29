@@ -84,8 +84,9 @@ bool tired_manager_enablement_start(TiredManagerIdentity *identity, const char *
     assert(identity != NULL && unit != NULL && output != NULL && *output == NULL);
     TiredManagerIdentityResult owner = tired_manager_identity_result(identity);
     size_t length = strnlen(unit, 209);
-    if (!owner.ready || owner.error.status != TIRED_OK || timeout_ms == 0 || timeout_ms > 300000 ||
-        length <= 8 || length > 208 || memcmp(unit + length - 8, ".service", 8) != 0 ||
+    if (!owner.ready || owner.kind != TIRED_MANAGER_SYSTEMD || owner.error.status != TIRED_OK ||
+        timeout_ms == 0 || timeout_ms > 300000 || length <= 8 || length > 208 ||
+        memcmp(unit + length - 8, ".service", 8) != 0 ||
         !tired_name_validate_base(unit, length - 8, error))
         return tired_error_set(
             error, TIRED_INVALID, "enablement-input",

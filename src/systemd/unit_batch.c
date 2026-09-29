@@ -86,8 +86,8 @@ bool tired_unit_batch_start(TiredManagerIdentity *identity, const TiredTextList 
 {
     assert(identity != NULL && names != NULL && output != NULL && *output == NULL);
     TiredManagerIdentityResult owner = tired_manager_identity_result(identity);
-    if (!owner.ready || owner.error.status != TIRED_OK || names->count > 3072 || timeout_ms == 0 ||
-        timeout_ms > 300000)
+    if (!owner.ready || owner.kind != TIRED_MANAGER_SYSTEMD || owner.error.status != TIRED_OK ||
+        names->count > 3072 || timeout_ms == 0 || timeout_ms > 300000)
         return tired_error_set(error, TIRED_INVALID, "unit-batch-input",
                                "Invalid unit batch input or manager identity.", 0);
     TiredUnitBatch *batch = calloc(1, sizeof(*batch));
