@@ -209,3 +209,32 @@ bool tired_transaction_inventory_pending(const TiredTransactionInventory *invent
     tired_error_clear(error);
     return true;
 }
+
+bool tired_transaction_inventory_load(const TiredLayout *layout, TiredTransactionInventory *output,
+                                      TiredError *error)
+{
+    assert(layout != NULL && output != NULL);
+    const TiredText *path = &layout->paths[TIRED_PATH_TRANSACTIONS];
+    if (path->data == NULL || path->length == 0)
+        return tired_error_set(error, TIRED_INVALID, "transaction-layout",
+                               "Transaction discovery requires a resolved storage layout.", 0);
+    TiredDirectory *directory = NULL;
+    TiredError opened = {0};
+    if (!tired_directory_open(path->data, layout->user_scope ? geteuid() : 0, true, &directory,
+                              &opened))
+    {
+        if (opened.status == TIRED_NOT_FOUND)
+        {
+            tired_transaction_inventory_destroy(output);
+            *output = (TiredTransactionInventory){.complete = true};
+            tired_error_clear(error);
+            return true;
+        }
+        if (error != NULL)
+            *error = opened;
+        return false;
+    }
+    bool ok = tired_transaction_inventory_read(directory, layout->user_scope, output, error);
+    tired_directory_destroy(directory);
+    return ok;
+}

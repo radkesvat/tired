@@ -138,3 +138,11 @@ Tests cover empty inventories, unfinished-name reservations, terminal exclusion,
 scope mismatch, missing/empty neighboring journals and the refusal to treat an
 unfinished rename's single name as a complete reservation inventory. CLI routing,
 manifest loading and recovery choices remain controller work.
+
+The layout loader opens the configured transactions location using the scope's
+owner and private-directory checks. Only a missing path becomes a complete empty
+inventory, without directory creation. Permission, type, link and trust failures
+propagate; malformed entries remain an incomplete inventory. A failed load
+preserves the prior output, which callers must not reuse as current evidence.
+Layouts supplied to this internal API must come from trusted layout resolution,
+never arbitrary privileged-helper request paths.

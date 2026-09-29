@@ -83,3 +83,19 @@ filesystem collisions, rejection of a user destination outside UnitPath, explici
 malformed paths, cancellation, a deadline spanning multiple candidates and owner
 invalidation. Live integration checks rejection of an existing explicit name
 without modifying the manager or its files.
+
+`tired_name_query_discover` is the production admission path. It derives the
+selected identity's scope layout, loads the transaction inventory, requires a
+complete reservation list, and starts the asynchronous name query with the
+resolved unit destination. System destinations cannot be redirected by caller
+environment variables. User destinations still must appear in manager UnitPath.
+All copied inventory/layout data can be released once the query starts.
+
+Filesystem inventory discovery is synchronous; the supplied timeout covers the
+subsequent asynchronous manager/name search. The low-level start API remains for
+callers already holding validated complete scope information and for fixtures.
+The higher-level controller still must perform authorized access to private
+system state and repeat discovery under the mutation lock before publication.
+Native fixtures exercise XDG-derived user discovery with missing transaction
+storage, deterministic suffix selection and rejection of invalid paths before
+queuing candidate queries.

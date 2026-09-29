@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #define CHECK(expression)                                                                          \
     do                                                                                             \
@@ -34,6 +35,7 @@ int main(void)
     char fixture[] = "inventory-test-XXXXXX";
     char *created = NULL, *cwd = getcwd(NULL, 0);
     TiredText path = {0};
+    TiredLayout layout = {.user_scope = true};
     TiredDirectory *root = NULL, *transactions = NULL, *transaction = NULL, *journal = NULL;
     TiredDirectory *second = NULL, *second_journal = NULL;
     TiredOperationLock *lock = NULL;
@@ -55,7 +57,15 @@ int main(void)
     CHECK(tired_path_absolute(&base, created, strlen(created), &path, &error));
     CHECK(tired_directory_open(path.data, getuid(), true, &root, &error));
     CHECK(tired_operation_lock_acquire(root, &lock, &error));
+    CHECK(tired_path_absolute(&path, "transactions", 12, &layout.paths[TIRED_PATH_TRANSACTIONS],
+                              &error));
+    CHECK(tired_transaction_inventory_load(&layout, &inventory, &error));
+    CHECK(inventory.complete && inventory.count == 0);
+    struct stat absent;
+    CHECK(fstatat(tired_directory_fd(root), "transactions", &absent, AT_SYMLINK_NOFOLLOW) < 0);
     CHECK(tired_directory_child(root, "transactions", true, true, &transactions, &error));
+    CHECK(tired_transaction_inventory_load(&layout, &inventory, &error));
+    CHECK(inventory.complete && inventory.count == 0);
     CHECK(tired_transaction_inventory_read(transactions, false, &inventory, &error));
     CHECK(inventory.complete && inventory.count == 0);
     CHECK(tired_transaction_inventory_pending(&inventory, &pending, &error) && pending->count == 0);
@@ -99,6 +109,12 @@ int main(void)
     CHECK(tired_transaction_inventory_read(transactions, false, &inventory, &error));
     CHECK(!inventory.complete && strcmp(inventory.entries[1].unit_name.data, "relay.service") == 0);
     CHECK(strstr(inventory.entries[1].error.message, "both names") != NULL);
+    CHECK(tired_transaction_inventory_load(&layout, &inventory, &error));
+    CHECK(!inventory.complete && inventory.count == 2);
+    CHECK(!tired_transaction_inventory_pending(&inventory, &pending, &error));
+    CHECK(tired_text_set(&layout.paths[TIRED_PATH_TRANSACTIONS], "relative", 8, 4096, &error));
+    CHECK(!tired_transaction_inventory_load(&layout, &inventory, &error));
+    CHECK(inventory.count == 2 && !inventory.complete);
     result = 0;
 cleanup:
     tired_transaction_inventory_destroy(&inventory);
@@ -136,6 +152,7 @@ cleanup:
     if (created != NULL)
         (void)rmdir(created);
     tired_text_destroy(&path);
+    tired_layout_destroy(&layout);
     free(cwd);
     return result;
 }

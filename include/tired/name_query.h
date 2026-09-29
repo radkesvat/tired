@@ -18,6 +18,13 @@ bool tired_name_query_start(TiredManagerIdentity *identity, const TiredText *bas
                             bool explicit_name, const TiredText *destination,
                             const TiredTextList *pending_names, unsigned timeout_ms,
                             TiredNameQuery **query, TiredError *error);
+/* Production admission: derive the identity's scope layout, load transaction
+ * reservations, reject incomplete inventories, then start manager name discovery.
+ * No caller-controlled administrative destinations. Filesystem discovery is
+ * synchronous; timeout_ms covers the subsequent asynchronous name search. */
+bool tired_name_query_discover(TiredManagerIdentity *identity, const TiredText *base,
+                               bool explicit_name, unsigned timeout_ms, TiredNameQuery **query,
+                               TiredError *error);
 /* Bounded bus pumping and one candidate inspection per step. Filesystem calls
  * remain synchronous; a stalled filesystem can delay return beyond the deadline.
  * Such a late result is rejected. Success is tentative until locked rechecking. */

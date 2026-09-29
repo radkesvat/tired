@@ -183,7 +183,8 @@ int main(void)
     int result = 1, parent = -1, listener = -1, accepted = -1;
     char fixture[] = "bus-test-XXXXXX";
     char *created = NULL, *cwd = getcwd(NULL, 0);
-    TiredText directory = {0}, socket_path = {0}, link_path = {0}, load_directory = {0};
+    TiredText directory = {0}, socket_path = {0}, link_path = {0}, load_directory = {0},
+              user_units = {0};
     TiredError error = {0};
     sd_bus *client = NULL, *server = NULL;
     sd_bus_slot *slot = NULL;
@@ -192,6 +193,7 @@ int main(void)
     TiredUnitQuery *query = NULL;
     TiredLoadPaths *paths = NULL;
     TiredNameQuery *names = NULL;
+    TiredNameQuery *discovery = NULL;
     Broker broker = {.uid = (uint32_t)getuid()};
     CHECK(cwd != NULL);
     CHECK(unsetenv("XDG_RUNTIME_DIR") == 0);
@@ -204,6 +206,7 @@ int main(void)
     CHECK(tired_path_absolute(&directory, "bus", 3, &socket_path, &error));
     CHECK(tired_path_absolute(&directory, "link", 4, &link_path, &error));
     CHECK(tired_path_absolute(&directory, "loads", 5, &load_directory, &error));
+    CHECK(tired_path_absolute(&directory, "systemd/user", 12, &user_units, &error));
     parent = open(directory.data, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     CHECK(parent >= 0);
     listener = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -431,6 +434,28 @@ int main(void)
                     names = NULL;
                 }
             }
+            CHECK(setenv("XDG_CONFIG_HOME", directory.data, 1) == 0);
+            CHECK(setenv("XDG_STATE_HOME", load_directory.data, 1) == 0);
+            broker.name_directory = user_units.data;
+            CHECK(tired_name_query_discover(identity, &unit_base, false, 1000, &discovery, &error));
+            for (unsigned i = 0; i < 2000; ++i)
+            {
+                CHECK(sd_bus_process(server, NULL) >= 0);
+                if (tired_name_query_step(discovery))
+                    break;
+                struct timespec delay = {.tv_nsec = 1000000};
+                (void)nanosleep(&delay, NULL);
+            }
+            TiredNameQueryResult discovered_name = tired_name_query_result(discovery);
+            CHECK(discovered_name.done && discovered_name.error.status == TIRED_OK);
+            CHECK(strcmp(discovered_name.unit_name->data, "fixture-2.service") == 0);
+            tired_name_query_destroy(discovery);
+            discovery = NULL;
+            CHECK(setenv("XDG_STATE_HOME", "relative", 1) == 0);
+            broker.name_requests = 0;
+            CHECK(
+                !tired_name_query_discover(identity, &unit_base, false, 1000, &discovery, &error));
+            CHECK(discovery == NULL && broker.name_requests == 0);
             broker.name_mode = 0;
             broker.name_directory = NULL;
             CHECK(unlinkat(parent, "fixture-3.service", 0) == 0);
@@ -507,6 +532,7 @@ int main(void)
     }
     result = 0;
 cleanup:
+    tired_name_query_destroy(discovery);
     tired_name_query_destroy(names);
     tired_load_paths_destroy(paths);
     tired_unit_query_destroy(query);
@@ -534,5 +560,6 @@ cleanup:
     tired_text_destroy(&socket_path);
     tired_text_destroy(&link_path);
     tired_text_destroy(&load_directory);
+    tired_text_destroy(&user_units);
     return result;
 }

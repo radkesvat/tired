@@ -2,6 +2,7 @@
 #include "tired/layout.h"
 #include "tired/load_paths.h"
 #include "tired/name_selection.h"
+#include "tired/transaction_inventory.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -257,4 +258,27 @@ void tired_name_query_destroy(TiredNameQuery *query)
     tired_text_destroy(&query->destination);
     tired_text_list_destroy(&query->pending);
     free(query);
+}
+
+bool tired_name_query_discover(TiredManagerIdentity *identity, const TiredText *base,
+                               bool explicit_name, unsigned timeout_ms, TiredNameQuery **output,
+                               TiredError *error)
+{
+    assert(identity != NULL && base != NULL && output != NULL && *output == NULL);
+    TiredManagerIdentityResult owner = tired_manager_identity_result(identity);
+    if (!owner.ready || owner.error.status != TIRED_OK || timeout_ms == 0 || timeout_ms > 300000)
+        return tired_error_set(
+            error, TIRED_INVALID, "name-discovery-input",
+            "Name discovery requires a ready manager identity and bounded deadline.", 0);
+    TiredLayout layout = {0};
+    TiredTransactionInventory inventory = {0};
+    const TiredTextList *pending = NULL;
+    bool ok = tired_layout_discover(owner.user_scope, &layout, error) &&
+              tired_transaction_inventory_load(&layout, &inventory, error) &&
+              tired_transaction_inventory_pending(&inventory, &pending, error) &&
+              tired_name_query_start(identity, base, explicit_name, &layout.paths[TIRED_PATH_UNITS],
+                                     pending, timeout_ms, output, error);
+    tired_transaction_inventory_destroy(&inventory);
+    tired_layout_destroy(&layout);
+    return ok;
 }
