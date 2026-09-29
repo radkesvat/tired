@@ -1,4 +1,5 @@
 #include "tired/cli.h"
+#include "tired/list_frontend.h"
 #include <stdio.h>
 #include <string.h>
 #define CHECK(expression)                                                                          \
@@ -69,6 +70,25 @@ int main(void)
     CHECK(!PARSE("tired", "status", "relay", "--check-active", "--check-active"));
     CHECK(!PARSE("tired", "status", "relay", "--check-active=true"));
     CHECK(!PARSE("tired", "list", "--check-active"));
+    CHECK(PARSE("tired", "list", "--active-state", "active", "--enabled-state=enabled", "--profile",
+                "generic", "--search", "ReLaY"));
+    CHECK(tired_list_match(&request, "relay.service", "active", "enabled", "generic") ==
+          TIRED_LIST_MATCH);
+    CHECK(tired_list_match(&request, "RELAY.service", NULL, "enabled", "generic") ==
+          TIRED_LIST_UNKNOWN);
+    CHECK(tired_list_match(&request, "other.service", NULL, "enabled", "generic") ==
+          TIRED_LIST_NO_MATCH);
+    CHECK(tired_list_match(&request, "relay.service", "failed", "enabled", "generic") ==
+          TIRED_LIST_NO_MATCH);
+    CHECK(tired_list_match(&request, NULL, NULL, NULL, NULL) == TIRED_LIST_UNKNOWN);
+    CHECK(!PARSE("tired", "list", "--search", ""));
+    CHECK(!PARSE("tired", "list", "--search", "bad\ntext"));
+    CHECK(!PARSE("tired", "list", "--active-state", "active", "--active-state", "failed"));
+    CHECK(!PARSE("tired", "status", "relay", "--search", "relay"));
+    CHECK(!PARSE("tired", "show", "relay", "--profile", "generic"));
+    CHECK(!PARSE("tired", "list", "--profile", "generic", "--env", "KEY=value"));
+    CHECK(PARSE("tired", "--profile", "generic", "list"));
+    CHECK(tired_list_match(&request, "relay.service", NULL, NULL, "none") == TIRED_LIST_NO_MATCH);
     CHECK(PARSE("tired", "./app", "--check-active"));
     CHECK(!request.check_active && request.arguments.count == 2);
     CHECK(!PARSE("tired", "--working-directory", "", "./server"));

@@ -36,6 +36,7 @@ typedef struct
     TiredEnvironment environment;
     TiredTextList pass_environment, import_files, environment_files, credentials, allowed_risks;
     TiredText profile, working_directory, output, color;
+    TiredText active_filter, enabled_filter, search;
     bool help, version, json, no_tui, yes, quiet, verbose, offline, unit, dry_run,
         include_sensitive, check_active;
     bool explicit_boundary;

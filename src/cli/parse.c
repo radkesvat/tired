@@ -29,6 +29,9 @@ void tired_request_destroy(TiredRequest *r)
     tired_text_destroy(&r->working_directory);
     tired_text_destroy(&r->output);
     tired_text_destroy(&r->color);
+    tired_text_destroy(&r->active_filter);
+    tired_text_destroy(&r->enabled_filter);
+    tired_text_destroy(&r->search);
     *r = (TiredRequest){0};
 }
 
@@ -253,10 +256,11 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
             }
         if (handled)
             continue;
-        const char *taking[] = {"--set",          "--nofile",   "--profile",         "--env",
-                                "--pass-env",     "--env-file", "--import-env-file", "--credential",
-                                "--allow-risk",   "--output",   "--color",           "--unset",
-                                "--sensitive-arg"};
+        const char *taking[] = {
+            "--set",           "--nofile",       "--profile",         "--env",
+            "--pass-env",      "--env-file",     "--import-env-file", "--credential",
+            "--allow-risk",    "--output",       "--color",           "--unset",
+            "--sensitive-arg", "--active-state", "--enabled-state",   "--search"};
         for (size_t j = 0; j < sizeof(taking) / sizeof(taking[0]); ++j)
             if (strcmp(option, taking[j]) == 0)
                 handled = true;
@@ -280,6 +284,28 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
         else if (strcmp(option, "--output") == 0)
         {
             if (!text_set(&parsed.output, value, error))
+                goto fail;
+        }
+        else if (strcmp(option, "--profile") == 0)
+        {
+            if (!text_set(&parsed.profile, value, error))
+                goto fail;
+        }
+        else if (strcmp(option, "--active-state") == 0 || strcmp(option, "--enabled-state") == 0 ||
+                 strcmp(option, "--search") == 0)
+        {
+            size_t length = strlen(value);
+            if (length == 0 || length > 255 || !tired_validate_text(value, length, true, error))
+            {
+                tired_error_set(
+                    error, TIRED_INVALID, "list-filter",
+                    "List filters require nonempty text of at most 255 bytes without controls.", 0);
+                goto fail;
+            }
+            TiredText *filter = strcmp(option, "--active-state") == 0    ? &parsed.active_filter
+                                : strcmp(option, "--enabled-state") == 0 ? &parsed.enabled_filter
+                                                                         : &parsed.search;
+            if (!text_set(filter, value, error))
                 goto fail;
         }
         else if (strcmp(option, "--allow-risk") == 0)
@@ -357,11 +383,6 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
                     !field_set(&parsed, TIRED_FIELD_NOFILE_HARD, separator + 1, error))
                     goto fail;
             }
-            else if (strcmp(option, "--profile") == 0)
-            {
-                if (!text_set(&parsed.profile, value, error))
-                    goto fail;
-            }
             else if (strcmp(option, "--env") == 0)
             {
                 if (!tired_environment_set(&parsed.environment, value, strlen(value),
@@ -403,6 +424,18 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
     if (creation_options && parsed.command != TIRED_COMMAND_CREATE &&
         parsed.command != TIRED_COMMAND_PLAN && parsed.command != TIRED_COMMAND_EDIT &&
         !parsed.profile_explain)
+        goto inappropriate;
+    if (parsed.profile.data != NULL && parsed.command != TIRED_COMMAND_CREATE &&
+        parsed.command != TIRED_COMMAND_PLAN && parsed.command != TIRED_COMMAND_EDIT &&
+        parsed.command != TIRED_COMMAND_LIST && !parsed.profile_explain)
+        goto inappropriate;
+    if ((parsed.active_filter.data != NULL || parsed.enabled_filter.data != NULL ||
+         parsed.search.data != NULL) &&
+        parsed.command != TIRED_COMMAND_LIST)
+        goto inappropriate;
+    if (parsed.command == TIRED_COMMAND_LIST && parsed.profile.data != NULL &&
+        (parsed.profile.length == 0 || parsed.profile.length > 255 ||
+         !tired_validate_text(parsed.profile.data, parsed.profile.length, true, error)))
         goto inappropriate;
     if (parsed.quiet && parsed.verbose)
         goto inappropriate;

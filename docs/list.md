@@ -3,6 +3,8 @@
 ```console
 tired list
 tired list --user --json
+tired list --active-state active --enabled-state enabled
+tired list --profile generic --search relay
 ```
 
 `list` discovers current records in the selected scope and performs one batch of
@@ -10,6 +12,22 @@ fresh manager queries. Text output shows name, scope, active/substate, enablemen
 saved service UID, profile ID, unit/environment file state and pending transactions.
 JSON includes each record's status evidence and diagnostics. No captured arguments,
 environment values or credentials are exposed.
+
+Filters combine with AND. `--active-state` and `--enabled-state` match exact current
+manager state strings, including future state names; they do not use saved start/
+enable preferences. A successfully observed absent object has active filter value
+`not-loaded`, and an absent unit file has enablement filter value `not-found`.
+`--profile ID` matches the saved profile ID; `none` selects records without one.
+`--search TEXT` matches a substring of the full unit name, ignoring ASCII case
+(managed names use ASCII). Scope is selected with `--user` or `--system`.
+
+Unknown filter facts remain explicit. Unless another known fact rules a row out,
+it stays visible with `filter_match: unknown` in JSON and `filter=unknown` in text.
+This also preserves malformed record diagnostics when their unit name is unknown.
+JSON reports `filtered_out` and `filter_unknown` counts. Filtering affects displayed
+rows only: inventory/query errors retain the overall partial-result exit status,
+even when the affected row is excluded. Filtering does not claim that hidden rows
+were successfully inspected or change manager state.
 
 Rows remain visible for missing units, changed files, failed processes, conflicting
 records and malformed filenames. Raw filenames are represented with lossless ASCII

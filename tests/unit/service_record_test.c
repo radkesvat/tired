@@ -279,6 +279,18 @@ static int status_checks(TiredDirectory *root, const TiredText *path, TiredServi
           strstr(output.data, "\"profile\":\"generic\"") != NULL &&
           strstr(output.data, "secret") == NULL && status != TIRED_OK);
     CHECK(show_checks(root, path, record) == 0);
+    CHECK(set(&request.search, "ReLaY", &error));
+    CHECK(set(&request.active_filter, "active", &error));
+    CHECK(tired_list_command(&request, &output, &status, &error));
+    CHECK(strstr(output.data, "\"filter_unknown\":1") != NULL &&
+          strstr(output.data, "\"filter_match\":\"unknown\"") != NULL);
+    CHECK(set(&request.profile, "different-profile", &error));
+    CHECK(tired_list_command(&request, &output, &status, &error));
+    CHECK(strstr(output.data, "\"filtered_out\":1") != NULL &&
+          strstr(output.data, "relay.service") == NULL && status != TIRED_OK);
+    tired_text_destroy(&request.search);
+    tired_text_destroy(&request.active_filter);
+    tired_text_destroy(&request.profile);
     int bad = openat(tired_directory_fd(records), "bad\n\xff",
                      O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC, 0600);
     CHECK(bad >= 0 && close(bad) == 0);

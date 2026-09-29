@@ -6,6 +6,7 @@
 #include "tired/status_frontend.h"
 #include "tired/transaction_inventory.h"
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -59,6 +60,55 @@ static struct json_object *member(struct json_object *object, const char *key)
         (void)json_object_object_get_ex(object, key, &value);
     return value;
 }
+static const char *string_member(struct json_object *object, const char *key)
+{
+    struct json_object *value = member(object, key);
+    return value == NULL ? NULL : json_object_get_string(value);
+}
+static bool filter_rows(const TiredRequest *request, struct json_object **rows, size_t *excluded,
+                        size_t *uncertain)
+{
+    struct json_object *selected = json_object_new_array();
+    if (selected == NULL)
+        return false;
+    for (size_t i = 0; i < json_object_array_length(*rows); ++i)
+    {
+        struct json_object *row = json_object_array_get_idx(*rows, i);
+        struct json_object *live = member(row, "live"), *properties = member(live, "properties");
+        const char *active = string_member(properties, "ActiveState");
+        const char *enabled = string_member(live, "file_state");
+        struct json_object *object_found = member(live, "object_found"),
+                           *file_found = member(live, "file_found");
+        if (object_found != NULL && !json_object_get_boolean(object_found))
+            active = "not-loaded";
+        if (file_found != NULL && !json_object_get_boolean(file_found))
+            enabled = "not-found";
+        TiredListMatch match = tired_list_match(request, string_member(row, "unit_name"), active,
+                                                enabled, string_member(row, "profile"));
+        if (match == TIRED_LIST_NO_MATCH)
+        {
+            ++*excluded;
+            continue;
+        }
+        if (match == TIRED_LIST_UNKNOWN)
+            ++*uncertain;
+        if (!add(row, "filter_match",
+                 json_object_new_string(match == TIRED_LIST_UNKNOWN ? "unknown" : "matched")))
+            goto fail;
+        struct json_object *owned = json_object_get(row);
+        if (json_object_array_add(selected, owned) != 0)
+        {
+            json_object_put(owned);
+            goto fail;
+        }
+    }
+    json_object_put(*rows);
+    *rows = selected;
+    return true;
+fail:
+    json_object_put(selected);
+    return false;
+}
 static bool cell(TiredBuffer *buffer, struct json_object *value, TiredError *error)
 {
     const char *raw = value == NULL ? "unknown" : json_object_get_string(value);
@@ -100,6 +150,9 @@ static bool row_text(TiredBuffer *buffer, struct json_object *row, TiredError *e
     struct json_object *dropins = member(properties, "DropInPaths");
     if (dropins != NULL && json_object_array_length(dropins) != 0 &&
         !text(buffer, "  drop-ins=present", error))
+        return false;
+    const char *match = string_member(row, "filter_match");
+    if (match != NULL && strcmp(match, "unknown") == 0 && !text(buffer, "  filter=unknown", error))
         return false;
     return text(buffer, "\n", error);
 }
@@ -257,6 +310,9 @@ bool tired_list_command(const TiredRequest *request, TiredText *output, TiredSta
             goto allocation;
         row = NULL;
     }
+    size_t excluded = 0, uncertain = 0;
+    if (!filter_rows(request, &rows, &excluded, &uncertain))
+        goto allocation;
     if (request->json)
     {
         bool inserted = add(document, "services", rows);
@@ -266,6 +322,8 @@ bool tired_list_command(const TiredRequest *request, TiredText *output, TiredSta
             !add(document, "scope", json_object_new_string(user ? "user" : "system")) ||
             !add(document, "ok", json_object_new_boolean(status == TIRED_OK)) ||
             !add(document, "exit_code", json_object_new_int(status)) ||
+            !add(document, "filtered_out", json_object_new_uint64(excluded)) ||
+            !add(document, "filter_unknown", json_object_new_uint64(uncertain)) ||
             !add(document, "inventory_complete", json_object_new_boolean(inventory.complete)) ||
             !add(document, "transactions_complete",
                  json_object_new_boolean(tx_error.status == TIRED_OK)) ||
@@ -289,8 +347,20 @@ bool tired_list_command(const TiredRequest *request, TiredText *output, TiredSta
             if (!row_text(&buffer, json_object_array_get_idx(rows, i), error))
                 goto done;
         if (json_object_array_length(rows) == 0 &&
-            !text(&buffer, "No managed services found.\n", error))
+            !text(&buffer,
+                  excluded != 0 ? "No services match the requested filters.\n"
+                                : "No managed services found.\n",
+                  error))
             goto done;
+        if (excluded != 0 || uncertain != 0)
+        {
+            char summary[128];
+            (void)snprintf(summary, sizeof(summary),
+                           "Filtered out %zu rows; %zu rows have unknown filter facts.\n", excluded,
+                           uncertain);
+            if (!text(&buffer, summary, error))
+                goto done;
+        }
         if (tx_error.message != NULL &&
             (!text(&buffer, tx_error.message, error) || !text(&buffer, "\n", error)))
             goto done;

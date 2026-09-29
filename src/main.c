@@ -101,6 +101,8 @@ int main(int argc, char **argv)
               "       tired recover [--user] [--json]  (read-only inspection)\n"
               "       tired status NAME [--user] [--json] [--check-active]\n"
               "       tired list [--user] [--json]\n"
+              "         [--active-state STATE] [--enabled-state STATE] [--profile ID] [--search "
+              "TEXT]\n"
               "       tired show NAME [--user] [--json | --unit] [--output NEW_FILE]\n"
               "       tired --help | --version\n\n"
               "Offline planning and profile, configuration, and stored-journal inspection are "
