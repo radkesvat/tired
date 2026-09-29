@@ -23,7 +23,8 @@ typedef struct
     TiredServiceFile unit, environment;
 } TiredServiceFiles;
 /* Inspect destinations derived from layout for a validated service record. Unit
- * reads are bounded to 1 MiB, owned environment to 16 MiB. No retained file bytes.
+ * reads are bounded to the renderer's 4 MiB limit, owned environment to 16 MiB.
+ * No retained file bytes.
  * Scope/record path disagreement fails atomically; per-file failures are UNKNOWN
  * with diagnostics so a readable neighbor remains useful. Missing is distinct.
  * MATCH is disk evidence only: current manager fragment/drop-ins, record freshness

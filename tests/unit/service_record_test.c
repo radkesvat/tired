@@ -1,3 +1,4 @@
+#include "tired/encode.h"
 #include "tired/file_target.h"
 #include "tired/io.h"
 #include "tired/private_file.h"
@@ -6,6 +7,7 @@
 #include "tired/service_inventory.h"
 #include "tired/service_record.h"
 #include "tired/service_record_storage.h"
+#include "tired/status_frontend.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,6 +33,7 @@ static int file_checks(TiredLayout *layout, TiredServiceRecord *record, TiredDir
     int result = 1;
     TiredError error = {0};
     TiredText unit = {0};
+    char *large_unit = NULL;
     TiredServiceFiles files = {0};
     TiredFileFingerprint fingerprint = {0};
     TiredDirectory *service = NULL, *revisions = NULL, *revision = NULL;
@@ -108,6 +111,19 @@ static int file_checks(TiredLayout *layout, TiredServiceRecord *record, TiredDir
     CHECK(tired_service_files_inspect(layout, record, &files, &error));
     CHECK(files.unit.state == TIRED_SERVICE_FILE_MATCH &&
           files.environment.state == TIRED_SERVICE_FILE_UNKNOWN);
+    size_t large_length = TIRED_INPUT_LIMIT + unit.length;
+    large_unit = malloc(large_length);
+    CHECK(large_unit != NULL);
+    memcpy(large_unit, unit.data, unit.length);
+    memset(large_unit + unit.length, '\n', TIRED_INPUT_LIMIT);
+    CHECK(unlinkat(fd, "relay.service", 0) == 0);
+    CHECK(tired_private_file_create(directory, "relay.service", large_unit, large_length, &error));
+    CHECK(fchmodat(fd, "relay.service", 0644, 0) == 0);
+    CHECK(
+        tired_file_fingerprint(directory, "relay.service", TIRED_UNIT_LIMIT, &fingerprint, &error));
+    memcpy(record->metadata.unit_sha256, fingerprint.sha256, 65);
+    CHECK(tired_service_files_inspect(layout, record, &files, &error));
+    CHECK(files.unit.state == TIRED_SERVICE_FILE_MATCH);
     TiredServiceFiles saved = files;
     record->metadata.user_scope = false;
     CHECK(!tired_service_files_inspect(layout, record, &files, &error));
@@ -134,6 +150,50 @@ cleanup:
     tired_directory_destroy(service);
     tired_resolved_file_destroy(&resolved);
     tired_text_destroy(&unit);
+    free(large_unit);
+    return result;
+}
+static int status_checks(TiredDirectory *root, const TiredText *path, TiredServiceRecord *record)
+{
+    int result = 1;
+    TiredError error = {0};
+    TiredDirectory *state = NULL, *records = NULL;
+    TiredText encoded = {0}, output = {0}, saved_path = record->unit_path;
+    record->unit_path = (TiredText){0};
+    TiredRequest request = {0};
+    TiredStatus status = TIRED_INTERNAL;
+    char filename[42];
+    (void)snprintf(filename, sizeof(filename), "%s.json", record->metadata.service_uuid);
+    CHECK(tired_path_absolute(path, "systemd/user/relay.service", 26, &record->unit_path, &error));
+    CHECK(tired_directory_child(root, "tired", true, true, &state, &error));
+    CHECK(tired_directory_child(state, "services", true, true, &records, &error));
+    CHECK(tired_service_record_encode(record, &encoded, &error));
+    CHECK(tired_private_file_create(records, filename, encoded.data, encoded.length, &error));
+    CHECK(setenv("XDG_STATE_HOME", path->data, 1) == 0 &&
+          setenv("XDG_CONFIG_HOME", path->data, 1) == 0 &&
+          setenv("XDG_RUNTIME_DIR", path->data, 1) == 0);
+    const char *args[] = {"tired", "status", "relay", "--user", "--json"};
+    CHECK(tired_cli_parse((int)(sizeof(args) / sizeof(args[0])), args, &request, &error));
+    CHECK(tired_status_command(&request, &output, &status, &error));
+    CHECK(strstr(output.data, "\"record\":\"present\"") != NULL &&
+          strstr(output.data, record->metadata.service_uuid) != NULL &&
+          strstr(output.data, "\"state\":\"missing\"") != NULL &&
+          strstr(output.data, "secret") == NULL);
+    CHECK(status != TIRED_OK); /* Isolated runtime directory contains no bus. */
+    result = 0;
+cleanup:
+    if (records != NULL)
+        (void)unlinkat(tired_directory_fd(records), filename, 0);
+    if (state != NULL)
+        (void)unlinkat(tired_directory_fd(state), "services", AT_REMOVEDIR);
+    (void)unlinkat(tired_directory_fd(root), "tired", AT_REMOVEDIR);
+    tired_directory_destroy(records);
+    tired_directory_destroy(state);
+    tired_request_destroy(&request);
+    tired_text_destroy(&encoded);
+    tired_text_destroy(&output);
+    tired_text_destroy(&record->unit_path);
+    record->unit_path = saved_path;
     return result;
 }
 int main(int argc, char **argv)
@@ -320,6 +380,7 @@ int main(int argc, char **argv)
     CHECK(fchmodat(fd, name, 0644, 0) == 0);
     CHECK(!tired_service_record_load(&layout, source.metadata.service_uuid, &parsed, &error));
     CHECK(fchmodat(fd, name, 0600, 0) == 0);
+    CHECK(status_checks(directory, &directory_path, &source) == 0);
     CHECK(file_checks(&layout, &source, directory) == 0);
     CHECK(set(&layout.paths[TIRED_PATH_UNITS], "/wrong", &error));
     CHECK(!tired_service_record_load(&layout, source.metadata.service_uuid, &parsed, &error));

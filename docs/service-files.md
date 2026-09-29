@@ -17,7 +17,7 @@ Each file has an independent result:
 
 Inspection uses no-follow directory traversal and stable single-link regular-file
 reads. Symlinks, including dangling links and masks, remain unknown with a type
-conflict rather than being followed or treated as missing. Unit reads have a 1 MiB
+conflict rather than being followed or treated as missing. Unit reads have a 4 MiB
 bound; environment reads have a 16 MiB bound. No file contents are returned or
 logged. The temporary unit snapshot is cleared before release.
 

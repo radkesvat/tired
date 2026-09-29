@@ -64,6 +64,13 @@ int main(void)
     CHECK(!PARSE("tired", "plan", "--unit", "--json", "./server"));
     CHECK(!PARSE("tired", "--set", "ExecStartPre=evil", "./server"));
     CHECK(!PARSE("tired", "--name", "relay", "status", "relay"));
+    CHECK(PARSE("tired", "status", "relay", "--check-active", "--json"));
+    CHECK(request.check_active && request.json && request.command == TIRED_COMMAND_STATUS);
+    CHECK(!PARSE("tired", "status", "relay", "--check-active", "--check-active"));
+    CHECK(!PARSE("tired", "status", "relay", "--check-active=true"));
+    CHECK(!PARSE("tired", "list", "--check-active"));
+    CHECK(PARSE("tired", "./app", "--check-active"));
+    CHECK(!request.check_active && request.arguments.count == 2);
     CHECK(!PARSE("tired", "--working-directory", "", "./server"));
     CHECK(!PARSE("tired", "plan", "--include-sensitive", "./server"));
     CHECK(!PARSE("tired", "--no-start", "--start", "./server"));

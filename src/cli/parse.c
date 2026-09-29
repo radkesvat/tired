@@ -239,6 +239,7 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
                      {"--offline", &parsed.offline},
                      {"--unit", &parsed.unit},
                      {"--dry-run", &parsed.dry_run},
+                     {"--check-active", &parsed.check_active},
                      {"--include-sensitive", &parsed.include_sensitive}};
         for (size_t j = 0; j < sizeof(flags) / sizeof(flags[0]); ++j)
             if (strcmp(option, flags[j].name) == 0)
@@ -404,6 +405,8 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
         !parsed.profile_explain)
         goto inappropriate;
     if (parsed.quiet && parsed.verbose)
+        goto inappropriate;
+    if (parsed.check_active && parsed.command != TIRED_COMMAND_STATUS)
         goto inappropriate;
     if (parsed.unit && parsed.json)
         goto inappropriate;

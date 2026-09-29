@@ -37,7 +37,7 @@ typedef struct
     TiredTextList pass_environment, import_files, environment_files, credentials, allowed_risks;
     TiredText profile, working_directory, output, color;
     bool help, version, json, no_tui, yes, quiet, verbose, offline, unit, dry_run,
-        include_sensitive;
+        include_sensitive, check_active;
     bool explicit_boundary;
     bool profile_explain;
     bool sensitive_arguments[TIRED_ARGUMENT_LIMIT]; /* Workload argv indices; index 0 excluded. */

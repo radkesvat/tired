@@ -1,4 +1,5 @@
 #include "tired/service_files.h"
+#include "tired/encode.h"
 #include "tired/file_target.h"
 #include "tired/private_file.h"
 #include <assert.h>
@@ -28,7 +29,7 @@ static void inspect(const TiredLayout *layout, const TiredFileTarget *target, co
         goto done;
     }
     bool known =
-        unit ? tired_file_snapshot(directory, resolved.name.data, TIRED_INPUT_LIMIT, &file->actual,
+        unit ? tired_file_snapshot(directory, resolved.name.data, TIRED_UNIT_LIMIT, &file->actual,
                                    &bytes, &file->error)
              : tired_file_fingerprint(directory, resolved.name.data, TIRED_PRIVATE_FILE_LIMIT,
                                       &file->actual, &file->error);
