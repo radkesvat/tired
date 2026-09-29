@@ -77,4 +77,6 @@ version addressing. These do not yet qualify recovery of real in-flight manager
 operations across a systemd restart.
 
 Unit queries, jobs, mutation methods and frontend wiring remain under implementation.
+The [observation decoder](unit-observations.md) provides typed Unit/Service reply
+handling for the upcoming query layer, preserving missing-property uncertainty.
 This probe alone is not a completed live validation or service-management backend.
