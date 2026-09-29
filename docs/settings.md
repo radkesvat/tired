@@ -60,5 +60,19 @@ file trust or the existence or trust of profile directories. JSON output identif
 the validation base and this trust limitation. A partial file that relies on another
 layer's retry policy must include that policy to pass standalone validation.
 
-File discovery, applying settings to commands, and `config show` remain under
-implementation. The executable does not yet consume settings for other operations.
+`tired config show [--json]` loads `/etc/tired/config.json`, followed by the invoking
+user's `$XDG_CONFIG_HOME/tired/config.json`. When XDG_CONFIG_HOME is empty or unset,
+it uses `.config/tired/config.json` beneath the account database home directory.
+A relative XDG_CONFIG_HOME is an error. Discovery uses the trusted storage checks
+above. It requires matching real and effective IDs and does not infer another user
+from sudo environment variables. Both scopes use the invoking user's preferences;
+user settings never gain administrator authority.
+
+Explicit `--color` and `--no-tui` choices apply last. Text and JSON show every
+effective field and its `default`, `administrator`, `user`, or `cli` origin.
+Durations are shown as exact microsecond strings. Neither format contacts systemd.
+Malformed or unsafe installed settings fail the command without partial output.
+
+Applying these defaults to planning and other operations remains under
+implementation. Config show reports the settings model; it does not claim that
+unimplemented commands already consume it.

@@ -20,7 +20,8 @@ typedef enum
 {
     TIRED_SETTINGS_DEFAULT,
     TIRED_SETTINGS_ADMIN,
-    TIRED_SETTINGS_USER
+    TIRED_SETTINGS_USER,
+    TIRED_SETTINGS_CLI
 } TiredSettingsOrigin;
 typedef struct
 {
@@ -54,4 +55,7 @@ bool tired_settings_merge(TiredSettings *settings, const TiredSettings *input,
  * This API does not select paths or read environment variables. */
 bool tired_settings_load(const char *administrator_path, const char *user_path, uid_t user,
                          TiredSettings *settings, TiredError *error);
+/* Format all effective fields and origins. No filesystem or manager access. */
+bool tired_settings_output(const TiredSettings *settings, bool json, TiredText *output,
+                           TiredError *error);
 #endif

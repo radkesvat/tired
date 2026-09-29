@@ -34,8 +34,8 @@ failure may leave a private partial file and reports this explicitly. The only
 persistent planning effect is the explicitly requested output file.
 
 The current executable also provides help/version, profiles list/show/validate, and
-config validate. Profile installation/removal/explain, creation, live plans,
-settings discovery/show, dashboard and management handlers remain under implementation and return
+config show/validate. Profile installation/removal/explain, creation, live plans,
+dashboard and management handlers remain under implementation and return
 an explicit unsupported result. Their parser recognition is not implementation
 completion. Full risk validation, host compatibility, real execution round trips,
 and release qualification remain required.
