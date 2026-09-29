@@ -88,6 +88,7 @@ target_sources(tired_core PRIVATE src/profiles/profile.c)
 target_sources(tired_core PRIVATE src/profiles/merge.c)
 target_sources(tired_core PRIVATE src/profiles/catalog.c)
 target_sources(tired_core PRIVATE src/cli/profiles.c)
+target_sources(tired_core PRIVATE src/model/settings.c)
 target_compile_definitions(tired_core PRIVATE _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 target_include_directories(tired_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c tired_crypto)
@@ -103,6 +104,10 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_settings_test tests/unit/settings_test.c)
+    target_link_libraries(tired_settings_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.settings COMMAND tired_settings_test)
+    set_tests_properties(tired.settings PROPERTIES LABELS unit)
     add_executable(tired_catalog_test tests/unit/catalog_test.c)
     target_compile_definitions(tired_catalog_test PRIVATE _POSIX_C_SOURCE=200809L)
     target_link_libraries(tired_catalog_test PRIVATE tired_core tired_build_options)
@@ -184,7 +189,7 @@ if(BUILD_TESTING)
 endif()
 
 install(TARGETS tired RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-install(FILES schemas/profile.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
+install(FILES schemas/profile.schema.json schemas/settings.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
 install(DIRECTORY profiles/ DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/profiles.d"
     FILES_MATCHING PATTERN "*.json")
 

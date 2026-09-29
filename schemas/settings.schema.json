@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tired settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "color": {"enum": ["auto", "always", "never"]},
+    "ascii": {"type": "boolean"},
+    "tui": {"type": "boolean"},
+    "retry_policy": {"enum": ["persistent", "limited"]},
+    "restart_sec": {"type": "string"},
+    "history_revisions": {"type": "integer", "minimum": 1, "maximum": 1000},
+    "log_tail": {"type": "integer", "minimum": 1, "maximum": 10000},
+    "observation_sec": {"type": "string"},
+    "profile_directories": {"type": "array", "maxItems": 16, "items": {"type": "string", "pattern": "^/"}}
+  },
+  "$comment": "C validation enforces byte budgets, duration syntax/ranges, retry consistency, and authority restrictions on profile locations."
+}
