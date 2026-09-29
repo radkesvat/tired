@@ -34,6 +34,21 @@ supply that key even with an empty list. This parser does not establish file tru
 or authorize directories; callers must enforce discovery and filesystem trust rules.
 No keys can change privileged state paths or bypass validation.
 
+The storage API `tired_settings_load` accepts explicit administrator and user paths,
+loads them in that order over built-in defaults, and publishes the result only after
+both layers succeed. A null path skips a layer; a missing file or directory means
+that optional layer is absent. Other open, read, parse, trust, or merge failures
+preserve the caller's previous settings and report an error.
+
+Trusted loading requires absolute paths with normalized components. It traverses
+from the filesystem root using directory descriptors and refuses symlinks. Every
+ancestor and the file must be owned by root or the relevant user and must not be
+group- or other-writable; administrator paths permit only root ownership. The final
+file must be regular with one hard link. Reads are bounded, detect observed changes
+and recheck file trust afterward. These checks do not defend against an already
+trusted owner changing their own files. This API takes paths from its caller and
+does not read environment variables or select discovery locations.
+
 Owning `TiredSettings` objects must be initialized to zero before first use and
 destroyed when finished. Parsed layers must be merged before use. Parsing and
 merging perform no filesystem or manager operations.

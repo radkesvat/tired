@@ -1,6 +1,7 @@
 #ifndef TIRED_SETTINGS_H
 #define TIRED_SETTINGS_H
 #include "tired/value.h"
+#include <sys/types.h>
 
 typedef enum
 {
@@ -45,4 +46,12 @@ bool tired_settings_parse(const char *data, size_t length, TiredSettings *settin
  * locations. No setting can disable validation or alter privileged state roots. */
 bool tired_settings_merge(TiredSettings *settings, const TiredSettings *input,
                           TiredSettingsOrigin origin, TiredError *error);
+/* Load optional absolute settings paths over defaults, administrator then user.
+ * NULL skips a layer; ENOENT means absent. Other errors preserve the destination.
+ * Paths must have normalized components, no symlinks, and ancestors owned by root
+ * or the layer's owner with no group/other write bits. Files must be regular with
+ * one link and the same permission rule. Administrator owner is always root.
+ * This API does not select paths or read environment variables. */
+bool tired_settings_load(const char *administrator_path, const char *user_path, uid_t user,
+                         TiredSettings *settings, TiredError *error);
 #endif
