@@ -76,6 +76,9 @@ static struct json_object *file_json(const TiredRecoveryFiles *files)
                                        change->after.exists)) &&
                      add(row, "rollback",
                          artifact_json(&artifacts->rollback, &artifacts->rollback_error,
+                                       change->before.exists)) &&
+                     add(row, "retained",
+                         artifact_json(&artifacts->retained, &artifacts->retained_error,
                                        change->before.exists));
             if (!ok || json_object_array_add(rows, row) != 0)
             {
@@ -339,11 +342,14 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
                         const TiredFileChange *change = &files.manifest.files[j];
                         const TiredRecoveryArtifacts *artifacts = &files.artifacts[j];
                         (void)snprintf(
-                            line, sizeof(line), "  file[%zu]=%s staging=%s rollback=%s\n", j,
+                            line, sizeof(line),
+                            "  file[%zu]=%s staging=%s rollback=%s retained=%s\n", j,
                             file_states[files.observations.files[j].state],
                             change->after.exists ? artifact_states[artifacts->staging.state]
                                                  : "not_required",
                             change->before.exists ? artifact_states[artifacts->rollback.state]
+                                                  : "not_required",
+                            change->before.exists ? artifact_states[artifacts->retained.state]
                                                   : "not_required");
                         if (!text(&buffer, line, error))
                             goto done;

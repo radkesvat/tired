@@ -13,17 +13,19 @@ void tired_recover_files_destroy(TiredRecoveryFiles *files)
     *files = (TiredRecoveryFiles){0};
 }
 static bool artifact(const TiredLayout *layout, TiredDirectory *transaction,
-                     const TiredFileChange *change, bool rollback, size_t *budget,
+                     const TiredFileChange *change, bool rollback, bool retained, size_t *budget,
                      TiredArtifactObservation *output, TiredError *error)
 {
-    if (!(rollback ? change->before.exists : change->after.exists))
+    if (!(rollback || retained ? change->before.exists : change->after.exists))
         return true;
     if (*budget == 0)
         return tired_error_set(error, TIRED_RECOVERY_REQUIRED, "recovery-artifact-budget",
                                "Recovery artifact byte budget exhausted.", 0);
     size_t limit = *budget < TIRED_PRIVATE_FILE_LIMIT ? *budget : TIRED_PRIVATE_FILE_LIMIT;
-    bool ok =
-        tired_file_artifact_observe(layout, transaction, change, rollback, limit, output, error);
+    bool ok = retained
+                  ? tired_file_retained_observe(layout, transaction, change, limit, output, error)
+                  : tired_file_artifact_observe(layout, transaction, change, rollback, limit,
+                                                output, error);
     *budget -= ok ? (size_t)output->actual.size : limit;
     return ok;
 }
@@ -65,11 +67,14 @@ void tired_recover_files_collect(const TiredLayout *layout,
     for (size_t i = 0; i < files->manifest.count; ++i)
     {
         TiredRecoveryArtifacts *observed = &files->artifacts[i];
-        if (!artifact(layout, transaction, &files->manifest.files[i], false, budget,
+        if (!artifact(layout, transaction, &files->manifest.files[i], false, false, budget,
                       &observed->staging, &observed->staging_error))
             files->artifacts_complete = false;
-        if (!artifact(layout, transaction, &files->manifest.files[i], true, budget,
+        if (!artifact(layout, transaction, &files->manifest.files[i], true, false, budget,
                       &observed->rollback, &observed->rollback_error))
+            files->artifacts_complete = false;
+        if (!artifact(layout, transaction, &files->manifest.files[i], false, true, budget,
+                      &observed->retained, &observed->retained_error))
             files->artifacts_complete = false;
     }
 done:

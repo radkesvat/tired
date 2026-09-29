@@ -24,9 +24,12 @@ and selected scope, and compare destination fingerprints. JSON `files` reports
 `completed`, `partial` or `unknown`, with per-destination manifest indices and
 `before`, `after`, `foreign` or `unknown` states. A top-level file error preserves
 the journal and manager diagnostics. Text output reports the same indexed states.
-Each destination also has `staging` and `rollback` observations with `match`,
+Each destination also has `staging`, `rollback` and `retained` observations with `match`,
 `missing`, `different`, `unknown` or `not_required` states. Artifact failures retain
-their error codes. Text output includes both artifact states next to each file.
+their error codes. Text output includes all artifact states next to each file.
+Retained originals are checked at the replacement staging name or removal's
+retained name against the exact before fingerprint; copied backups use the separate
+rollback content/permission check. New files have no retained original to inspect.
 All destination and artifact reads share a 64 MiB content budget; exhausted entries stay unknown.
 Completed inspection can still find foreign changes and never authorizes mutation.
 

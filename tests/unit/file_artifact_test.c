@@ -77,6 +77,19 @@ int main(void)
     publication = NULL;
     CHECK(tired_file_artifact_observe(&layout, root, &change, true, 100, &observed, &error));
     CHECK(observed.state == TIRED_ARTIFACT_MATCH && observed.actual.mode == 0600);
+    CHECK(tired_file_retained_observe(&layout, root, &change, 100, &observed, &error));
+    CHECK(observed.state == TIRED_ARTIFACT_MATCH);
+    const char *retained = ".tired-11234567-89ab-4cde-8fab-0123456789ab.removed";
+    CHECK(renameat(fd, staging, fd, retained) == 0);
+    change.after = (TiredFileFingerprint){0};
+    CHECK(tired_file_retained_observe(&layout, root, &change, 100, &observed, &error));
+    CHECK(observed.state == TIRED_ARTIFACT_MATCH);
+    ++change.before.inode;
+    CHECK(tired_file_retained_observe(&layout, root, &change, 100, &observed, &error));
+    CHECK(observed.state == TIRED_ARTIFACT_DIFFERENT);
+    --change.before.inode;
+    change.after = change.before;
+    CHECK(renameat(fd, retained, fd, staging) == 0);
     CHECK(!tired_file_backup(root, staging, &change.before, artifacts, change.rollback_uuid, lock,
                              &publication, &error));
     CHECK(!tired_publication_published(publication));
@@ -107,6 +120,8 @@ cleanup:
     if (root != NULL)
     {
         (void)unlinkat(tired_directory_fd(root), staging, 0);
+        (void)unlinkat(tired_directory_fd(root),
+                       ".tired-11234567-89ab-4cde-8fab-0123456789ab.removed", 0);
         (void)unlinkat(tired_directory_fd(root), "operation.lock", 0);
         (void)unlinkat(tired_directory_fd(root), "artifacts", AT_REMOVEDIR);
     }

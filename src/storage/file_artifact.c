@@ -6,16 +6,17 @@
 #include <string.h>
 #include <unistd.h>
 
-bool tired_file_artifact_observe(const TiredLayout *layout, TiredDirectory *transaction,
-                                 const TiredFileChange *change, bool rollback, size_t limit,
-                                 TiredArtifactObservation *output, TiredError *error)
+static bool observe(const TiredLayout *layout, TiredDirectory *transaction,
+                    const TiredFileChange *change, bool rollback, bool retained, size_t limit,
+                    TiredArtifactObservation *output, TiredError *error)
 {
     assert(layout != NULL && transaction != NULL && change != NULL && output != NULL);
     TiredError local_error = {0};
     if (error == NULL)
         error = &local_error;
-    const char *uuid = rollback ? change->rollback_uuid : change->staging_uuid;
-    const TiredFileFingerprint *expected = rollback ? &change->before : &change->after;
+    bool removed = retained && !change->after.exists;
+    const char *uuid = rollback || removed ? change->rollback_uuid : change->staging_uuid;
+    const TiredFileFingerprint *expected = rollback || retained ? &change->before : &change->after;
     if (!tired_uuid_valid(uuid, strnlen(uuid, 37)) || !expected->exists ||
         limit > TIRED_PRIVATE_FILE_LIMIT)
         return tired_error_set(error, TIRED_INVALID, "artifact-input",
@@ -30,7 +31,7 @@ bool tired_file_artifact_observe(const TiredLayout *layout, TiredDirectory *tran
     TiredResolvedFile resolved = {0};
     TiredDirectory *directory = NULL;
     TiredArtifactObservation result = {0};
-    char staging[48];
+    char staging[52];
     const char *name = uuid;
     bool ok = false, opened;
     if (rollback)
@@ -39,7 +40,7 @@ bool tired_file_artifact_observe(const TiredLayout *layout, TiredDirectory *tran
     {
         if (!tired_file_target_resolve(layout, &change->target, &resolved, error))
             goto done;
-        (void)snprintf(staging, sizeof(staging), ".tired-%s.tmp", uuid);
+        (void)snprintf(staging, sizeof(staging), ".tired-%s.%s", uuid, removed ? "removed" : "tmp");
         name = staging;
         opened = tired_directory_open(resolved.directory.data, layout->user_scope ? geteuid() : 0,
                                       resolved.private_directory, &directory, error);
@@ -70,4 +71,16 @@ done:
     tired_directory_destroy(directory);
     tired_resolved_file_destroy(&resolved);
     return ok;
+}
+bool tired_file_artifact_observe(const TiredLayout *layout, TiredDirectory *transaction,
+                                 const TiredFileChange *change, bool rollback, size_t limit,
+                                 TiredArtifactObservation *output, TiredError *error)
+{
+    return observe(layout, transaction, change, rollback, false, limit, output, error);
+}
+bool tired_file_retained_observe(const TiredLayout *layout, TiredDirectory *transaction,
+                                 const TiredFileChange *change, size_t limit,
+                                 TiredArtifactObservation *output, TiredError *error)
+{
+    return observe(layout, transaction, change, false, true, limit, output, error);
 }

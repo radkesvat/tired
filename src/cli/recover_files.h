@@ -5,8 +5,8 @@
 #include "tired/transaction_inventory.h"
 typedef struct
 {
-    TiredArtifactObservation staging, rollback;
-    TiredError staging_error, rollback_error;
+    TiredArtifactObservation staging, rollback, retained;
+    TiredError staging_error, rollback_error, retained_error;
 } TiredRecoveryArtifacts;
 typedef struct
 {

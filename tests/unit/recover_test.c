@@ -154,6 +154,12 @@ int main(void)
     CHECK(json_object_object_get_ex(json_object_array_get_idx(value, 0), "rollback", &artifact));
     CHECK(json_object_object_get_ex(artifact, "state", &file_state) &&
           strcmp(json_object_get_string(file_state), "missing") == 0);
+    CHECK(json_object_object_get_ex(json_object_array_get_idx(value, 0), "retained", &artifact));
+    CHECK(json_object_object_get_ex(artifact, "state", &file_state) &&
+          strcmp(json_object_get_string(file_state), "missing") == 0);
+    CHECK(json_object_object_get_ex(json_object_array_get_idx(value, 1), "retained", &artifact));
+    CHECK(json_object_object_get_ex(artifact, "state", &file_state) &&
+          strcmp(json_object_get_string(file_state), "not_required") == 0);
     CHECK(json_object_object_get_ex(row, "previous_live", &live_row));
     CHECK(json_object_object_get_ex(live_row, "status", &value) &&
           strcmp(json_object_get_string(value), "unknown") == 0);

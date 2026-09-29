@@ -21,6 +21,13 @@ callers must use the return value and retain the error rather than reusing stale
 observations. Missing trusted parent directories establish a missing artifact.
 Symlinks and permission errors never establish absence.
 
+`tired_file_retained_observe` checks the original inode retained by a file move.
+For replacement it checks `.tired-<staging_uuid>.tmp` against the complete before
+fingerprint. For removal it checks `.tired-<rollback_uuid>.removed` in the resolved
+destination directory. Unlike a rollback copy, the retained original must match
+device, inode, ownership and mode as well as bytes. An exchanged staging name can
+therefore report `different` as staging and `match` as the retained original.
+
 Missing staging can be expected after publication, so these observations alone
 cannot decide whether recovery should finish or roll back. They must be combined
 with destination comparisons, journal progress and manager observations. This API

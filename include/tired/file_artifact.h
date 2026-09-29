@@ -24,4 +24,10 @@ typedef struct
 bool tired_file_artifact_observe(const TiredLayout *layout, TiredDirectory *transaction,
                                  const TiredFileChange *change, bool rollback, size_t limit,
                                  TiredArtifactObservation *output, TiredError *error);
+/* Inspect the retained original inode: replacement uses staging_uuid.tmp;
+ * removal uses rollback_uuid.removed. Requires an existing before-state and
+ * exact before identity/metadata/content, unlike a copied rollback artifact. */
+bool tired_file_retained_observe(const TiredLayout *layout, TiredDirectory *transaction,
+                                 const TiredFileChange *change, size_t limit,
+                                 TiredArtifactObservation *output, TiredError *error);
 #endif
