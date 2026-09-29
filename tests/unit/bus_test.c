@@ -1,5 +1,6 @@
 #include "tired/io.h"
 #include "tired/manager.h"
+#include "tired/manager_identity.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -20,14 +21,54 @@
             goto cleanup;                                                                          \
         }                                                                                          \
     } while (0)
+typedef struct
+{
+    uint32_t uid;
+    bool matched, change_during_uid, silent_match, pinned_version;
+} Broker;
+static int changed(sd_bus *bus)
+{
+    sd_bus_message *message = NULL;
+    int rc = sd_bus_message_new_signal(bus, &message, "/org/freedesktop/DBus",
+                                       "org.freedesktop.DBus", "NameOwnerChanged");
+    if (rc >= 0)
+        rc = sd_bus_message_set_sender(message, "org.freedesktop.DBus");
+    if (rc >= 0)
+        rc = sd_bus_message_append(message, "sss", "org.freedesktop.systemd1", ":1.42", ":1.43");
+    if (rc >= 0)
+        rc = sd_bus_send(bus, message, NULL);
+    sd_bus_message_unref(message);
+    return rc;
+}
 static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
 {
-    (void)userdata;
+    Broker *broker = userdata;
     (void)error;
     if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus", "Hello") > 0)
         return sd_bus_reply_method_return(message, "s", ":1.99");
+    if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus", "AddMatch") > 0)
+    {
+        broker->matched = true;
+        return broker->silent_match ? 1 : sd_bus_reply_method_return(message, "");
+    }
+    if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus", "RemoveMatch") > 0)
+        return sd_bus_reply_method_return(message, "");
+    if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus", "GetNameOwner") > 0)
+        return broker->matched
+                   ? sd_bus_reply_method_return(message, "s", ":1.42")
+                   : sd_bus_reply_method_errorf(message, SD_BUS_ERROR_FAILED, "Match missing");
+    if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus", "GetConnectionUnixUser") > 0)
+    {
+        if (broker->change_during_uid && changed(sd_bus_message_get_bus(message)) < 0)
+            return -1;
+        return sd_bus_reply_method_return(message, "u", broker->uid);
+    }
     if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus.Properties", "Get") > 0)
+    {
+        const char *destination = sd_bus_message_get_destination(message);
+        broker->pinned_version = destination != NULL && strcmp(destination, ":1.42") == 0;
         return sd_bus_reply_method_return(message, "v", "s", "249.11");
+    }
     return 0;
 }
 int main(void)
@@ -40,6 +81,8 @@ int main(void)
     sd_bus *client = NULL, *server = NULL;
     sd_bus_slot *slot = NULL;
     TiredManagerProbe *probe = NULL;
+    TiredManagerIdentity *identity = NULL;
+    Broker broker = {.uid = (uint32_t)getuid()};
     CHECK(cwd != NULL);
     CHECK(unsetenv("XDG_RUNTIME_DIR") == 0);
     CHECK(!tired_manager_bus_open(true, &client, &error));
@@ -86,7 +129,7 @@ int main(void)
     CHECK(sd_bus_set_fd(server, accepted, accepted) >= 0);
     accepted = -1;
     CHECK(sd_bus_set_server(server, 1, id) >= 0);
-    CHECK(sd_bus_add_filter(server, &slot, respond, NULL) >= 0);
+    CHECK(sd_bus_add_filter(server, &slot, respond, &broker) >= 0);
     CHECK(sd_bus_start(server) >= 0);
     CHECK(tired_manager_probe_start(client, 1000, &probe, &error));
     for (unsigned i = 0; i < 2000; ++i)
@@ -100,6 +143,69 @@ int main(void)
     TiredManagerProbeResult observed = tired_manager_probe_result(probe);
     CHECK(observed.done && observed.error.status == TIRED_OK && observed.major_version == 249);
     CHECK(sd_bus_is_ready(client) > 0);
+    for (unsigned scenario = 0; scenario < 4; ++scenario)
+    {
+        broker.uid = (uint32_t)getuid() ^ (scenario == 1 ? 1U : 0U);
+        broker.change_during_uid = scenario == 2;
+        broker.silent_match = scenario == 3;
+        broker.matched = false;
+        CHECK(tired_manager_identity_start(client, true, scenario == 3 ? 20 : 1000, &identity,
+                                           &error));
+        struct pollfd poll_descriptor;
+        uint64_t poll_deadline;
+        CHECK(tired_manager_identity_poll(identity, &poll_descriptor, &poll_deadline, &error));
+        CHECK(poll_descriptor.fd >= 0 && poll_deadline != UINT64_MAX);
+        for (unsigned i = 0; i < 2000; ++i)
+        {
+            CHECK(sd_bus_process(server, NULL) >= 0);
+            if (tired_manager_identity_step(identity))
+                break;
+            struct timespec delay = {.tv_nsec = 1000000};
+            (void)nanosleep(&delay, NULL);
+        }
+        TiredManagerIdentityResult owner = tired_manager_identity_result(identity);
+        if (scenario == 0)
+        {
+            CHECK(owner.ready && owner.error.status == TIRED_OK && owner.uid == getuid());
+            CHECK(strcmp(owner.unique_name, ":1.42") == 0);
+            tired_manager_probe_destroy(probe);
+            probe = NULL;
+            CHECK(
+                tired_manager_probe_start_unique(client, owner.unique_name, 1000, &probe, &error));
+            for (unsigned i = 0; i < 2000; ++i)
+            {
+                CHECK(sd_bus_process(server, NULL) >= 0);
+                (void)tired_manager_identity_step(identity);
+                if (tired_manager_probe_step(probe))
+                    break;
+                struct timespec delay = {.tv_nsec = 1000000};
+                (void)nanosleep(&delay, NULL);
+            }
+            CHECK(tired_manager_probe_result(probe).done &&
+                  tired_manager_probe_result(probe).error.status == TIRED_OK);
+            CHECK(broker.pinned_version);
+            CHECK(changed(server) >= 0);
+            for (unsigned i = 0; i < 2000; ++i)
+            {
+                CHECK(sd_bus_process(server, NULL) >= 0);
+                (void)tired_manager_identity_step(identity);
+                if (tired_manager_identity_result(identity).changed)
+                    break;
+                struct timespec delay = {.tv_nsec = 1000000};
+                (void)nanosleep(&delay, NULL);
+            }
+            owner = tired_manager_identity_result(identity);
+            CHECK(!owner.ready && owner.changed && owner.error.status == TIRED_CONFLICT);
+        }
+        else if (scenario == 1)
+            CHECK(!owner.ready && owner.error.status == TIRED_AUTHORIZATION);
+        else if (scenario == 2)
+            CHECK(!owner.ready && owner.changed && owner.error.status == TIRED_CONFLICT);
+        else
+            CHECK(!owner.ready && strcmp(owner.error.code, "manager-owner-timeout") == 0);
+        tired_manager_identity_destroy(identity);
+        identity = NULL;
+    }
     if (getuid() == 0)
     {
         /* A root-owned socket inode alone does not authenticate its listener. */
@@ -139,6 +245,7 @@ int main(void)
     }
     result = 0;
 cleanup:
+    tired_manager_identity_destroy(identity);
     tired_manager_probe_destroy(probe);
     sd_bus_slot_unref(slot);
     sd_bus_close_unref(server);

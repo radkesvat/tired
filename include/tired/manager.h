@@ -28,6 +28,9 @@ typedef struct
  * Timeout includes connection progress. *probe starts NULL. */
 bool tired_manager_probe_start(sd_bus *bus, unsigned timeout_ms, TiredManagerProbe **probe,
                                TiredError *error);
+/* Production discovery can pin the query to a verified manager identity. */
+bool tired_manager_probe_start_unique(sd_bus *bus, const char *unique_name, unsigned timeout_ms,
+                                      TiredManagerProbe **probe, TiredError *error);
 bool tired_manager_probe_step(TiredManagerProbe *probe);
 /* Poll descriptor/events and absolute CLOCK_MONOTONIC deadline in microseconds. */
 bool tired_manager_probe_poll(TiredManagerProbe *probe, struct pollfd *descriptor,

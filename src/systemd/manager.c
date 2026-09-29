@@ -124,8 +124,8 @@ static int version_reply(sd_bus_message *message, void *userdata, sd_bus_error *
                "This manager is older than the supported systemd 249 baseline.", 0);
     return 1;
 }
-bool tired_manager_probe_start(sd_bus *bus, unsigned timeout_ms, TiredManagerProbe **output,
-                               TiredError *error)
+static bool probe_start(sd_bus *bus, const char *destination, unsigned timeout_ms,
+                        TiredManagerProbe **output, TiredError *error)
 {
     assert(bus != NULL && output != NULL && *output == NULL);
     if (timeout_ms == 0 || timeout_ms > 300000 || sd_bus_is_open(bus) <= 0)
@@ -144,8 +144,7 @@ bool tired_manager_probe_start(sd_bus *bus, unsigned timeout_ms, TiredManagerPro
         goto fail;
     }
     probe->deadline += (uint64_t)timeout_ms * 1000;
-    rc = sd_bus_message_new_method_call(bus, &request, "org.freedesktop.systemd1",
-                                        "/org/freedesktop/systemd1",
+    rc = sd_bus_message_new_method_call(bus, &request, destination, "/org/freedesktop/systemd1",
                                         "org.freedesktop.DBus.Properties", "Get");
     if (rc >= 0)
         rc = sd_bus_message_set_auto_start(request, 0);
@@ -169,6 +168,21 @@ fail:
         *error = probe->error;
     tired_manager_probe_destroy(probe);
     return false;
+}
+bool tired_manager_probe_start(sd_bus *bus, unsigned timeout_ms, TiredManagerProbe **output,
+                               TiredError *error)
+{
+    return probe_start(bus, "org.freedesktop.systemd1", timeout_ms, output, error);
+}
+bool tired_manager_probe_start_unique(sd_bus *bus, const char *unique_name, unsigned timeout_ms,
+                                      TiredManagerProbe **output, TiredError *error)
+{
+    assert(unique_name != NULL);
+    if (unique_name[0] != ':' || strnlen(unique_name, 256) > 255 ||
+        sd_bus_service_name_is_valid(unique_name) <= 0)
+        return tired_error_set(error, TIRED_INVALID, "manager-owner-input",
+                               "Expected a verified unique manager name.", 0);
+    return probe_start(bus, unique_name, timeout_ms, output, error);
 }
 bool tired_manager_probe_step(TiredManagerProbe *probe)
 {

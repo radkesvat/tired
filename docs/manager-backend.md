@@ -56,6 +56,25 @@ overrides are ignored. On root test hosts a separate unprivileged listener behin
 root-owned socket verifies that peer credentials are checked independently of the
 socket inode's owner.
 
-Manager name-owner/restart tracking, unit queries, jobs, mutation methods and
-frontend wiring remain under implementation.
+The manager identity tracker installs its NameOwnerChanged subscription and waits
+for broker acknowledgment before querying GetNameOwner. It then queries the UID of
+that unique name and requires root for system scope or the current UID for user
+scope. All calls share one monotonic discovery deadline. Version queries can target
+the verified unique name through `tired_manager_probe_start_unique`, avoiding a new
+resolution of the well-known name between checks.
+
+Keep the identity tracker alive and pump its bus after discovery. Any ownership
+change during discovery or after readiness invalidates it with a conflict; it does
+not silently adopt the new manager. Disconnect also invalidates readiness. Pending
+queries and subscriptions are detached on failure or destruction. Poll metadata
+includes the initial deadline and continues exposing bus events after readiness.
+Future operation admission must check the tracker and use its unique destination;
+identity tracking cannot undo a method already executed by a manager.
+
+Native tests verify subscription-before-query ordering, UID rejection, owner changes
+during and after discovery, subscription timeout, poll metadata and unique-name
+version addressing. These do not yet qualify recovery of real in-flight manager
+operations across a systemd restart.
+
+Unit queries, jobs, mutation methods and frontend wiring remain under implementation.
 This probe alone is not a completed live validation or service-management backend.
