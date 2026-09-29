@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Historical profile provenance",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "profile", "source_path", "source_sha256", "source_origin", "explicit_selection", "decisions"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "profile": {"$ref": "profile.schema.json"},
+    "source_path": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^/"},
+    "source_sha256": {"type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}$"},
+    "source_origin": {"enum": ["bundled", "administrator", "user"]},
+    "explicit_selection": {"type": "boolean"},
+    "decisions": {"type": "array", "items": {"enum": ["applied", "scope-mismatch", "condition-false", "condition-unknown", "version-unknown", "incompatible", "suggestion", "user-override", "conflicting-recommendations", "required-conflict"]}}
+  }
+}
