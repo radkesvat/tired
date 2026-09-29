@@ -1,3 +1,4 @@
+#include "../../src/cli/recover_live.h"
 #include "tired/io.h"
 #include "tired/json.h"
 #include "tired/recover_frontend.h"
@@ -77,6 +78,13 @@ int main(void)
           strcmp(json_object_get_string(value), "forward") == 0);
     CHECK(json_object_object_get_ex(document, "exit_code", &value) &&
           json_object_get_int(value) == 8);
+    CHECK(json_object_object_get_ex(document, "live_observations", &value) &&
+          strcmp(json_object_get_string(value), "unavailable") == 0);
+    struct json_object *live_row = NULL;
+    CHECK(json_object_object_get_ex(row, "live", &live_row));
+    CHECK(json_object_object_get_ex(live_row, "status", &value) &&
+          strcmp(json_object_get_string(value), "unknown") == 0);
+    CHECK(!json_object_object_get_ex(live_row, "object_found", &value));
     CHECK(json_object_object_get_ex(document, "resolution_actions_supported", &value) &&
           !json_object_get_boolean(value));
     CHECK(mkdirat(tired_directory_fd(transactions), bad_name, 0700) == 0);
@@ -98,6 +106,24 @@ int main(void)
     CHECK(setenv("XDG_STATE_HOME", "relative", 1) == 0);
     CHECK(!tired_recover_command(&request, &output, &status, &error));
     CHECK(status == TIRED_RECOVERY_REQUIRED && strstr(output.data, "bad\\x1b\\xff") != NULL);
+    TiredUnitObservation observation = {0};
+    observation.fields[TIRED_OBS_MAIN_PID].known = true;
+    observation.fields[TIRED_OBS_MAIN_PID].value.unsigned_value = 0;
+    TiredUnitBatchItem item = {
+        .attempted = true,
+        .completed_realtime_usec = 123,
+        .query = {.done = true, .object_found = true, .observation = &observation}};
+    json_object_put(document);
+    document = tired_recover_live_json(&item);
+    CHECK(document != NULL && json_object_object_get_ex(document, "properties", &entries));
+    CHECK(json_object_object_get_ex(entries, "MainPID", &value) && json_object_get_int(value) == 0);
+    CHECK(!json_object_object_get_ex(entries, "ActiveState", &value));
+    item.query.error =
+        (TiredError){.status = TIRED_AUTHORIZATION, .code = "fixture-denied", .message = "Denied."};
+    json_object_put(document);
+    document = tired_recover_live_json(&item);
+    CHECK(document != NULL && !json_object_object_get_ex(document, "properties", &entries));
+    CHECK(!json_object_object_get_ex(document, "object_found", &value));
     result = 0;
 cleanup:
     json_object_put(document);

@@ -1,9 +1,11 @@
+#include "../../src/cli/recover_live.h"
 #include "tired/load_paths.h"
 #include "tired/manager.h"
 #include "tired/name_query.h"
 #include "tired/unit_batch.h"
 #include "tired/unit_query.h"
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 static void tick(void)
 {
@@ -19,6 +21,8 @@ int main(void)
     TiredLoadPaths *paths = NULL;
     TiredNameQuery *names = NULL;
     TiredUnitBatch *batch = NULL;
+    TiredRecoveryLive cli_live = {0};
+    struct json_object *live_json = NULL;
     TiredError error = {0};
     int result = 1;
     if (!tired_manager_bus_open(false, &bus, &error))
@@ -85,6 +89,19 @@ int main(void)
     error = item.query.error;
     if (!item.query.done || error.status != TIRED_OK || item.completed_realtime_usec == 0)
         goto done;
+    tired_recover_live_collect(false, &batch_names, &cli_live);
+    error = cli_live.error;
+    if (error.status != TIRED_OK)
+        goto done;
+    TiredUnitBatchItem cli_item = tired_recover_live_item(&cli_live, 0);
+    error = cli_item.query.error;
+    if (!cli_item.query.done || error.status != TIRED_OK)
+        goto done;
+    live_json = tired_recover_live_json(&cli_item);
+    struct json_object *live_status = NULL;
+    if (live_json == NULL || !json_object_object_get_ex(live_json, "status", &live_status) ||
+        strcmp(json_object_get_string(live_status), "observed") != 0)
+        goto done;
     if (observed.file_found || observed.object_found)
     {
         TiredText destination = {.data = "/etc/systemd/system", .length = 19};
@@ -102,6 +119,8 @@ int main(void)
     }
     result = 0;
 done:
+    json_object_put(live_json);
+    tired_recover_live_destroy(&cli_live);
     tired_unit_batch_destroy(batch);
     tired_name_query_destroy(names);
     tired_load_paths_destroy(paths);

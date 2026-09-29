@@ -95,7 +95,7 @@ int main(int argc, char **argv)
               "       tired profiles list | show ID | validate FILE [--json]\n"
               "       tired profiles explain [options] -- COMMAND [ARG...]\n"
               "       tired config show | validate FILE [--user] [--json]\n"
-              "       tired recover [--user] [--json]  (stored-journal inspection)\n"
+              "       tired recover [--user] [--json]  (read-only inspection)\n"
               "       tired --help | --version\n\n"
               "Offline planning and profile, configuration, and stored-journal inspection are "
               "available.\n"

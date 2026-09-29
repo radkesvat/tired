@@ -1,3 +1,4 @@
+#include "recover_live.h"
 #include "tired/encode.h"
 #include "tired/recover_frontend.h"
 #include "tired/transaction_inventory.h"
@@ -6,6 +7,7 @@
 #include <json-c/json.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 static bool add(struct json_object *object, const char *key, struct json_object *value)
 {
@@ -44,6 +46,62 @@ static bool display_name(const TiredText *name, TiredText *output, TiredError *e
     tired_buffer_destroy(&buffer);
     return ok;
 }
+static bool eligible(const TiredTransactionInventoryEntry *entry)
+{
+    return entry->error.status == TIRED_OK && entry->progress.mode != TIRED_PROGRESS_COMMITTED &&
+           entry->progress.mode != TIRED_PROGRESS_ROLLED_BACK;
+}
+static bool live_text(TiredBuffer *buffer, const TiredUnitBatchItem *item, TiredError *error)
+{
+    if (!item->query.done || item->query.error.status != TIRED_OK)
+        return text(buffer, "  live: unknown; ", error) &&
+               text(buffer,
+                    item->query.error.message == NULL ? "Observation incomplete."
+                                                      : item->query.error.message,
+                    error) &&
+               text(buffer, "\n", error);
+    char stamp[64] = "timestamp unavailable";
+    time_t seconds = (time_t)(item->completed_realtime_usec / 1000000);
+    struct tm utc;
+    if (gmtime_r(&seconds, &utc) != NULL)
+        (void)strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S UTC", &utc);
+    if (!text(buffer, "  live (", error) || !text(buffer, stamp, error) ||
+        !text(buffer, "): object=", error) ||
+        !text(buffer, item->query.object_found ? "present" : "absent", error))
+        return false;
+    TiredText file_state = {0};
+    const char *state = item->query.file_state == NULL ? "not_found" : item->query.file_state;
+    bool state_ok = tired_encode_display(state, strlen(state), &file_state, error) &&
+                    text(buffer, " file_state=", error) && text(buffer, file_state.data, error);
+    tired_text_destroy(&file_state);
+    if (!state_ok)
+        return false;
+    const TiredObservationId ids[] = {TIRED_OBS_ACTIVE_STATE, TIRED_OBS_SUB_STATE};
+    const char *labels[] = {" active=", " sub="};
+    for (size_t i = 0; i < 2; ++i)
+    {
+        if (!text(buffer, labels[i], error))
+            return false;
+        const TiredObservedValue *field =
+            item->query.observation == NULL ? NULL : &item->query.observation->fields[ids[i]];
+        if (field == NULL || !field->known)
+        {
+            if (!text(buffer, "unknown", error))
+                return false;
+        }
+        else
+        {
+            TiredText escaped = {0};
+            bool ok = tired_encode_display(field->value.text.data, field->value.text.length,
+                                           &escaped, error) &&
+                      text(buffer, escaped.data, error);
+            tired_text_destroy(&escaped);
+            if (!ok)
+                return false;
+        }
+    }
+    return text(buffer, "\n", error);
+}
 bool tired_recover_command(const TiredRequest *request, TiredText *output, TiredStatus *result,
                            TiredError *error)
 {
@@ -54,6 +112,8 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
     bool user = tired_spec_choice_is(&request->overrides, TIRED_FIELD_SCOPE, "user");
     TiredLayout layout = {0};
     TiredTransactionInventory inventory = {0};
+    TiredRecoveryLive live = {0};
+    TiredTextList live_names = {0};
     TiredText name = {0};
     TiredBuffer buffer;
     tired_buffer_init(&buffer, 4U * TIRED_INPUT_LIMIT);
@@ -63,6 +123,20 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
         !tired_transaction_inventory_load(&layout, &inventory, error))
         goto done;
     required = !inventory.complete;
+    for (size_t i = 0; i < inventory.count; ++i)
+        if (eligible(&inventory.entries[i]) &&
+            !tired_text_list_append(&live_names, inventory.entries[i].unit_name.data,
+                                    inventory.entries[i].unit_name.length, 1024, TIRED_INPUT_LIMIT,
+                                    error))
+            goto done;
+    tired_recover_live_collect(user, &live_names, &live);
+    size_t successful = 0, live_index = 0;
+    for (size_t i = 0; i < live_names.count; ++i)
+    {
+        TiredUnitBatchItem item = tired_recover_live_item(&live, i);
+        if (item.query.done && item.query.error.status == TIRED_OK)
+            ++successful;
+    }
     if (request->json)
     {
         document = json_object_new_object();
@@ -70,10 +144,10 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
         if (document == NULL || entries == NULL)
             goto allocation;
     }
-    else if (!text(&buffer, "Stored transaction inspection (", error) ||
+    else if (!text(&buffer, "Transaction inspection (", error) ||
              !text(&buffer, user ? "user" : "system", error) ||
              !text(&buffer,
-                   "). Live reconciliation not performed; resolution actions are not yet "
+                   "). Manifest reconciliation not performed; resolution actions are not yet "
                    "implemented.\n",
                    error))
         goto done;
@@ -81,6 +155,10 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
     for (size_t i = 0; i < inventory.count; ++i)
     {
         const TiredTransactionInventoryEntry *entry = &inventory.entries[i];
+        bool observe = eligible(entry);
+        TiredUnitBatchItem observed = {0};
+        if (observe)
+            observed = tired_recover_live_item(&live, live_index++);
         bool known = entry->error.status == TIRED_OK;
         if (!known || (entry->progress.mode != TIRED_PROGRESS_COMMITTED &&
                        entry->progress.mode != TIRED_PROGRESS_ROLLED_BACK))
@@ -101,6 +179,10 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
                 goto allocation;
             if (entry->unit_name.data != NULL &&
                 !add(row, "unit_name", json_object_new_string(entry->unit_name.data)))
+                goto allocation;
+            if (observe && !add(row, "live", tired_recover_live_json(&observed)))
+                goto allocation;
+            if (!observe && !add(row, "live_status", json_object_new_string("not_requested")))
                 goto allocation;
             if (known)
             {
@@ -147,6 +229,8 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
                            error) ||
                      !text(&buffer, "\n", error))
                 goto done;
+            if (observe && !live_text(&buffer, &observed, error))
+                goto done;
         }
     }
     TiredStatus status = required ? TIRED_RECOVERY_REQUIRED : TIRED_OK;
@@ -161,6 +245,13 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
             !add(document, "exit_code", json_object_new_int(status)) ||
             !add(document, "inventory_complete", json_object_new_boolean(inventory.complete)) ||
             !add(document, "recovery_required", json_object_new_boolean(required)) ||
+            !add(document, "live_requested_units", json_object_new_uint64(live_names.count)) ||
+            !add(document, "live_successful_units", json_object_new_uint64(successful)) ||
+            !add(document, "live_observations",
+                 json_object_new_string(live_names.count == 0            ? "not_needed"
+                                        : successful == live_names.count ? "completed"
+                                        : successful == 0                ? "unavailable"
+                                                                         : "partial")) ||
             !add(document, "live_reconciliation", json_object_new_string("not_performed")) ||
             !add(document, "resolution_actions_supported", json_object_new_boolean(false)))
             goto allocation;
@@ -185,6 +276,8 @@ allocation:
     tired_error_set(error, TIRED_INTERNAL, "allocation",
                     "Cannot allocate recovery inspection output.", 0);
 done:
+    tired_recover_live_destroy(&live);
+    tired_text_list_destroy(&live_names);
     json_object_put(row);
     json_object_put(entries);
     json_object_put(document);

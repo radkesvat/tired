@@ -6,11 +6,18 @@ not create state directories, acquire a mutation lock, change services, or launc
 workloads. System private-state access may require running with administrative
 authority; the command does not silently elevate or treat denied access as empty.
 
-This implementation reports journal evidence only. Its output explicitly states
-that live reconciliation was not performed and resolution actions are not yet
-implemented. It does not determine the current manager outcome, verify manifests,
-or offer finish/rollback as available actions. Those are required subsequent
-parts of recovery implementation.
+Valid nonterminal transactions also receive read-only live manager observations.
+The CLI validates manager identity and version, then queries their units under a
+five-second aggregate monotonic budget. Empty inventories, terminal records and
+invalid entries do not trigger live queries. Unavailable transport, permission
+errors and incomplete queries leave live state unknown while preserving stored
+diagnostics. No activation or interactive authorization is requested.
+
+Manager observations are not complete recovery reconciliation. The command still
+does not compare manifests and expected file identities or offer finish/rollback
+actions. `live_reconciliation` remains `not_performed` until those checks exist;
+`live_observations` separately reports `not_needed`, `completed`, `partial` or
+`unavailable` for the selected units.
 
 Rows identify stored progress, pending action, sequence and recorded uncertainty.
 Invalid entries retain diagnostics alongside valid transactions. Journal state is
@@ -24,8 +31,14 @@ JSON includes `inventory_complete`, `recovery_required`, `live_reconciliation`,
 `resolution_actions_supported` and an array of transaction rows. Valid rows include
 the transaction UUID; all rows have a `directory_name_display` suitable for
 diagnostics. Control bytes, backslashes and non-ASCII filename bytes are represented
-with ASCII hex escapes, including filenames that are not valid UTF-8.
+with ASCII hex escapes, including filenames that are not valid UTF-8. Selected
+rows have a `live` object with completion timestamp and either an error or typed
+manager properties. Unknown fields are omitted, not replaced with zero, false or
+stopped. Known zero values remain present. Queries are sequential snapshots and
+may become stale immediately; their timestamps do not prove future state.
 
 Native tests cover empty-state inspection without creation, nonterminal progress,
 JSON status reporting, invalid neighboring directory names, terminal-safe text and
-preservation of prior output on discovery failure.
+preservation of prior output on discovery failure. Live integration exercises the
+CLI collector's identity/version/query path against the existing system manager;
+output tests distinguish known zero from unknown and denied observations.
