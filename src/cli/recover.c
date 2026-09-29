@@ -124,11 +124,18 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
         goto done;
     required = !inventory.complete;
     for (size_t i = 0; i < inventory.count; ++i)
-        if (eligible(&inventory.entries[i]) &&
-            !tired_text_list_append(&live_names, inventory.entries[i].unit_name.data,
-                                    inventory.entries[i].unit_name.length, 1024, TIRED_INPUT_LIMIT,
-                                    error))
+    {
+        const TiredTransactionInventoryEntry *entry = &inventory.entries[i];
+        if (!eligible(entry))
+            continue;
+        if (!tired_text_list_append(&live_names, entry->unit_name.data, entry->unit_name.length,
+                                    2048, TIRED_INPUT_LIMIT, error) ||
+            (entry->previous_unit_name.data != NULL &&
+             !tired_text_list_append(&live_names, entry->previous_unit_name.data,
+                                     entry->previous_unit_name.length, 2048, TIRED_INPUT_LIMIT,
+                                     error)))
             goto done;
+    }
     tired_recover_live_collect(user, &live_names, &live);
     size_t successful = 0, live_index = 0;
     for (size_t i = 0; i < live_names.count; ++i)
@@ -159,6 +166,10 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
         TiredUnitBatchItem observed = {0};
         if (observe)
             observed = tired_recover_live_item(&live, live_index++);
+        bool observe_previous = observe && entry->previous_unit_name.data != NULL;
+        TiredUnitBatchItem previous = {0};
+        if (observe_previous)
+            previous = tired_recover_live_item(&live, live_index++);
         bool known = entry->error.status == TIRED_OK;
         if (!known || (entry->progress.mode != TIRED_PROGRESS_COMMITTED &&
                        entry->progress.mode != TIRED_PROGRESS_ROLLED_BACK))
@@ -181,6 +192,11 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
                 !add(row, "unit_name", json_object_new_string(entry->unit_name.data)))
                 goto allocation;
             if (observe && !add(row, "live", tired_recover_live_json(&observed)))
+                goto allocation;
+            if (observe_previous &&
+                (!add(row, "previous_unit_name",
+                      json_object_new_string(entry->previous_unit_name.data)) ||
+                 !add(row, "previous_live", tired_recover_live_json(&previous))))
                 goto allocation;
             if (!observe && !add(row, "live_status", json_object_new_string("not_requested")))
                 goto allocation;
@@ -230,6 +246,11 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
                      !text(&buffer, "\n", error))
                 goto done;
             if (observe && !live_text(&buffer, &observed, error))
+                goto done;
+            if (observe_previous &&
+                (!text(&buffer, "  previous_unit=", error) ||
+                 !text(&buffer, entry->previous_unit_name.data, error) ||
+                 !text(&buffer, "\n", error) || !live_text(&buffer, &previous, error)))
                 goto done;
         }
     }

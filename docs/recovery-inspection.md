@@ -13,6 +13,12 @@ invalid entries do not trigger live queries. Unavailable transport, permission
 errors and incomplete queries leave live state unknown while preserving stored
 diagnostics. No activation or interactive authorization is requested.
 
+Pending renames with validated manifests query both the new and old unit names.
+JSON rows retain the new unit in `unit_name`/`live` and report the old unit in
+`previous_unit_name`/`previous_live`; text output labels the old unit separately.
+Requested/successful unit counts include both queries. Up to 1024 transactions
+can therefore supply 2048 unit names, all sharing the same five-second deadline.
+
 Manager observations are not complete recovery reconciliation. The command still
 does not compare manifests and expected file identities or offer finish/rollback
 actions. `live_reconciliation` remains `not_performed` until those checks exist;

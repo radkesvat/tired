@@ -1,6 +1,7 @@
 #include "../../src/cli/recover_live.h"
 #include "tired/io.h"
 #include "tired/json.h"
+#include "tired/manifest_storage.h"
 #include "tired/recover_frontend.h"
 #include "tired/transaction_journal.h"
 #include <fcntl.h>
@@ -87,6 +88,54 @@ int main(void)
     CHECK(!json_object_object_get_ex(live_row, "object_found", &value));
     CHECK(json_object_object_get_ex(document, "resolution_actions_supported", &value) &&
           !json_object_get_boolean(value));
+    tired_publication_destroy(publication);
+    publication = NULL;
+    CHECK(unlinkat(tired_directory_fd(journal), "0001.json", 0) == 0);
+    record.operation = TIRED_TRANSACTION_RENAME;
+    TiredFileChange changes[3] = {0};
+    TiredFileManifest manifest = {.prepared = record, .files = changes, .count = 3};
+    TiredFileFingerprint fingerprint = {
+        .exists = true,
+        .device = 1,
+        .inode = 1,
+        .mode = 0644,
+        .sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"};
+    changes[0].target.role = changes[1].target.role = TIRED_FILE_TARGET_UNIT;
+    changes[0].target.unit_name = (TiredText){.data = "old.service", .length = 11};
+    changes[1].target.unit_name = record.unit_name;
+    changes[0].before = changes[1].after = fingerprint;
+    changes[1].after.inode = 2;
+    changes[2].target.role = TIRED_FILE_TARGET_RECORD;
+    fingerprint.mode = 0600;
+    fingerprint.inode = 3;
+    changes[2].before = changes[2].after = fingerprint;
+    changes[2].after.inode = 4;
+    for (size_t i = 0; i < 3; ++i)
+    {
+        memcpy(changes[i].target.service_uuid, record.service_uuid, 37);
+        if (changes[i].before.exists)
+        {
+            memcpy(changes[i].rollback_uuid, uuid, 37);
+            changes[i].rollback_uuid[0] = (char)('a' + i);
+        }
+        if (changes[i].after.exists)
+            memcpy(changes[i].staging_uuid, uuid, 37);
+    }
+    CHECK(tired_manifest_publish(transaction, lock, &manifest, &publication, &error));
+    tired_publication_destroy(publication);
+    publication = NULL;
+    CHECK(tired_transaction_journal_append(journal, lock, &record, &publication, &error));
+    CHECK(tired_recover_command(&request, &output, &status, &error));
+    CHECK(status == TIRED_RECOVERY_REQUIRED);
+    CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &document, &error));
+    CHECK(json_object_object_get_ex(document, "transactions", &entries));
+    row = json_object_array_get_idx(entries, 0);
+    CHECK(json_object_object_get_ex(row, "previous_unit_name", &value) &&
+          strcmp(json_object_get_string(value), "old.service") == 0);
+    CHECK(json_object_object_get_ex(row, "previous_live", &live_row));
+    CHECK(json_object_object_get_ex(live_row, "status", &value) &&
+          strcmp(json_object_get_string(value), "unknown") == 0);
+    CHECK(!json_object_object_get_ex(live_row, "object_found", &value));
     CHECK(mkdirat(tired_directory_fd(transactions), bad_name, 0700) == 0);
     CHECK(tired_recover_command(&request, &output, &status, &error));
     CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &document, &error));
@@ -101,6 +150,7 @@ int main(void)
     CHECK(tired_recover_command(&request, &output, &status, &error));
     CHECK(strstr(output.data, "bad\\x1b\\xff") != NULL &&
           strstr(output.data, "relay.service") != NULL);
+    CHECK(strstr(output.data, "previous_unit=old.service") != NULL);
     CHECK(memchr(output.data, 27, output.length) == NULL &&
           memchr(output.data, 255, output.length) == NULL);
     CHECK(setenv("XDG_STATE_HOME", "relative", 1) == 0);
@@ -133,7 +183,10 @@ cleanup:
         (void)unlinkat(tired_directory_fd(journal), "0001.json", 0);
     tired_directory_destroy(journal);
     if (transaction != NULL)
+    {
+        (void)unlinkat(tired_directory_fd(transaction), "files.json", 0);
         (void)unlinkat(tired_directory_fd(transaction), "journal", AT_REMOVEDIR);
+    }
     tired_directory_destroy(transaction);
     if (transactions != NULL)
     {

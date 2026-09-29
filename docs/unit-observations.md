@@ -71,7 +71,7 @@ and commit-time integration remain pending.
 
 ## Observing multiple units
 
-`TiredUnitBatch` copies up to 1024 safe full service names and queries them in
+`TiredUnitBatch` copies up to 2048 safe full service names and queries them in
 input order through the same authenticated manager identity. Duplicates remain
 distinct observations. One monotonic deadline covers the entire batch; it is not
 reset for every unit. Each step pumps bounded bus work and admits at most one

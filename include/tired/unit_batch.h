@@ -14,7 +14,7 @@ typedef struct
     uint64_t completed_realtime_usec; /* Includes error replies; zero if not completed. */
     TiredUnitQueryResult query;
 } TiredUnitBatchItem;
-/* Copy <=1024 full safe service names, preserving order/duplicates. Sequential
+/* Copy <=2048 full safe service names, preserving order/duplicates. Sequential
  * read-only observations share one overall deadline. Identity must outlive batch.
  * A per-unit error is retained and does not hide unrelated successful units.
  * Owner invalidation hides all successful snapshots. No activation or mutation. */
