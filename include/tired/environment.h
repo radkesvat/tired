@@ -45,6 +45,8 @@ const TiredEnvironmentEntry *tired_environment_find(const TiredEnvironment *envi
 /* Default presentation accessor: returned text is borrowed. Never use this
  * accessor to serialize a private environment file. */
 const char *tired_environment_display(const TiredEnvironmentEntry *entry);
+/* Heuristic classification of an already validated 1..255-byte variable name. */
+bool tired_environment_name_sensitive(const char *name, size_t length);
 void tired_environment_destroy(TiredEnvironment *environment);
 /* Import a bounded in-memory file transactionally. Supported grammar is
  * documented in docs/environment.md; no shell evaluation or file I/O occurs. */

@@ -27,8 +27,8 @@ as sensitive and must not print them without appropriate redaction/escaping.
 
 Tests cover source spans, empty words, quote concatenation, byte and Unicode escapes,
 renderer-token decoding, literal expansion syntax, malformed inputs, count/byte
-limits and failure preservation. Complete installed-file redaction and the `show`
-command remain separate integration work.
+limits and failure preservation. Installed-file access and the `show` command
+remain frontend integration work.
 
 `tired_unit_document_parse` supplies the logical assignment layer. It retains each
 section/key/value and every repeated or empty reset assignment in file order.
@@ -53,5 +53,34 @@ behavior for malformed lines. It is not full semantic unit validation.
 
 Document tests cover continued quoted words across comments, exact source mapping,
 mixed line endings, escaped trailing backslashes, EOF/blank-line continuation,
-reset assignments, syntax failures and size/count limits. Classification of values,
-span replacement, installed-file reading and `show` integration are still pending.
+reset assignments, syntax failures and size/count limits.
+
+`tired_unit_redact` combines these parsers to mask original source spans. It inspects
+Service command directives (ExecCondition, ExecStartPre/Start/StartPost, ExecReload,
+ExecStop/StopPost) and inline Environment assignments. Command values use the same
+flag heuristics as model previews. Saved argument classifications additionally
+apply by position to ExecStart. Saved sensitive argv words, attached assignment
+payloads and environment values are indexed for exact word/payload matching when
+values move to another command or environment assignment. Literal `%%` pairs are
+collapsed only for comparison; the original bytes outside masked spans survive.
+No other specifier or environment expansion is performed.
+
+Environment names use the environment classifier and saved explicit sensitivity.
+Entire classified words are replaced, including their original quoting. Nonempty
+SetCredential and SetCredentialEncrypted values are masked as opaque inline
+credential contents. Continuation/comment bytes inside a masked word's span are
+removed with that word. Repeated and reset directives are processed in order,
+including earlier assignments that a later reset supersedes.
+
+A changed view gets a `Redacted, non-installable view` comment. An unchanged view
+is byte-identical to input. Failures preserve prior output and never fall back to
+unredacted bytes. Source text is bounded to 4 MiB and output to 8 MiB. Comparison
+uses a sorted borrowed secret index; parsed private values and temporary output
+buffers are cleared before release.
+
+This is display redaction, not a secret-proof unit sanitizer: it does not recognize
+every secret form, inspect arbitrary directive values/comments, or match saved
+secrets embedded inside larger unrelated strings. It neither reads nor adopts
+external files. Returned bytes still require terminal control escaping. Unredacted
+private export authorization, installed-file reading, effective-view handling and
+the `show` command remain frontend integration work.

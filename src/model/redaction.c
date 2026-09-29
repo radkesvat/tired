@@ -30,6 +30,22 @@ static bool secret_flag(const TiredText *arg)
     return false;
 }
 
+bool tired_argv_classify(const TiredTextList *arguments, const bool *classified,
+                         bool mask[TIRED_ARGUMENT_LIMIT])
+{
+    assert(arguments != NULL && arguments->count <= TIRED_ARGUMENT_LIMIT && mask != NULL);
+    bool sensitive = false, hide_next = false;
+    for (size_t i = 0; i < arguments->count; ++i)
+    {
+        const TiredText *arg = &arguments->items[i];
+        bool flag = i != 0 && secret_flag(arg);
+        bool attached = flag && memchr(arg->data, '=', arg->length) != NULL;
+        mask[i] = i != 0 && (hide_next || attached || (classified != NULL && classified[i]));
+        sensitive |= mask[i] || flag;
+        hide_next = flag && !attached;
+    }
+    return sensitive;
+}
 bool tired_spec_display(const TiredServiceSpec *source, const bool *classified,
                         bool include_sensitive, TiredServiceSpec *output, TiredRedaction *redaction,
                         TiredError *error)
@@ -47,21 +63,17 @@ bool tired_spec_display(const TiredServiceSpec *source, const bool *classified,
         assert(original->count <= TIRED_ARGUMENT_LIMIT);
         if (!tired_spec_clear_list(&display, TIRED_FIELD_ARGV, field->origin, error))
             goto fail;
-        bool hide_next = false;
+        bool masks[TIRED_ARGUMENT_LIMIT];
+        result.sensitive = tired_argv_classify(original, classified, masks);
         for (size_t i = 0; i < original->count; ++i)
         {
             const TiredText *arg = &original->items[i];
-            bool flag = i != 0 && secret_flag(arg);
-            bool attached = flag && memchr(arg->data, '=', arg->length) != NULL;
-            bool hide = i != 0 && (hide_next || attached || (classified != NULL && classified[i]));
-            result.sensitive |= hide || flag;
-            bool mask = hide && !include_sensitive;
+            bool mask = masks[i] && !include_sensitive;
             result.redacted |= mask;
             const char *value = mask ? "[redacted]" : arg->data;
             size_t length = mask ? sizeof("[redacted]") - 1 : arg->length;
             if (!tired_spec_append(&display, TIRED_FIELD_ARGV, value, length, field->origin, error))
                 goto fail;
-            hide_next = flag && !attached;
         }
     }
     tired_spec_destroy(output);

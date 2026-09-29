@@ -21,8 +21,9 @@ static bool name_valid(const char *name, size_t length)
     return true;
 }
 
-static bool looks_sensitive(const char *name, size_t length)
+bool tired_environment_name_sensitive(const char *name, size_t length)
 {
+    assert(name != NULL && length > 0 && length <= 255);
     char upper[256];
     for (size_t i = 0; i < length; ++i)
         upper[i] = name[i] >= 'a' && name[i] <= 'z' ? (char)(name[i] - 'a' + 'A') : name[i];
@@ -76,10 +77,10 @@ bool tired_environment_set(TiredEnvironment *environment, const char *assignment
         (previous == NULL && environment->count >= TIRED_ENVIRONMENT_COUNT_LIMIT))
         return tired_error_set(error, TIRED_INVALID, "environment-limit",
                                "Environment exceeds its count or byte limit.", 0);
-    TiredEnvironmentEntry item = {.origin = origin,
-                                  .sensitive = sensitive ||
-                                               looks_sensitive(assignment, name_length) ||
-                                               (previous != NULL && previous->sensitive)};
+    TiredEnvironmentEntry item = {
+        .origin = origin,
+        .sensitive = sensitive || tired_environment_name_sensitive(assignment, name_length) ||
+                     (previous != NULL && previous->sensitive)};
     if (!tired_text_set(&item.name, assignment, name_length, 255, error) ||
         !tired_text_set(&item.value, equal + 1, value_length, TIRED_INPUT_LIMIT, error))
     {
