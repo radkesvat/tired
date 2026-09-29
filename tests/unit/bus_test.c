@@ -1,6 +1,7 @@
 #include "tired/io.h"
 #include "tired/load_paths.h"
 #include "tired/manager.h"
+#include "tired/manager_enablement.h"
 #include "tired/manager_identity.h"
 #include "tired/manager_job.h"
 #include "tired/manager_reload.h"
@@ -34,6 +35,7 @@ typedef struct
     unsigned path_mode;
     unsigned reload_case;
     unsigned job_case;
+    unsigned enablement_case;
     bool job_match, subscribed;
     unsigned name_mode, name_requests;
     const char *name_directory;
@@ -105,6 +107,57 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
 {
     Broker *broker = userdata;
     (void)error;
+    bool enabling = sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager",
+                                                  "EnableUnitFiles") > 0;
+    bool disabling = sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager",
+                                                   "DisableUnitFiles") > 0;
+    if (enabling || disabling)
+    {
+        const char *destination = sd_bus_message_get_destination(message), *unit = NULL;
+        int runtime = 1, force = 0;
+        if (destination == NULL || strcmp(destination, ":1.42") != 0 ||
+            sd_bus_message_get_auto_start(message) != 0 ||
+            sd_bus_message_get_allow_interactive_authorization(message) != 0 ||
+            sd_bus_message_has_signature(message, enabling ? "asbb" : "asb") <= 0 ||
+            sd_bus_message_enter_container(message, SD_BUS_TYPE_ARRAY, "s") <= 0 ||
+            sd_bus_message_read(message, "s", &unit) <= 0 || strcmp(unit, "fixture.service") != 0 ||
+            sd_bus_message_at_end(message, false) <= 0 ||
+            sd_bus_message_exit_container(message) < 0 ||
+            sd_bus_message_read(message, "b", &runtime) <= 0 ||
+            (enabling && sd_bus_message_read(message, "b", &force) <= 0) || runtime || force ||
+            sd_bus_message_at_end(message, true) <= 0)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_INVALID_ARGS,
+                                              "Bad enablement request");
+        if (broker->enablement_case == 2)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_ACCESS_DENIED, "Denied");
+        if (broker->enablement_case == 3)
+            return sd_bus_reply_method_return(message, "s", "wrong");
+        if (broker->enablement_case == 4)
+            return 1;
+        sd_bus_message *response = NULL;
+        int rc = sd_bus_message_new_method_return(message, &response);
+        if (rc >= 0 && enabling)
+            rc = sd_bus_message_append(response, "b", broker->enablement_case != 6);
+        if (rc >= 0)
+            rc = sd_bus_message_open_container(response, SD_BUS_TYPE_ARRAY, "(sss)");
+        unsigned count = broker->enablement_case == 6 ? 0 : broker->enablement_case == 8 ? 257 : 1;
+        for (unsigned i = 0; rc >= 0 && i < count; ++i)
+            rc = sd_bus_message_append(
+                response, "(sss)",
+                broker->enablement_case == 7 ? "future-change"
+                : enabling                   ? "symlink"
+                                             : "unlink",
+                broker->enablement_case == 9
+                    ? "relative"
+                    : "/etc/systemd/system/multi-user.target.wants/fixture.service",
+                enabling ? "/etc/systemd/system/fixture.service" : "");
+        if (rc >= 0)
+            rc = sd_bus_message_close_container(response);
+        if (rc >= 0)
+            rc = sd_bus_send(sd_bus_message_get_bus(message), response, NULL);
+        sd_bus_message_unref(response);
+        return rc;
+    }
     bool subscribe =
         sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager", "Subscribe") > 0;
     bool job_call = sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager",
@@ -287,6 +340,7 @@ int main(void)
     TiredManagerProbe *probe = NULL;
     TiredManagerReload *reload = NULL;
     TiredManagerJob *job = NULL;
+    TiredManagerEnablement *enablement = NULL;
     TiredManagerIdentity *identity = NULL;
     TiredUnitQuery *query = NULL;
     TiredLoadPaths *paths = NULL;
@@ -398,6 +452,58 @@ int main(void)
             CHECK(tired_manager_probe_result(probe).done &&
                   tired_manager_probe_result(probe).error.status == TIRED_OK);
             CHECK(broker.pinned_version);
+            for (unsigned scenario = 0; scenario < 11; ++scenario)
+            {
+                broker.enablement_case = scenario;
+                bool enable = scenario != 1 && scenario != 7;
+                CHECK(tired_manager_enablement_start(identity, "fixture.service", enable,
+                                                     scenario == 4 ? 20 : 1000, &enablement,
+                                                     &error));
+                if (scenario == 5)
+                    tired_manager_enablement_cancel(enablement);
+                for (unsigned i = 0; i < 2000; ++i)
+                {
+                    CHECK(sd_bus_process(server, NULL) >= 0);
+                    if (tired_manager_enablement_step(enablement))
+                        break;
+                    struct timespec delay = {.tv_nsec = 1000000};
+                    (void)nanosleep(&delay, NULL);
+                }
+                TiredManagerEnablementResult response = tired_manager_enablement_result(enablement);
+                const TiredStatus expected[] = {TIRED_OK,
+                                                TIRED_OK,
+                                                TIRED_AUTHORIZATION,
+                                                TIRED_INVALID,
+                                                TIRED_RUNTIME_FAILED,
+                                                TIRED_CANCELLED,
+                                                TIRED_OK,
+                                                TIRED_OK,
+                                                TIRED_INVALID,
+                                                TIRED_INVALID,
+                                                TIRED_OK};
+                CHECK(response.done && response.submitted &&
+                      response.error.status == expected[scenario]);
+                CHECK(response.acknowledged == (expected[scenario] == TIRED_OK));
+                if (response.acknowledged)
+                {
+                    CHECK(response.changes != NULL &&
+                          response.changes->install_info_known == enable);
+                    CHECK(response.changes->count == (scenario == 6 ? 0U : 1U));
+                    if (scenario == 6)
+                        CHECK(!response.changes->carries_install_info);
+                    if (scenario == 7)
+                        CHECK(strcmp(response.changes->items[0].type.data, "future-change") == 0);
+                    if (scenario == 1)
+                        CHECK(response.changes->items[0].source.length == 0);
+                }
+                else
+                    CHECK(response.changes == NULL);
+                if (scenario != 10)
+                {
+                    tired_manager_enablement_destroy(enablement);
+                    enablement = NULL;
+                }
+            }
             for (unsigned job_case = 0; job_case < 11; ++job_case)
             {
                 broker.job_case = job_case;
@@ -733,6 +839,10 @@ int main(void)
             CHECK(tired_load_paths_result(paths).directories == NULL &&
                   tired_load_paths_result(paths).error.status == TIRED_CONFLICT);
             CHECK(tired_manager_reload_result(reload).error.status == TIRED_CONFLICT);
+            CHECK(tired_manager_enablement_result(enablement).error.status == TIRED_CONFLICT &&
+                  tired_manager_enablement_result(enablement).changes == NULL);
+            tired_manager_enablement_destroy(enablement);
+            enablement = NULL;
             CHECK(tired_manager_job_result(job).error.status == TIRED_CONFLICT &&
                   tired_manager_job_result(job).finished);
             tired_manager_job_destroy(job);
@@ -795,6 +905,7 @@ int main(void)
     }
     result = 0;
 cleanup:
+    tired_manager_enablement_destroy(enablement);
     tired_manager_job_destroy(job);
     tired_manager_reload_destroy(reload);
     tired_unit_batch_destroy(batch);
