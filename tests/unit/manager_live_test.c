@@ -1,4 +1,5 @@
 #include "../../src/cli/inspection_live.h"
+#include "tired/linger_query.h"
 #include "tired/load_paths.h"
 #include "tired/manager.h"
 #include "tired/name_query.h"
@@ -8,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 static void tick(void)
 {
     struct timespec delay = {.tv_nsec = 1000000};
@@ -16,6 +18,8 @@ static void tick(void)
 int main(void)
 {
     sd_bus *bus = NULL;
+    TiredManagerIdentity *login = NULL;
+    TiredLingerQuery *linger = NULL;
     TiredManagerIdentity *identity = NULL;
     TiredManagerProbe *probe = NULL;
     TiredUnitQuery *query = NULL;
@@ -141,8 +145,39 @@ int main(void)
             goto done;
         printf("Existing explicit name rejected by live name discovery.\n");
     }
+    if (!tired_login_identity_start(bus, 3000, &login, &error))
+        goto done;
+    for (unsigned i = 0; i < 5000 && !tired_manager_identity_step(login); ++i)
+        tick();
+    TiredManagerIdentityResult login_owner = tired_manager_identity_result(login);
+    error = login_owner.error;
+    if (login_owner.ready)
+    {
+        if (!tired_linger_query_start(login, getuid(), 3000, &linger, &error))
+            goto done;
+        for (unsigned i = 0; i < 5000 && !tired_linger_query_step(linger); ++i)
+            tick();
+        TiredLingerResult account = tired_linger_query_result(linger);
+        error = account.error;
+        if (!account.done || account.uid != getuid() || account.known != (error.status == TIRED_OK))
+            goto done;
+        if (account.known)
+            printf("Current account lingering observed: %s\n",
+                   account.enabled ? "enabled" : "disabled");
+        else if (error.status == TIRED_NOT_FOUND || error.status == TIRED_UNSUPPORTED ||
+                 error.status == TIRED_AUTHORIZATION)
+            printf("Current account lingering unavailable: %s\n", error.code);
+        else
+            goto done;
+    }
+    else if (error.status == TIRED_NOT_FOUND || error.status == TIRED_AUTHORIZATION)
+        printf("Login-manager observation unavailable: %s\n", error.code);
+    else
+        goto done;
     result = 0;
 done:
+    tired_linger_query_destroy(linger);
+    tired_manager_identity_destroy(login);
     tired_observed_file_destroy(&fragment);
     tired_inspection_live_destroy(&configuration);
     json_object_put(live_json);
