@@ -42,3 +42,33 @@ ownership, accessibility or authority to write. Storage operations must separate
 validate directory ownership and permissions, reject unsafe links, use private
 state directories and files, and perform mutations through validated descriptors.
 The transaction store, record schema and lock operations are separate components.
+
+## Directory access
+
+`TiredDirectory` opens existing paths one component at a time using directory
+descriptors and refuses symlinks. Every ancestor must belong to root or the
+selected storage owner and forbid group/other writes. Shared writable ancestors,
+including sticky temporary directories, are unsuitable for these persistent-state
+operations. Private final directories must have the selected owner and exactly
+mode `0700`; ordinary trusted ancestors may be readable by others.
+
+Opening never creates anything. A separate child operation accepts a single
+validated name and an explicit creation flag. Creation runs as the selected owner,
+requests `0700`, validates the resulting directory, and syncs it and its parent.
+Existing directories are checked without changing their permissions or owner.
+A restrictive process umask or inherited special permission bits can make creation
+fail validation; the API does not silently repair permissions. A failed creation
+or sync can leave an empty directory. Cleanup must inspect that entry before
+removing it, rather than recursively deleting a pathname.
+
+Handles own close-on-exec descriptors for the directory and its immediate parent.
+Rechecking validates permissions and confirms the parent/name still denotes the
+same directory inode. A child remains usable after its parent's handle is released.
+Renaming or replacing that child causes a later check to fail. Descriptor pinning
+does not freeze the entire ancestor namespace; transaction controllers must
+reopen/revalidate scope roots before committing and hold their mutation lock.
+Callers use the borrowed descriptor for subsequent descriptor-relative operations.
+
+Tests cover private creation, existing permission refusal, replaced bindings,
+descriptor lifetime, changed ownership, writable parents, symlinks at final and
+intermediate components, dangling links, FIFOs, traversal and missing paths.
