@@ -165,8 +165,8 @@ bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool in
             if (item == NULL)
                 goto allocation;
             if (!add(item, "origin", json_object_new_string(origins[value->origin])) ||
-                (value->origin >= TIRED_ORIGIN_DEFAULT &&
-                 !add(item, "value", field_value(field, value))))
+                !add(item, "inherit", json_object_new_boolean(value->inherit)) ||
+                (tired_field_has_value(value) && !add(item, "value", field_value(field, value))))
             {
                 json_object_put(item);
                 goto allocation;
@@ -199,7 +199,7 @@ bool tired_plan_output(const TiredPlan *plan, bool json, bool unit_only, bool in
         if (plan->service.uid == 0 && plan->invoking.uid != 0 &&
             !push(warnings, json_object_new_string("run-as-root")))
             goto allocation;
-        if (plan->spec.fields[TIRED_FIELD_AMBIENT_CAPABILITIES].origin >= TIRED_ORIGIN_DEFAULT &&
+        if (tired_field_has_value(&plan->spec.fields[TIRED_FIELD_AMBIENT_CAPABILITIES]) &&
             plan->spec.fields[TIRED_FIELD_AMBIENT_CAPABILITIES].value.list.count != 0 &&
             !push(warnings, json_object_new_string("privileged-capabilities")))
             goto allocation;

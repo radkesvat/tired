@@ -59,6 +59,13 @@ int main(void)
     CHECK(!PARSE("tired", "--working-directory", "", "./server"));
     CHECK(!PARSE("tired", "plan", "--include-sensitive", "./server"));
     CHECK(!PARSE("tired", "--no-start", "--start", "./server"));
+    CHECK(PARSE("tired", "--unset", "restart", "./server"));
+    CHECK(request.overrides.fields[TIRED_FIELD_RESTART].inherit);
+    CHECK(!PARSE("tired", "--unset", "restart", "--restart", "always", "./server"));
+    CHECK(!PARSE("tired", "--set", "restart=always", "--unset", "restart", "./server"));
+    CHECK(!PARSE("tired", "--unset", "argv", "./server"));
+    CHECK(!PARSE("tired", "--unset", "environment_files", "--env-file", "env", "./server"));
+    CHECK(!PARSE("tired", "--env-file", "env", "--unset", "environment_files", "./server"));
     CHECK(!PARSE("tired", "rename", "old"));
     CHECK(PARSE("tired", "rename", "old", "new"));
     CHECK(PARSE("tired", "--help"));

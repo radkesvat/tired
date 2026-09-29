@@ -190,9 +190,10 @@ static bool choice_index(const char *choices, const char *text, size_t length, s
     return false;
 }
 
-static bool has_value(const TiredFieldValue *value)
+bool tired_field_has_value(const TiredFieldValue *value)
 {
-    return value->origin != TIRED_ORIGIN_UNSET && value->origin != TIRED_ORIGIN_INHERITED;
+    return !value->inherit && value->origin != TIRED_ORIGIN_UNSET &&
+           value->origin != TIRED_ORIGIN_INHERITED;
 }
 
 bool tired_spec_set(TiredServiceSpec *spec, TiredFieldId id, const char *text, size_t length,
@@ -281,7 +282,7 @@ bool tired_spec_set(TiredServiceSpec *spec, TiredFieldId id, const char *text, s
             return false;
         break;
     }
-    if (field->kind == TIRED_FIELD_TEXT && has_value(&spec->fields[id]))
+    if (field->kind == TIRED_FIELD_TEXT && tired_field_has_value(&spec->fields[id]))
         tired_text_destroy(&spec->fields[id].value.text);
     spec->fields[id] = next;
     tired_error_clear(error);
@@ -294,9 +295,9 @@ void tired_spec_destroy(TiredServiceSpec *spec)
         return;
     for (size_t i = 0; i < TIRED_FIELD_COUNT; ++i)
     {
-        if (fields[i].kind == TIRED_FIELD_TEXT && has_value(&spec->fields[i]))
+        if (fields[i].kind == TIRED_FIELD_TEXT && tired_field_has_value(&spec->fields[i]))
             tired_text_destroy(&spec->fields[i].value.text);
-        if (fields[i].kind == TIRED_FIELD_LIST && has_value(&spec->fields[i]))
+        if (fields[i].kind == TIRED_FIELD_LIST && tired_field_has_value(&spec->fields[i]))
             tired_text_list_destroy(&spec->fields[i].value.list);
     }
     *spec = (TiredServiceSpec){0};
@@ -329,7 +330,8 @@ bool tired_spec_choice_is(const TiredServiceSpec *spec, TiredFieldId id, const c
     assert(spec != NULL && choice != NULL);
     const TiredField *field = tired_field_get(id);
     size_t index;
-    return field != NULL && field->kind == TIRED_FIELD_CHOICE && has_value(&spec->fields[id]) &&
+    return field != NULL && field->kind == TIRED_FIELD_CHOICE &&
+           tired_field_has_value(&spec->fields[id]) &&
            choice_index(field->choices, choice, strlen(choice), &index) &&
            index == spec->fields[id].value.choice;
 }
@@ -338,22 +340,22 @@ bool tired_spec_validate_scalars(const TiredServiceSpec *spec, TiredError *error
 {
     assert(spec != NULL);
     if (tired_spec_choice_is(spec, TIRED_FIELD_RETRY_POLICY, "limited") &&
-        (!has_value(&spec->fields[TIRED_FIELD_START_LIMIT_INTERVAL]) ||
+        (!tired_field_has_value(&spec->fields[TIRED_FIELD_START_LIMIT_INTERVAL]) ||
          spec->fields[TIRED_FIELD_START_LIMIT_INTERVAL].value.microseconds == 0 ||
-         !has_value(&spec->fields[TIRED_FIELD_START_LIMIT_BURST]) ||
+         !tired_field_has_value(&spec->fields[TIRED_FIELD_START_LIMIT_BURST]) ||
          spec->fields[TIRED_FIELD_START_LIMIT_BURST].value.integer <= 0))
         return tired_error_set(
             error, TIRED_INVALID, "limited-rate-limit",
             "Limited retries require a positive interval and burst; resolve defaults first.", 0);
-    if (has_value(&spec->fields[TIRED_FIELD_WANTED_BY]) &&
+    if (tired_field_has_value(&spec->fields[TIRED_FIELD_WANTED_BY]) &&
         ((tired_spec_choice_is(spec, TIRED_FIELD_SCOPE, "user") &&
           !tired_spec_choice_is(spec, TIRED_FIELD_WANTED_BY, "default.target")) ||
          (tired_spec_choice_is(spec, TIRED_FIELD_SCOPE, "system") &&
           !tired_spec_choice_is(spec, TIRED_FIELD_WANTED_BY, "multi-user.target"))))
         return tired_error_set(error, TIRED_INVALID, "enablement-scope",
                                "Enablement target does not match the selected scope.", 0);
-    if (has_value(&spec->fields[TIRED_FIELD_CAPABILITY_BOUNDING_SET]) &&
-        has_value(&spec->fields[TIRED_FIELD_AMBIENT_CAPABILITIES]))
+    if (tired_field_has_value(&spec->fields[TIRED_FIELD_CAPABILITY_BOUNDING_SET]) &&
+        tired_field_has_value(&spec->fields[TIRED_FIELD_AMBIENT_CAPABILITIES]))
     {
         const TiredTextList *ambient = &spec->fields[TIRED_FIELD_AMBIENT_CAPABILITIES].value.list;
         const TiredTextList *bounding =
@@ -370,8 +372,8 @@ bool tired_spec_validate_scalars(const TiredServiceSpec *spec, TiredError *error
                     "Ambient capability is absent from the explicit bounding set.", 0);
         }
     }
-    bool soft = has_value(&spec->fields[TIRED_FIELD_NOFILE_SOFT]);
-    bool hard = has_value(&spec->fields[TIRED_FIELD_NOFILE_HARD]);
+    bool soft = tired_field_has_value(&spec->fields[TIRED_FIELD_NOFILE_SOFT]);
+    bool hard = tired_field_has_value(&spec->fields[TIRED_FIELD_NOFILE_HARD]);
     if (soft != hard)
         return tired_error_set(error, TIRED_INVALID, "nofile-pair",
                                "Specify both soft and hard NOFILE limits.", 0);
@@ -385,27 +387,27 @@ bool tired_spec_validate_scalars(const TiredServiceSpec *spec, TiredError *error
         return tired_error_set(error, TIRED_INVALID, "oneshot-restart",
                                "Oneshot services cannot restart always or on success.", 0);
     if (tired_spec_choice_is(spec, TIRED_FIELD_TYPE, "forking") &&
-        !has_value(&spec->fields[TIRED_FIELD_PID_FILE]))
+        !tired_field_has_value(&spec->fields[TIRED_FIELD_PID_FILE]))
         return tired_error_set(error, TIRED_INVALID, "forking-pid-file",
                                "Forking services require an explicit PID file.", 0);
     if (tired_spec_choice_is(spec, TIRED_FIELD_RETRY_POLICY, "persistent"))
     {
-        if (has_value(&spec->fields[TIRED_FIELD_RESTART_SEC]) &&
+        if (!tired_field_has_value(&spec->fields[TIRED_FIELD_RESTART_SEC]) ||
             spec->fields[TIRED_FIELD_RESTART_SEC].value.microseconds == 0)
             return tired_error_set(error, TIRED_INVALID, "restart-delay",
                                    "Persistent retries require a nonzero delay.", 0);
-        if (has_value(&spec->fields[TIRED_FIELD_START_LIMIT_INTERVAL]) &&
+        if (!tired_field_has_value(&spec->fields[TIRED_FIELD_START_LIMIT_INTERVAL]) ||
             spec->fields[TIRED_FIELD_START_LIMIT_INTERVAL].value.microseconds != 0)
             return tired_error_set(error, TIRED_INVALID, "persistent-rate-limit",
                                    "Persistent retries require a zero start-limit interval.", 0);
     }
     if (tired_spec_choice_is(spec, TIRED_FIELD_SCOPE, "user") &&
-        has_value(&spec->fields[TIRED_FIELD_NETWORK]) &&
+        tired_field_has_value(&spec->fields[TIRED_FIELD_NETWORK]) &&
         !tired_spec_choice_is(spec, TIRED_FIELD_NETWORK, "none"))
         return tired_error_set(error, TIRED_INVALID, "user-network-target",
                                "System network targets cannot be added to a user service.", 0);
     if (tired_spec_choice_is(spec, TIRED_FIELD_SCOPE, "system") &&
-        has_value(&spec->fields[TIRED_FIELD_ENABLE_LINGER]) &&
+        tired_field_has_value(&spec->fields[TIRED_FIELD_ENABLE_LINGER]) &&
         spec->fields[TIRED_FIELD_ENABLE_LINGER].value.boolean)
         return tired_error_set(error, TIRED_INVALID, "linger-scope",
                                "Lingering applies only to user services.", 0);
@@ -513,7 +515,7 @@ bool tired_spec_append(TiredServiceSpec *spec, TiredFieldId id, const char *text
                                "Unsupported collection item syntax.", 0);
     TiredFieldValue *destination = &spec->fields[id];
     /* Callers resolve provenance before merging lists; do not silently erase it. */
-    if (has_value(destination) && destination->origin != origin)
+    if (tired_field_has_value(destination) && destination->origin != origin)
         return tired_error_set(error, TIRED_INVALID, "collection-origin",
                                "Resolve collection precedence before appending another origin.", 0);
     size_t count_limit = id == TIRED_FIELD_ARGV ? TIRED_ARGUMENT_LIMIT : 1024;
@@ -521,6 +523,7 @@ bool tired_spec_append(TiredServiceSpec *spec, TiredFieldId id, const char *text
                                 TIRED_INPUT_LIMIT, error))
         return false;
     destination->origin = origin;
+    destination->inherit = false;
     return true;
 }
 
@@ -535,6 +538,7 @@ bool tired_spec_clear_list(TiredServiceSpec *spec, TiredFieldId id, TiredFieldOr
                                "Expected a collection field and assignment origin.", 0);
     tired_text_list_destroy(&spec->fields[id].value.list);
     spec->fields[id].origin = origin;
+    spec->fields[id].inherit = false;
     tired_error_clear(error);
     return true;
 }
@@ -560,12 +564,13 @@ bool tired_spec_resolve_retry(TiredServiceSpec *spec, TiredError *error)
         if (limited)
             burst.value.integer = 10;
     }
-    if ((limited && interval.value.microseconds == 0) ||
+    if (!tired_field_has_value(&interval) || (limited && !tired_field_has_value(&burst)) ||
+        (limited && interval.value.microseconds == 0) ||
         (!limited && interval.value.microseconds != 0))
         return tired_error_set(error, TIRED_INVALID, "retry-interval",
                                "Start-limit interval conflicts with the selected retry policy.", 0);
-    if (!limited && has_value(&spec->fields[TIRED_FIELD_RESTART_SEC]) &&
-        spec->fields[TIRED_FIELD_RESTART_SEC].value.microseconds == 0)
+    if (!limited && (!tired_field_has_value(&spec->fields[TIRED_FIELD_RESTART_SEC]) ||
+                     spec->fields[TIRED_FIELD_RESTART_SEC].value.microseconds == 0))
         return tired_error_set(error, TIRED_INVALID, "restart-delay",
                                "Persistent retries require a nonzero delay.", 0);
     spec->fields[TIRED_FIELD_START_LIMIT_INTERVAL] = interval;
@@ -600,14 +605,14 @@ bool tired_spec_copy_field(TiredServiceSpec *destination, const TiredServiceSpec
     if (field == NULL)
         return tired_error_set(error, TIRED_INVALID, "field", "Unknown field.", 0);
     TiredFieldValue next = source->fields[id];
-    if (has_value(&next) && field->kind == TIRED_FIELD_TEXT)
+    if (tired_field_has_value(&next) && field->kind == TIRED_FIELD_TEXT)
     {
         next.value.text = (TiredText){0};
         const TiredText *text = &source->fields[id].value.text;
         if (!tired_text_set(&next.value.text, text->data, text->length, TIRED_INPUT_LIMIT, error))
             return false;
     }
-    else if (has_value(&next) && field->kind == TIRED_FIELD_LIST)
+    else if (tired_field_has_value(&next) && field->kind == TIRED_FIELD_LIST)
     {
         next.value.list = (TiredTextList){0};
         const TiredTextList *list = &source->fields[id].value.list;
@@ -620,7 +625,7 @@ bool tired_spec_copy_field(TiredServiceSpec *destination, const TiredServiceSpec
                 return false;
             }
     }
-    if (has_value(&destination->fields[id]))
+    if (tired_field_has_value(&destination->fields[id]))
     {
         if (field->kind == TIRED_FIELD_TEXT)
             tired_text_destroy(&destination->fields[id].value.text);
@@ -628,6 +633,28 @@ bool tired_spec_copy_field(TiredServiceSpec *destination, const TiredServiceSpec
             tired_text_list_destroy(&destination->fields[id].value.list);
     }
     destination->fields[id] = next;
+    tired_error_clear(error);
+    return true;
+}
+
+bool tired_spec_inherit(TiredServiceSpec *spec, TiredFieldId id, TiredError *error)
+{
+    assert(spec != NULL);
+    const TiredField *field = tired_field_get(id);
+    if (field == NULL || field->directive == NULL || id == TIRED_FIELD_EXECUTABLE ||
+        id == TIRED_FIELD_ARGV || id == TIRED_FIELD_WORKING_DIRECTORY || id == TIRED_FIELD_TYPE ||
+        id == TIRED_FIELD_RUN_AS || id == TIRED_FIELD_GROUP || id == TIRED_FIELD_WANTED_BY)
+        return tired_error_set(error, TIRED_INVALID, "field-inheritance",
+                               "This field requires an explicit or captured value.", 0);
+    TiredFieldValue *value = &spec->fields[id];
+    if (tired_field_has_value(value))
+    {
+        if (field->kind == TIRED_FIELD_TEXT)
+            tired_text_destroy(&value->value.text);
+        if (field->kind == TIRED_FIELD_LIST)
+            tired_text_list_destroy(&value->value.list);
+    }
+    *value = (TiredFieldValue){.origin = TIRED_ORIGIN_USER, .inherit = true};
     tired_error_clear(error);
     return true;
 }

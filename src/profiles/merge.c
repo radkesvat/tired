@@ -56,13 +56,13 @@ static TiredFact condition(struct json_object *object, const TiredServiceSpec *s
         if (strcmp(key, "scope") == 0 || strcmp(key, "type") == 0)
         {
             TiredFieldId id = strcmp(key, "scope") == 0 ? TIRED_FIELD_SCOPE : TIRED_FIELD_TYPE;
-            if (spec->fields[id].origin < TIRED_ORIGIN_DEFAULT)
+            if (!tired_field_has_value(&spec->fields[id]))
                 return TIRED_FACT_UNKNOWN;
             return tired_spec_choice_is(spec, id, text) ? TIRED_FACT_TRUE : TIRED_FACT_FALSE;
         }
         if (strcmp(key, "argument") == 0)
         {
-            if (spec->fields[TIRED_FIELD_ARGV].origin < TIRED_ORIGIN_DEFAULT)
+            if (!tired_field_has_value(&spec->fields[TIRED_FIELD_ARGV]))
                 return TIRED_FACT_UNKNOWN;
             const TiredTextList *args = &spec->fields[TIRED_FIELD_ARGV].value.list;
             for (size_t i = 1; i < args->count; ++i)
@@ -157,7 +157,8 @@ static TiredRecommendationDisposition decide(const TiredProfile *profile,
     if (spec->fields[rec->field].origin == TIRED_ORIGIN_USER)
     {
         if (strcmp(rec->strength, "required-under-stated-conditions") == 0 &&
-            !equal_value(rec->field, &spec->fields[rec->field], &rec->value))
+            (spec->fields[rec->field].inherit ||
+             !equal_value(rec->field, &spec->fields[rec->field], &rec->value)))
             return TIRED_RECOMMENDATION_REQUIRED_CONFLICT;
         return TIRED_RECOMMENDATION_USER_OVERRIDE;
     }

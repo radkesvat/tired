@@ -99,3 +99,20 @@ lists remain separate from installation enablement.
 The stop and exit-status semantics are based on the baseline
 [systemd.kill reference](https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.kill.xml)
 and [systemd.service reference](https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.service.xml).
+
+## Explicit inheritance
+
+An optional field can carry `origin=user` and `inherit=true` with no stored value.
+This is distinct from an unspecified/inherited default, explicit false or zero, and
+an explicit empty collection. It survives copying and profile merging as a user
+choice. The renderer omits its directive, and JSON reports the inheritance flag.
+
+`tired_spec_inherit` releases any owned value and records that state. Required
+identity/execution fields and product policy selectors cannot be inherited. Semantic
+constraints still apply: persistent retries require a known nonzero delay and a
+zero start-limit interval; NOFILE must specify both bounds or inherit both. Resetting
+an entire model to defaults is a separate operation that intentionally discards edits.
+
+The CLI exposes `--unset FIELD`. Assigning and unsetting the same field in one
+request is an error, including collection and external-environment-file options.
+The future editor uses the same model operation when the user chooses inheritance.

@@ -47,7 +47,23 @@ int main(void)
     CHECK(set(&spec, TIRED_FIELD_TYPE, "oneshot", &error));
     CHECK(set(&spec, TIRED_FIELD_RESTART, "always", &error));
     CHECK(!tired_spec_validate_scalars(&spec, &error));
+    /* Explicit inheritance releases owned values and remains a user override. */
     CHECK(strcmp(error.code, "oneshot-restart") == 0);
+    CHECK(tired_spec_defaults(&spec, &error));
+    CHECK(set(&spec, TIRED_FIELD_DESCRIPTION, "allocated", &error));
+    CHECK(tired_spec_inherit(&spec, TIRED_FIELD_DESCRIPTION, &error));
+    CHECK(spec.fields[TIRED_FIELD_DESCRIPTION].inherit &&
+          !tired_field_has_value(&spec.fields[TIRED_FIELD_DESCRIPTION]));
+    CHECK(tired_spec_append(&spec, TIRED_FIELD_AFTER, "network.target", 14, TIRED_ORIGIN_USER,
+                            &error));
+    CHECK(tired_spec_inherit(&spec, TIRED_FIELD_AFTER, &error));
+    CHECK(tired_spec_clear_list(&spec, TIRED_FIELD_AFTER, TIRED_ORIGIN_USER, &error));
+    CHECK(tired_field_has_value(&spec.fields[TIRED_FIELD_AFTER]) &&
+          spec.fields[TIRED_FIELD_AFTER].value.list.count == 0);
+    CHECK(tired_spec_inherit(&spec, TIRED_FIELD_RESTART_SEC, &error));
+    CHECK(!tired_spec_resolve_retry(&spec, &error));
+    CHECK(!tired_spec_validate_scalars(&spec, &error));
+    CHECK(tired_spec_defaults(&spec, &error));
     CHECK(set(&spec, TIRED_FIELD_TYPE, "forking", &error));
     CHECK(!tired_spec_validate_scalars(&spec, &error));
     CHECK(set(&spec, TIRED_FIELD_PID_FILE, "/run/relay.pid", &error));

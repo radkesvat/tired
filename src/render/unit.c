@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static bool present(const TiredFieldValue *v) { return v->origin >= TIRED_ORIGIN_DEFAULT; }
+static bool present(const TiredFieldValue *v) { return tired_field_has_value(v); }
 static bool append(TiredBuffer *b, const char *s, TiredError *e)
 {
     return tired_buffer_append(b, s, strlen(s), e);

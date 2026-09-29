@@ -31,3 +31,8 @@ currently exposes help/version, offline planning with profile selection, and
 profiles list/show/validate.
 Other commands fail explicitly as unavailable. Successful parse recognition does
 not imply that a corresponding service-management handler is complete.
+
+`--unset FIELD` explicitly inherits an optional generated setting. It preserves user
+precedence, so a profile cannot refill the cleared field. It cannot be combined with
+an assignment of the same field in one request. Required command/identity fields and
+policy selectors cannot be unset; semantic constraints are checked after merging.

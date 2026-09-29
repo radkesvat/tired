@@ -56,6 +56,9 @@ static bool field_set(TiredRequest *r, TiredFieldId id, const char *value, Tired
     const TiredField *field = tired_field_get(id);
     if (field == NULL)
         return tired_error_set(error, TIRED_INVALID, "unknown-field", "Unknown typed field.", 0);
+    if (r->overrides.fields[id].inherit)
+        return tired_error_set(error, TIRED_INVALID, "duplicate-field",
+                               "A field cannot be both assigned and explicitly inherited.", 0);
     if (id == TIRED_FIELD_ARGV || id == TIRED_FIELD_EXECUTABLE)
         return tired_error_set(error, TIRED_INVALID, "command-field",
                                "Set the command through its explicit argv boundary.", 0);
@@ -236,10 +239,9 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
             }
         if (handled)
             continue;
-        const char *taking[] = {
-            "--set",      "--nofile",          "--profile",    "--env",        "--pass-env",
-            "--env-file", "--import-env-file", "--credential", "--allow-risk", "--output",
-            "--color"};
+        const char *taking[] = {"--set",        "--nofile",   "--profile",         "--env",
+                                "--pass-env",   "--env-file", "--import-env-file", "--credential",
+                                "--allow-risk", "--output",   "--color",           "--unset"};
         for (size_t j = 0; j < sizeof(taking) / sizeof(taking[0]); ++j)
             if (strcmp(option, taking[j]) == 0)
                 handled = true;
@@ -273,7 +275,28 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
         else
         {
             creation_options = true;
-            if (strcmp(option, "--set") == 0)
+            if (strcmp(option, "--unset") == 0)
+            {
+                const TiredField *field = tired_field_find(value, strlen(value));
+                if (field == NULL)
+                {
+                    tired_error_set(error, TIRED_INVALID, "unknown-field",
+                                    "Expected a known optional field to inherit.", 0);
+                    goto fail;
+                }
+                if (parsed.overrides.fields[field->id].origin == TIRED_ORIGIN_USER ||
+                    (field->id == TIRED_FIELD_ENVIRONMENT_FILES &&
+                     parsed.environment_files.count != 0))
+                {
+                    tired_error_set(error, TIRED_INVALID, "duplicate-field",
+                                    "A field cannot be both assigned and explicitly inherited.", 0);
+                    goto fail;
+                }
+                if (!tired_spec_inherit(&parsed.overrides, field->id, error))
+                    goto fail;
+                parsed.seen[field->id] = true;
+            }
+            else if (strcmp(option, "--set") == 0)
             {
                 const char *separator = strchr(value, '=');
                 const TiredField *field =
@@ -316,6 +339,13 @@ bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *req
             }
             else
             {
+                if (strcmp(option, "--env-file") == 0 &&
+                    parsed.overrides.fields[TIRED_FIELD_ENVIRONMENT_FILES].inherit)
+                {
+                    tired_error_set(error, TIRED_INVALID, "duplicate-field",
+                                    "Environment files cannot be both assigned and inherited.", 0);
+                    goto fail;
+                }
                 TiredTextList *destination =
                     strcmp(option, "--pass-env") == 0          ? &parsed.pass_environment
                     : strcmp(option, "--env-file") == 0        ? &parsed.environment_files

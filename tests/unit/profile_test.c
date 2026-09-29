@@ -46,6 +46,12 @@ int main(int argc, char **argv)
     CHECK(tired_profile_merge(&profile, &model, &context, &merged, &error));
     CHECK(merged.decisions[0] == TIRED_RECOMMENDATION_USER_OVERRIDE);
     CHECK(tired_spec_choice_is(&merged.spec, TIRED_FIELD_RESTART, "no"));
+    CHECK(tired_spec_inherit(&model, TIRED_FIELD_RESTART, &error));
+    CHECK(tired_profile_merge(&profile, &model, &context, &merged, &error));
+    CHECK(merged.decisions[0] == TIRED_RECOMMENDATION_USER_OVERRIDE);
+    CHECK(merged.spec.fields[TIRED_FIELD_RESTART].origin == TIRED_ORIGIN_USER);
+    CHECK(merged.spec.fields[TIRED_FIELD_RESTART].inherit);
+    CHECK(!tired_field_has_value(&merged.spec.fields[TIRED_FIELD_RESTART]));
     CHECK(tired_spec_defaults(&model, &error));
     TiredText executable = {0};
     CHECK(tired_text_set(&executable, "/tmp/fixture", 12, 128, &error));

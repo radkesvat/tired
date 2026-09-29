@@ -103,6 +103,7 @@ typedef struct
 typedef struct
 {
     TiredFieldOrigin origin;
+    bool inherit; /* Explicit user choice to omit the directive, retaining precedence. */
     union
     {
         TiredText text;
@@ -136,6 +137,9 @@ bool tired_parse_duration(const char *text, size_t length, uint64_t *microsecond
 bool tired_spec_set(TiredServiceSpec *spec, TiredFieldId id, const char *text, size_t length,
                     TiredFieldOrigin origin, bool replace, TiredError *error);
 bool tired_spec_defaults(TiredServiceSpec *spec, TiredError *error);
+bool tired_field_has_value(const TiredFieldValue *value);
+/* Explicitly inherit an optional generated setting; profiles cannot refill it. */
+bool tired_spec_inherit(TiredServiceSpec *spec, TiredFieldId id, TiredError *error);
 /* Deep-copy one API-validated field, including origin and explicit empty state. */
 bool tired_spec_copy_field(TiredServiceSpec *destination, const TiredServiceSpec *source,
                            TiredFieldId id, TiredError *error);

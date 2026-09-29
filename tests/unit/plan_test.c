@@ -23,6 +23,8 @@ int main(int argc, char **argv)
                           "custom",
                           "--retry-policy",
                           "limited",
+                          "--unset",
+                          "restart",
                           "--working-directory",
                           ".",
                           "--env",
@@ -80,6 +82,8 @@ int main(int argc, char **argv)
     tired_catalog_destroy(&catalog);
     CHECK(strcmp(plan.profile.id, "backhaul") == 0 && strlen(plan.profile_digest) == 64);
     CHECK(plan.profile_decisions[2] == TIRED_RECOMMENDATION_CONDITION_UNKNOWN);
+    CHECK(plan.profile_decisions[0] == TIRED_RECOMMENDATION_USER_OVERRIDE);
+    CHECK(plan.spec.fields[TIRED_FIELD_RESTART].inherit);
     CHECK(tired_plan_output(&plan, true, false, false, &output, &error));
     CHECK(strstr(output.data, "profile_snapshot") != NULL &&
           strstr(output.data, "condition-unknown") != NULL);
@@ -90,6 +94,7 @@ int main(int argc, char **argv)
     CHECK(tired_plan_output(&plan, false, false, false, &output, &error));
     CHECK(strstr(output.data, "Profile: Backhaul") != NULL &&
           strstr(output.data, "Evidence:") != NULL);
+    CHECK(strstr(output.data, "\nRestart=") == NULL);
     json_object_put(json);
     tired_text_destroy(&output);
     tired_plan_destroy(&plan);
