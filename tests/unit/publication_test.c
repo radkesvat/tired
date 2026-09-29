@@ -232,6 +232,29 @@ int main(void)
     CHECK(fstatat(fd, retained, &status, AT_SYMLINK_NOFOLLOW) < 0 && errno == ENOENT);
     CHECK(tired_file_unretire(directory, "record", retirement_uuid, &after, lock, &retirement,
                               &error));
+    CHECK(!tired_publication_rollback(directory, "record", staging_uuid, &before, &after, lock,
+                                      &publication, &error));
+    CHECK(publication == NULL && error.status == TIRED_CONFLICT);
+    before.mode = 0640;
+    CHECK(fchmodat(fd, displaced, 0640, 0) == 0);
+    fail_sync_fd = -2;
+    CHECK(!tired_publication_rollback(directory, "record", staging_uuid, &before, &after, lock,
+                                      &publication, &error));
+    CHECK(publication != NULL && !tired_publication_published(publication));
+    CHECK(tired_publication_discard(publication, &error));
+    CHECK(fstatat(fd, displaced, &status, AT_SYMLINK_NOFOLLOW) == 0);
+    CHECK(tired_publication_commit(publication, lock, &error));
+    CHECK(tired_publication_published(publication) && tired_publication_durable(publication));
+    tired_publication_destroy(publication);
+    publication = NULL;
+    CHECK(tired_publication_rollback(directory, "record", staging_uuid, &before, &after, lock,
+                                     &publication, &error));
+    TiredFileFingerprint restored = {0};
+    CHECK(tired_file_snapshot(directory, "record", 100, &restored, &contents, &error));
+    CHECK(strcmp(contents.data, "complete") == 0 &&
+          tired_file_fingerprint_equal(&restored, &before));
+    CHECK(tired_private_file_read(directory, displaced, 100, &contents, &error));
+    CHECK(strcmp(contents.data, "replacement") == 0);
     result = 0;
 cleanup:
     fail_sync_fd = -1;

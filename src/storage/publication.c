@@ -19,7 +19,7 @@ struct TiredPublication
     char temporary[64], name[256];
     struct stat prepared_identity;
     bool staged, ready, published, durable;
-    bool exchanged, needs_sync;
+    bool exchanged, needs_sync, rollback;
     TiredFileFingerprint previous;
     unsigned mode;
 };
@@ -84,8 +84,7 @@ bool tired_publication_reopen(TiredDirectory *directory, const char *name, const
     tired_text_destroy(&encoded);
     if (!valid || !tired_operation_lock_check(lock, error))
         return false;
-    if (!after->exists || (after->mode != 0600 && after->mode != 0644) ||
-        !tired_uuid_valid(staging_uuid, strnlen(staging_uuid, 37)))
+    if (!after->exists || !tired_uuid_valid(staging_uuid, strnlen(staging_uuid, 37)))
         return tired_error_set(error, TIRED_INVALID, "publication-reopen-input",
                                "Reopening requires an after-state and canonical staging UUID.", 0);
     TiredFileFingerprint destination = {0}, staged = {0};
@@ -224,7 +223,7 @@ bool tired_publication_commit(TiredPublication *publication, const TiredOperatio
                               TiredError *error)
 {
     assert(publication != NULL && lock != NULL);
-    if (publication->exchanged)
+    if (publication->exchanged || publication->rollback)
         return tired_publication_replace(publication, lock, &publication->previous, error);
     if (!publication->ready || (!publication->staged && !publication->published))
         return tired_error_set(error, TIRED_INVALID, "publication-not-ready",
@@ -313,6 +312,21 @@ bool tired_publication_replace(TiredPublication *publication, const TiredOperati
     tired_error_clear(error);
     return true;
 }
+bool tired_publication_rollback(TiredDirectory *directory, const char *name,
+                                const char *staging_uuid, const TiredFileFingerprint *before,
+                                const TiredFileFingerprint *after, const TiredOperationLock *lock,
+                                TiredPublication **output, TiredError *error)
+{
+    assert(before != NULL && after != NULL && output != NULL && *output == NULL);
+    if (!before->exists || !after->exists)
+        return tired_error_set(error, TIRED_INVALID, "replacement-rollback-input",
+                               "Replacement rollback requires two existing file states.", 0);
+    if (!tired_publication_reopen(directory, name, staging_uuid, after, before, lock, output,
+                                  error))
+        return false;
+    (*output)->rollback = true;
+    return tired_publication_commit(*output, lock, error);
+}
 bool tired_publication_published(const TiredPublication *publication)
 {
     assert(publication != NULL);
@@ -331,7 +345,7 @@ const char *tired_publication_temporary_name(const TiredPublication *publication
 bool tired_publication_discard(TiredPublication *publication, TiredError *error)
 {
     assert(publication != NULL);
-    if (publication->published)
+    if (publication->published || publication->rollback)
     {
         tired_error_clear(error);
         return true;

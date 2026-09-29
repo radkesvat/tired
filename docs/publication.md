@@ -67,3 +67,17 @@ anything. Reopened durability starts false; commit syncs the file and directory 
 uses the same retry checks. A prepared replacement still requires the replacement
 commit API with its expected before-state. The controller must establish journal
 identity, approval and action ordering before reopening.
+
+`tired_publication_rollback` reopens the inverse of a recorded replacement and
+commits it: the original before inode becomes active and the new after inode is
+retained at the staging name. Both fingerprints must describe existing files.
+An already reversed pair is recognized on retry, so it is not exchanged again.
+The returned handle reports inverse publication/durability; ordinary commit retries
+that inverse. Discard on an inverse handle preserves both names, including when
+the first file sync failed before exchange.
+
+Reopening preserves the recorded inode's mode, including original modes different
+from the modes used to generate new files. It never creates bytes with a new mode
+or relaxes fingerprint matching. Controller approval and file-role validation remain
+required. A missing/mismatched original fails; fallback restoration from copied
+backups and operation-level rollback sequencing are separate controller work.

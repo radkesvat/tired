@@ -35,6 +35,16 @@ bool tired_publication_commit(TiredPublication *publication, const TiredOperatio
  * intent and retain verified rollback material before invoking this operation. */
 bool tired_publication_replace(TiredPublication *publication, const TiredOperationLock *lock,
                                const TiredFileFingerprint *expected, TiredError *error);
+/* Restore the retained original of an exchanged replacement. Before/after are
+ * the forward operation's fingerprints; both must exist. Reopen the inverse state
+ * and commit it, preserving the displaced new inode. Returns a handle on commit
+ * failure; ordinary commit retries the inverse without another exchange. Discard
+ * on this handle never removes either original or new bytes. Caller authorizes
+ * and journals rollback first; ownership/approval are not established here. */
+bool tired_publication_rollback(TiredDirectory *directory, const char *name,
+                                const char *staging_uuid, const TiredFileFingerprint *before,
+                                const TiredFileFingerprint *after, const TiredOperationLock *lock,
+                                TiredPublication **publication, TiredError *error);
 bool tired_publication_published(const TiredPublication *publication);
 bool tired_publication_durable(const TiredPublication *publication);
 const char *tired_publication_temporary_name(const TiredPublication *publication);
