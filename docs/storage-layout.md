@@ -72,3 +72,35 @@ Callers use the borrowed descriptor for subsequent descriptor-relative operation
 Tests cover private creation, existing permission refusal, replaced bindings,
 descriptor lifetime, changed ownership, writable parents, symlinks at final and
 intermediate components, dangling links, FIFOs, traversal and missing paths.
+
+## Private files
+
+Private-file operations accept one validated component and an existing directory
+handle. The directory must be owned by the effective identity with mode `0700`.
+Files must be regular, owned by that identity, mode `0600`, and have exactly one
+link. Reads reject symlinks, directories and special files before opening, then
+check the opened descriptor and its directory entry. The directory and binding
+are checked again after reading; the bounded reader also checks file metadata
+for changes. Failed reads preserve the caller's previous output.
+
+Creation uses exclusive descriptor-relative open, writes every byte, syncs the
+file, rechecks its binding, checks close, then syncs the parent directory. Existing
+entries are never overwritten or truncated. These operations do not acquire the
+scope lock themselves; the transaction controller holds it across preparation and
+publication. Private files may contain binary bytes, so callers use the returned
+length and separately validate JSON or other application formats. Each read chooses
+its limit; the maximum private-file size is 16 MiB. Individual formats retain their
+own lower bounds where required.
+
+Exclusive creation is suitable for private staging and immutable revision entries.
+The name becomes visible before the write finishes, so this is not atomic
+publication of a current record. A write, sync, close or validation failure can
+leave a partial file; recovery must inspect it rather than blindly deleting the
+pathname. A later create refuses that entry. Transaction records must distinguish
+prepared content from published or committed content, and current-record updates
+require a separate atomic publication operation.
+
+Native coverage includes binary/empty reads, limits and preserved output, existing
+entry refusal, permissions, owner changes, symlinks, hard links, FIFOs, directories,
+and a child process file-size limit that forces a partial write and verifies that
+the incomplete file remains without being overwritten.
