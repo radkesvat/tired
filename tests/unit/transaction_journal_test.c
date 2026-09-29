@@ -59,9 +59,16 @@ int main(void)
     CHECK(tired_transaction_journal_read(directory, &journal, &error));
     CHECK(journal.count == 3 && journal.records[1].state == TIRED_ACTION_INTENT &&
           journal.records[2].state == TIRED_ACTION_UNCERTAIN);
+    CHECK(journal.progress.pending && journal.progress.uncertain);
     CHECK(!tired_transaction_journal_append(directory, lock, &record, &publication, &error));
     CHECK(error.status == TIRED_CONFLICT && publication == NULL);
     record.sequence = 4;
+    record.action = TIRED_ACTION_COMMIT;
+    record.state = TIRED_ACTION_INTENT;
+    CHECK(!tired_transaction_journal_append(directory, lock, &record, &publication, &error));
+    CHECK(strcmp(error.code, "transaction-transition") == 0 && publication == NULL);
+    record.action = TIRED_ACTION_START;
+    record.state = TIRED_ACTION_UNCERTAIN;
     record.service_uuid[0] = 'a';
     CHECK(!tired_transaction_journal_append(directory, lock, &record, &publication, &error));
     CHECK(error.status == TIRED_CONFLICT && publication == NULL);
@@ -87,10 +94,12 @@ int main(void)
     CHECK(!tired_transaction_journal_read(directory, &journal, &error));
     CHECK(journal.count == 3);
     CHECK(unlinkat(fd, "0004.json", 0) == 0);
-    for (unsigned corrupt = 0; corrupt < 2; ++corrupt)
+    for (unsigned corrupt = 0; corrupt < 3; ++corrupt)
     {
         record.sequence = corrupt == 0 ? 1 : 4;
-        record.service_uuid[0] = corrupt == 0 ? 'f' : 'a';
+        record.service_uuid[0] = corrupt == 1 ? 'a' : 'f';
+        record.action = corrupt == 2 ? TIRED_ACTION_COMMIT : TIRED_ACTION_START;
+        record.state = corrupt == 2 ? TIRED_ACTION_INTENT : TIRED_ACTION_UNCERTAIN;
         CHECK(tired_transaction_record_encode(&record, &encoded, &error));
         CHECK(tired_private_file_create(directory, "0004.json", encoded.data, encoded.length,
                                         &error));
@@ -100,6 +109,8 @@ int main(void)
     }
     record.sequence = 4;
     record.service_uuid[0] = 'f';
+    record.action = TIRED_ACTION_START;
+    record.state = TIRED_ACTION_UNCERTAIN;
     CHECK(symlinkat("0001.json", fd, "0004.json") == 0);
     CHECK(!tired_transaction_journal_read(directory, &journal, &error));
     CHECK(unlinkat(fd, "0004.json", 0) == 0);

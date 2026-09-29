@@ -66,10 +66,45 @@ even on a partial failure: inspect its published/durable flags, retry directory
 sync if appropriate, or explicitly discard unpublished staging and report cleanup
 failure. Never perform the external action until its intent is durably recorded.
 
-This layer checks storage structure and identity continuity. It does not decide
-whether an action is authorized, ordered correctly, observed complete, or safe to
-repeat. Operation-specific transitions, manifest validation, pending-transaction
+This layer checks storage structure, identity continuity and the common progress
+transitions below. It does not decide whether an action is authorized, follows the
+operation-specific plan, is observed complete, or is safe to repeat. Manifest validation, pending-transaction
 inventory discovery and live recovery still belong to the transaction controller.
 Native journal tests cover append/readback, duplicate and mismatched appends,
 missing/corrupt/misnumbered records, changed identities, unexpected entries,
 symlinks, unpublished staging and preservation of earlier valid output.
+
+## Progress transitions
+
+Journal read and append both apply the same transition checks. The first record
+is sequence 1, `prepare/completed`: the controller has durably prepared the
+approved transaction and associated manifests. Preparation cannot recur in that
+journal. External service effects require later intent records.
+
+An ordinary action begins with `intent` and remains pending until a matching
+`completed` or `failed` record. `uncertain` retains the pending action, including
+when uncertainty is reported repeatedly. While pending, a different action,
+another intent, rollback entry or commit is rejected. Read-only reconciliation
+can supply evidence for a matching outcome; it must not blindly repeat the action.
+Even a pending intent without an explicit `uncertain` record has an unknown
+post-crash outcome. The explicit uncertainty flag distinguishes recorded doubt,
+not permission to retry an intent that lacks it.
+
+`rollback/intent` enters rollback mode only when no action is pending. Inverse
+actions then have their own intent/outcome pairs. `rollback/completed` ends that
+mode only when no inverse action remains pending. Failure and uncertainty during
+rollback belong to its concrete actions; the rollback marker itself is a begin/end
+boundary. A forward commit is forbidden during rollback.
+
+`commit/intent` and its matching completion end forward progress. Committed and
+rolled-back journals are terminal and accept no further records. A recorded
+failure remains visible in the progress summary even if later steps succeed.
+Known runtime failure does not automatically force rollback: creation can observe
+the failed service and retain its installed configuration under the required policy.
+
+These common checks prevent structurally invalid histories; they do not establish
+the evidence behind completion or enforce each operation's required steps. The
+controller must still validate the full approved plan and distinguish runtime
+failure from installation failure. Native tests cover unresolved starts, invalid
+commit attempts, matching reconciliation outcomes, inverse-action journaling,
+terminal boundaries and invalid transitions injected directly into stored history.

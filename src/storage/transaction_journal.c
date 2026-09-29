@@ -155,6 +155,8 @@ bool tired_transaction_journal_read(TiredDirectory *directory, TiredTransactionJ
             conflict(error, "Journal record sequence or transaction identity does not match.");
             goto done;
         }
+        if (!tired_transaction_progress_advance(&journal.progress, &journal.records[i], error))
+            goto done;
     }
     if (!tired_directory_check(directory, error))
         goto done;
@@ -210,6 +212,8 @@ bool tired_transaction_journal_append(TiredDirectory *directory, const TiredOper
         goto done;
     }
     char name[16];
+    if (!tired_transaction_progress_advance(&journal.progress, record, error))
+        goto done;
     (void)snprintf(name, sizeof(name), "%04u.json", (unsigned)record->sequence);
     ok = tired_publication_prepare(directory, name, bytes.data, bytes.length, 0600, publication,
                                    error) &&
