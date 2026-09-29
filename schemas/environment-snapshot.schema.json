@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private environment and credential-reference snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "environment", "credentials"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "environment": {"type": "array", "maxItems": 1024, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "value", "origin", "sensitive"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 255},
+        "value": {"type": "string"},
+        "origin": {"enum": ["default", "profile", "config", "imported", "passed", "explicit", "edited"]},
+        "sensitive": {"type": "boolean"}
+      }
+    }},
+    "credentials": {"type": "array", "maxItems": 1024, "items": {
+      "type": "object", "additionalProperties": false, "required": ["name", "path"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "pattern": "^/"}
+      }
+    }}
+  }
+}
