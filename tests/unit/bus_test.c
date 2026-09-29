@@ -2,6 +2,7 @@
 #include "tired/load_paths.h"
 #include "tired/manager.h"
 #include "tired/manager_identity.h"
+#include "tired/manager_job.h"
 #include "tired/manager_reload.h"
 #include "tired/name_query.h"
 #include "tired/unit_batch.h"
@@ -32,6 +33,8 @@ typedef struct
     unsigned unit_case;
     unsigned path_mode;
     unsigned reload_case;
+    unsigned job_case;
+    bool job_match, subscribed;
     unsigned name_mode, name_requests;
     const char *name_directory;
     bool matched, change_during_uid, silent_match, pinned_version;
@@ -81,10 +84,79 @@ static int changed(sd_bus *bus)
     sd_bus_message_unref(message);
     return rc;
 }
+static int job_signal(sd_bus *bus, uint32_t id, const char *result)
+{
+    sd_bus_message *message = NULL;
+    char path[64];
+    (void)snprintf(path, sizeof(path), "/org/freedesktop/systemd1/job/%u", id);
+    int rc = sd_bus_message_new_signal(bus, &message, "/org/freedesktop/systemd1",
+                                       "org.freedesktop.systemd1.Manager", "JobRemoved");
+    if (rc >= 0)
+        rc = sd_bus_message_set_sender(message, ":1.42");
+    if (rc >= 0)
+        rc = sd_bus_message_append(message, "uoss", id, path,
+                                   id == 999 ? "unrelated.target" : "fixture.service", result);
+    if (rc >= 0)
+        rc = sd_bus_send(bus, message, NULL);
+    sd_bus_message_unref(message);
+    return rc;
+}
 static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
 {
     Broker *broker = userdata;
     (void)error;
+    bool subscribe =
+        sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager", "Subscribe") > 0;
+    bool job_call = sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager",
+                                                  "StartUnit") > 0 ||
+                    sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager",
+                                                  "StopUnit") > 0 ||
+                    sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager",
+                                                  "RestartUnit") > 0;
+    if (subscribe || job_call)
+    {
+        const char *destination = sd_bus_message_get_destination(message);
+        if (!broker->job_match || destination == NULL || strcmp(destination, ":1.42") != 0 ||
+            sd_bus_message_get_auto_start(message) != 0 ||
+            sd_bus_message_get_allow_interactive_authorization(message) != 0)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_INVALID_ARGS, "Bad job setup");
+        if (subscribe)
+        {
+            if (broker->job_case == 9)
+                return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_ACCESS_DENIED, "Denied");
+            if (broker->subscribed)
+                return sd_bus_reply_method_errorf(
+                    message, "org.freedesktop.systemd1.AlreadySubscribed", "Subscribed");
+            broker->subscribed = true;
+            return sd_bus_reply_method_return(message, "");
+        }
+        const char *unit = NULL, *mode = NULL;
+        if (!broker->subscribed || sd_bus_message_read(message, "ss", &unit, &mode) <= 0 ||
+            strcmp(unit, "fixture.service") != 0 || strcmp(mode, "replace") != 0)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_INVALID_ARGS,
+                                              "Bad job request");
+        if (broker->job_case == 3)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_ACCESS_DENIED, "Denied");
+        if (broker->job_case == 4)
+            return 1;
+        sd_bus *bus = sd_bus_message_get_bus(message);
+        if (broker->job_case == 1)
+        {
+            int rc = sd_bus_reply_method_return(message, "o", "/org/freedesktop/systemd1/job/1");
+            return rc < 0 ? rc : job_signal(bus, 1, "done");
+        }
+        if (broker->job_case == 7 && job_signal(bus, 2, "failed") < 0)
+            return -1;
+        if (broker->job_case == 7 && job_signal(bus, 999, "failed") < 0)
+            return -1;
+        if (broker->job_case == 8)
+            for (uint32_t i = 100; i < 133; ++i)
+                if (job_signal(bus, i, "done") < 0)
+                    return -1;
+        if (job_signal(bus, 1, broker->job_case == 2 ? "failed" : "done") < 0)
+            return -1;
+        return sd_bus_reply_method_return(message, "o", "/org/freedesktop/systemd1/job/1");
+    }
     if (sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager", "Reload") > 0)
     {
         const char *destination = sd_bus_message_get_destination(message);
@@ -154,6 +226,11 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
         return sd_bus_reply_method_return(message, "s", ":1.99");
     if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus", "AddMatch") > 0)
     {
+        const char *rule = NULL;
+        if (sd_bus_message_read(message, "s", &rule) <= 0)
+            return -1;
+        if (strstr(rule, "JobRemoved") != NULL)
+            broker->job_match = true;
         broker->matched = true;
         return broker->silent_match ? 1 : sd_bus_reply_method_return(message, "");
     }
@@ -209,6 +286,7 @@ int main(void)
     sd_bus_slot *slot = NULL;
     TiredManagerProbe *probe = NULL;
     TiredManagerReload *reload = NULL;
+    TiredManagerJob *job = NULL;
     TiredManagerIdentity *identity = NULL;
     TiredUnitQuery *query = NULL;
     TiredLoadPaths *paths = NULL;
@@ -320,6 +398,56 @@ int main(void)
             CHECK(tired_manager_probe_result(probe).done &&
                   tired_manager_probe_result(probe).error.status == TIRED_OK);
             CHECK(broker.pinned_version);
+            for (unsigned job_case = 0; job_case < 11; ++job_case)
+            {
+                broker.job_case = job_case;
+                broker.job_match = false;
+                CHECK(tired_manager_job_start(identity, "fixture.service",
+                                              (TiredJobAction)(job_case % 3),
+                                              job_case == 4 ? 50 : 1000, &job, &error));
+                if (job_case == 5)
+                    tired_manager_job_cancel(job);
+                for (unsigned i = 0; i < 2000; ++i)
+                {
+                    CHECK(sd_bus_process(server, NULL) >= 0);
+                    if (job_case == 6 && tired_manager_job_result(job).submitted)
+                        tired_manager_job_cancel(job);
+                    if (tired_manager_job_step(job))
+                        break;
+                    struct timespec delay = {.tv_nsec = 1000000};
+                    (void)nanosleep(&delay, NULL);
+                }
+                TiredManagerJobResult completed = tired_manager_job_result(job);
+                const TiredStatus expected[] = {TIRED_OK,
+                                                TIRED_OK,
+                                                TIRED_RUNTIME_FAILED,
+                                                TIRED_AUTHORIZATION,
+                                                TIRED_RUNTIME_FAILED,
+                                                TIRED_CANCELLED,
+                                                TIRED_CANCELLED,
+                                                TIRED_OK,
+                                                TIRED_RECOVERY_REQUIRED,
+                                                TIRED_AUTHORIZATION,
+                                                TIRED_OK};
+                if (!completed.done || completed.error.status != expected[job_case])
+                    fprintf(
+                        stderr,
+                        "job case %u: status=%d submitted=%d accepted=%d finished=%d error=%s\n",
+                        job_case, completed.error.status, completed.submitted, completed.accepted,
+                        completed.finished,
+                        completed.error.code == NULL ? "none" : completed.error.code);
+                CHECK(completed.done && completed.error.status == expected[job_case]);
+                CHECK(completed.submitted == (job_case != 5 && job_case != 9));
+                if (expected[job_case] == TIRED_OK || job_case == 2)
+                    CHECK(completed.accepted && completed.finished && completed.job_id == 1 &&
+                          completed.completion.outcome ==
+                              (job_case == 2 ? TIRED_JOB_FAILED : TIRED_JOB_DONE));
+                if (job_case != 10)
+                {
+                    tired_manager_job_destroy(job);
+                    job = NULL;
+                }
+            }
             for (unsigned reload_case = 0; reload_case < 6; ++reload_case)
             {
                 broker.reload_case = reload_case;
@@ -605,6 +733,10 @@ int main(void)
             CHECK(tired_load_paths_result(paths).directories == NULL &&
                   tired_load_paths_result(paths).error.status == TIRED_CONFLICT);
             CHECK(tired_manager_reload_result(reload).error.status == TIRED_CONFLICT);
+            CHECK(tired_manager_job_result(job).error.status == TIRED_CONFLICT &&
+                  tired_manager_job_result(job).finished);
+            tired_manager_job_destroy(job);
+            job = NULL;
             CHECK(tired_manager_reload_result(reload).acknowledged);
             tired_manager_reload_destroy(reload);
             reload = NULL;
@@ -663,6 +795,7 @@ int main(void)
     }
     result = 0;
 cleanup:
+    tired_manager_job_destroy(job);
     tired_manager_reload_destroy(reload);
     tired_unit_batch_destroy(batch);
     tired_name_query_destroy(discovery);
