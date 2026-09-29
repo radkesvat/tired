@@ -21,8 +21,17 @@ post-move checks; these observations can become stale immediately.
 
 Advisory locking cannot exclude a foreign writer between the fingerprint check
 and rename. A raced entry is retained rather than deleted, and a post-move mismatch
-requires recovery inspection. The API does not blindly move it back. Terminal
-transaction cleanup and restoring a removed entry remain separate controller work.
+requires recovery inspection. The API does not blindly move it back.
+
+`tired_file_unretire` is the explicitly selected inverse operation. It requires a
+matching retained fingerprint and absent active name, and uses the same no-replace
+rename and post-move checks. Retrying accepts the expected restored inode with an
+absent retained name, then syncs again. A foreign active entry is never overwritten.
+The result's `moved` field describes restoration when using this inverse API.
+The controller must authorize and persist rollback intent before calling it;
+terminal cleanup and operation-level rollback decisions remain separate work.
 
 Native tests cover fingerprint mismatch, retained-name collisions, sync failure and
 retry, retained content, and preservation of a recreated foreign destination.
+Inverse tests cover collision and fingerprint rejection, directory-sync failure,
+retries, restored bytes and disappearance of the retained name.

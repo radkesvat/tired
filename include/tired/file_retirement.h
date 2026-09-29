@@ -17,4 +17,11 @@ typedef struct
 bool tired_file_retire(TiredDirectory *directory, const char *name, const char *uuid,
                        const TiredFileFingerprint *expected, const TiredOperationLock *lock,
                        TiredFileRetirement *result, TiredError *error);
+/* Inverse move from the retained name to an absent destination. Never replaces
+ * an existing entry. Retry recognizes the expected restored inode and absent
+ * retained name. Result.moved means restored/recognized, with the same failure
+ * semantics as retirement. Caller must authorize and journal rollback first. */
+bool tired_file_unretire(TiredDirectory *directory, const char *name, const char *uuid,
+                         const TiredFileFingerprint *expected, const TiredOperationLock *lock,
+                         TiredFileRetirement *result, TiredError *error);
 #endif

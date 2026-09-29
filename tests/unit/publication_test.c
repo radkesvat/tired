@@ -213,6 +213,25 @@ int main(void)
     CHECK(!retirement.moved && error.status == TIRED_CONFLICT);
     CHECK(tired_private_file_read(directory, "record", 100, &contents, &error));
     CHECK(strcmp(contents.data, "foreign") == 0);
+    CHECK(!tired_file_unretire(directory, "record", retirement_uuid, &after, lock, &retirement,
+                               &error));
+    CHECK(!retirement.moved && error.status == TIRED_CONFLICT);
+    CHECK(unlinkat(fd, "record", 0) == 0);
+    CHECK(!tired_file_unretire(directory, "record", retirement_uuid, &mismatch, lock, &retirement,
+                               &error));
+    CHECK(!retirement.moved);
+    fail_sync_fd = fd;
+    CHECK(!tired_file_unretire(directory, "record", retirement_uuid, &after, lock, &retirement,
+                               &error));
+    CHECK(retirement.moved && !retirement.durable);
+    CHECK(tired_file_unretire(directory, "record", retirement_uuid, &after, lock, &retirement,
+                              &error));
+    CHECK(retirement.moved && retirement.durable);
+    CHECK(tired_private_file_read(directory, "record", 100, &contents, &error));
+    CHECK(strcmp(contents.data, "replacement") == 0);
+    CHECK(fstatat(fd, retained, &status, AT_SYMLINK_NOFOLLOW) < 0 && errno == ENOENT);
+    CHECK(tired_file_unretire(directory, "record", retirement_uuid, &after, lock, &retirement,
+                              &error));
     result = 0;
 cleanup:
     fail_sync_fd = -1;
