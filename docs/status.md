@@ -20,7 +20,7 @@ because they may conceal another claim on the same name.
 Live observations share a five-second monotonic deadline, pin the selected manager
 identity, and include a completion timestamp in JSON. Available properties include
 load/active/substate, enablement, result, main PID, exit code/status, restart count,
-fragment path and transition timestamps. Unknown properties are omitted from JSON
+fragment path, reload-needed state and transition timestamps. Unknown properties are omitted from JSON
 and shown as unknown in text; a known zero is retained. Text escapes terminal
 controls. The report does not expose captured argv, environment values, credentials
 or the private saved model.
@@ -49,3 +49,13 @@ Validation includes isolated user-layout command fixtures with absent manager
 transport, saved-record loading, pure display/exit-state fixtures, and read-only
 queries against the development host's real system manager. No host service is
 created or changed by this validation.
+
+`NeedDaemonReload` is the manager's boolean observation that the unit's backing
+configuration has changed since loading and a configuration reload is recommended.
+Text shows `yes`, `no`, or `unknown`; JSON uses a real boolean when known and omits
+it when unavailable. The same typed property is included in shared live JSON
+observations used by list, recovery inspection, and effective-file inspection.
+It is distinct from tired's saved-file digest comparison. A false value does not
+prove that the running process uses the latest start context or that the workload
+is healthy. Status does not automatically reload or restart anything, and this
+observation alone does not change its query exit status.

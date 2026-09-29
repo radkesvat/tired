@@ -239,6 +239,8 @@ struct json_object *tired_inspection_live_json(const TiredUnitBatchItem *item)
                 encoded = field->type == TIRED_OBS_TEXT
                               ? json_object_new_string_len(value->value.text.data,
                                                            (int)value->value.text.length)
+                          : field->type == TIRED_OBS_BOOL
+                              ? json_object_new_boolean(value->value.boolean)
                           : field->type == TIRED_OBS_I32
                               ? json_object_new_int64(value->value.signed_value)
                               : json_object_new_uint64(value->value.unsigned_value);

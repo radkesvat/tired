@@ -53,6 +53,7 @@ int main(void)
     CHECK(message != NULL);
     CHECK(sd_bus_message_append(message, "{sv}", "Id", "s", "fixture.service") >= 0);
     CHECK(sd_bus_message_append(message, "{sv}", "LoadState", "s", "loaded") >= 0);
+    CHECK(sd_bus_message_append(message, "{sv}", "NeedDaemonReload", "b", 1) >= 0);
     CHECK(sd_bus_message_append(message, "{sv}", "FragmentPath", "s", "") >= 0);
     CHECK(sd_bus_message_append(message, "{sv}", "DropInPaths", "as", 2,
                                 "/etc/systemd/system/fixture.service.d/10-first.conf",
@@ -65,6 +66,8 @@ int main(void)
     CHECK(observation.fields[TIRED_OBS_ID].known &&
           strcmp(observation.fields[TIRED_OBS_ID].value.text.data, "fixture.service") == 0);
     CHECK(!observation.fields[TIRED_OBS_ACTIVE_STATE].known);
+    CHECK(observation.fields[TIRED_OBS_NEED_DAEMON_RELOAD].known &&
+          observation.fields[TIRED_OBS_NEED_DAEMON_RELOAD].value.boolean);
     CHECK(observation.fields[TIRED_OBS_FRAGMENT_PATH].known &&
           observation.fields[TIRED_OBS_FRAGMENT_PATH].value.text.length == 0);
     CHECK(observation.fields[TIRED_OBS_ACTIVE_ENTER].value.unsigned_value == UINT64_C(9000000000));
@@ -82,6 +85,8 @@ int main(void)
     CHECK(tired_observation_read(message, TIRED_OBSERVE_SERVICE, &observation, &error));
     CHECK(observation.fields[TIRED_OBS_MAIN_PID].known &&
           observation.fields[TIRED_OBS_MAIN_PID].value.unsigned_value == 0);
+    CHECK(observation.fields[TIRED_OBS_NEED_DAEMON_RELOAD].known &&
+          observation.fields[TIRED_OBS_NEED_DAEMON_RELOAD].value.boolean);
     CHECK(observation.fields[TIRED_OBS_EXIT_STATUS].known &&
           observation.fields[TIRED_OBS_EXIT_STATUS].value.signed_value == 0);
     CHECK(observation.fields[TIRED_OBS_EXIT_CODE].value.signed_value == -1);
@@ -161,6 +166,38 @@ int main(void)
     CHECK(tired_observation_read(message, TIRED_OBSERVE_UNIT, &observation, &error));
     CHECK(!observation.fields[TIRED_OBS_DROP_IN_PATHS].known);
     sd_bus_message_unref(message);
+    CHECK(!observation.fields[TIRED_OBS_NEED_DAEMON_RELOAD].known);
+    for (int boolean = 0; boolean <= 1; ++boolean)
+    {
+        message = dictionary(bus);
+        CHECK(message != NULL &&
+              sd_bus_message_append(message, "{sv}", "NeedDaemonReload", "b", boolean) >= 0 &&
+              seal(message));
+        CHECK(tired_observation_read(message, TIRED_OBSERVE_UNIT, &observation, &error));
+        CHECK(observation.fields[TIRED_OBS_NEED_DAEMON_RELOAD].known &&
+              observation.fields[TIRED_OBS_NEED_DAEMON_RELOAD].value.boolean == (boolean != 0));
+        sd_bus_message_unref(message);
+    }
+    for (unsigned scenario = 0; scenario < 3; ++scenario)
+    {
+        message = dictionary(bus);
+        CHECK(message != NULL);
+        if (scenario == 0)
+            CHECK(sd_bus_message_append(message, "{sv}", "NeedDaemonReload", "u", 0U) >= 0);
+        else
+        {
+            CHECK(sd_bus_message_append(message, "{sv}", "NeedDaemonReload", "b", 0) >= 0);
+            if (scenario == 1)
+                CHECK(sd_bus_message_append(message, "{sv}", "NeedDaemonReload", "b", 1) >= 0);
+        }
+        CHECK(seal(message));
+        CHECK(!tired_observation_read(message,
+                                      scenario == 2 ? TIRED_OBSERVE_SERVICE : TIRED_OBSERVE_UNIT,
+                                      &observation, &error));
+        CHECK(observation.fields[TIRED_OBS_NEED_DAEMON_RELOAD].known &&
+              observation.fields[TIRED_OBS_NEED_DAEMON_RELOAD].value.boolean);
+        sd_bus_message_unref(message);
+    }
     tired_observation_destroy(&observation);
     tired_observation_destroy(&observation);
     sd_bus_close_unref(bus);

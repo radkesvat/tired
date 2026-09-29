@@ -58,6 +58,25 @@ int main(void)
           json_object_get_int(value) == 0);
     CHECK(!json_object_object_get_ex(properties, "Result", &value));
     CHECK(!json_object_object_get_ex(properties, "DropInPaths", &value));
+    CHECK(!json_object_object_get_ex(properties, "NeedDaemonReload", &value));
+    CHECK(tired_status_output(&view, false, false, &output, &status, &error));
+    CHECK(strstr(output.data, "NeedDaemonReload: unknown") != NULL);
+    for (unsigned boolean = 0; boolean < 2; ++boolean)
+    {
+        observation.fields[TIRED_OBS_NEED_DAEMON_RELOAD] =
+            (TiredObservedValue){.known = true, .value.boolean = boolean != 0};
+        CHECK(tired_status_output(&view, true, false, &output, &status, &error));
+        CHECK(status == TIRED_OK);
+        CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &document, &error));
+        CHECK(json_object_object_get_ex(document, "live", &live) &&
+              json_object_object_get_ex(live, "properties", &properties) &&
+              json_object_object_get_ex(properties, "NeedDaemonReload", &value));
+        CHECK(json_object_get_type(value) == json_type_boolean &&
+              json_object_get_boolean(value) == (boolean != 0));
+        CHECK(tired_status_output(&view, false, false, &output, &status, &error));
+        CHECK(strstr(output.data, boolean ? "NeedDaemonReload: yes" : "NeedDaemonReload: no") !=
+              NULL);
+    }
     CHECK(!json_object_object_get_ex(document, "spec", &value));
     TiredText dropins[] = {
         {.data = "/etc/systemd/system/relay.service.d/custom.conf", .length = 47}};

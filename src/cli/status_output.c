@@ -173,6 +173,8 @@ bool tired_status_output(const TiredStatusView *view, bool json, bool check_acti
                     }
                     if (field->type == TIRED_OBS_TEXT)
                         display = value->value.text.data;
+                    else if (field->type == TIRED_OBS_BOOL)
+                        display = value->value.boolean ? "yes" : "no";
                     else
                     {
                         if (field->type == TIRED_OBS_I32)

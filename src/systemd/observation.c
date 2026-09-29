@@ -27,7 +27,8 @@ static const TiredObservationField fields[TIRED_OBS_COUNT] = {
     {"ExecMainStartTimestampMonotonic", TIRED_OBSERVE_SERVICE, TIRED_OBS_U64},
     {"ExecMainExitTimestamp", TIRED_OBSERVE_SERVICE, TIRED_OBS_U64},
     {"ExecMainExitTimestampMonotonic", TIRED_OBSERVE_SERVICE, TIRED_OBS_U64},
-    {"DropInPaths", TIRED_OBSERVE_UNIT, TIRED_OBS_TEXT_LIST}};
+    {"DropInPaths", TIRED_OBSERVE_UNIT, TIRED_OBS_TEXT_LIST},
+    {"NeedDaemonReload", TIRED_OBSERVE_UNIT, TIRED_OBS_BOOL}};
 const TiredObservationField *tired_observation_field(TiredObservationId id)
 {
     return (unsigned)id < TIRED_OBS_COUNT ? &fields[id] : NULL;
@@ -52,7 +53,7 @@ static bool protocol(TiredError *error)
 static bool read_value(sd_bus_message *message, unsigned id, TiredObservedValue *value,
                        TiredError *error)
 {
-    static const char *signatures[] = {"s", "u", "i", "t", "as"};
+    static const char *signatures[] = {"s", "u", "i", "t", "as", "b"};
     const char *signature = signatures[fields[id].type];
     if (sd_bus_message_enter_container(message, SD_BUS_TYPE_VARIANT, signature) <= 0)
         return protocol(error);
@@ -93,6 +94,13 @@ static bool read_value(sd_bus_message *message, unsigned id, TiredObservedValue 
         if (sd_bus_message_exit_container(message) < 0)
             return protocol(error);
         rc = 1;
+    }
+    else if (fields[id].type == TIRED_OBS_BOOL)
+    {
+        int boolean;
+        rc = sd_bus_message_read_basic(message, 'b', &boolean);
+        if (rc > 0)
+            value->value.boolean = boolean != 0;
     }
     else if (fields[id].type == TIRED_OBS_I32)
     {
