@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Transaction file-change manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "prepared", "files"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "prepared": {
+      "allOf": [
+        {"$ref": "transaction-progress.schema.json"},
+        {"properties": {"sequence": {"const": 1}, "action": {"const": "prepare"}, "state": {"const": "completed"}}}
+      ]
+    },
+    "files": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/change"}}
+  },
+  "$defs": {
+    "uuid": {"allOf": [{"$ref": "transaction-progress.schema.json#/$defs/uuid"}, {"minLength": 36, "maxLength": 36}]},
+    "reference": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/uuid"}]},
+    "target": {
+      "type": "object",
+      "oneOf": [
+        {"additionalProperties": false, "required": ["role", "unit_name"], "properties": {"role": {"const": "unit"}, "unit_name": {"$ref": "transaction-progress.schema.json#/properties/unit_name"}}},
+        {"additionalProperties": false, "required": ["role", "revision_uuid"], "properties": {"role": {"const": "environment"}, "revision_uuid": {"$ref": "#/$defs/uuid"}}},
+        {"additionalProperties": false, "required": ["role"], "properties": {"role": {"const": "record"}}}
+      ]
+    },
+    "change": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "before", "after", "staging_uuid", "rollback_uuid"],
+      "properties": {
+        "target": {"$ref": "#/$defs/target"},
+        "before": {"$ref": "file-fingerprint.schema.json"},
+        "after": {"$ref": "file-fingerprint.schema.json"},
+        "staging_uuid": {"$ref": "#/$defs/reference"},
+        "rollback_uuid": {"$ref": "#/$defs/reference"}
+      }
+    }
+  }
+}

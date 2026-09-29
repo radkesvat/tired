@@ -19,6 +19,7 @@ typedef struct
     unsigned mode;
     bool private_directory;
 } TiredResolvedFile;
+bool tired_file_target_validate(const TiredFileTarget *target, TiredError *error);
 /* Pure path derivation from a trusted layout. All roles bind a service UUID;
  * environment targets also require a revision UUID. Reject irrelevant selectors.
  * No caller-supplied destination path/mode. Does not prove managed ownership or

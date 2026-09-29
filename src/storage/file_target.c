@@ -19,10 +19,9 @@ void tired_resolved_file_destroy(TiredResolvedFile *resolved)
     tired_text_destroy(&resolved->name);
     *resolved = (TiredResolvedFile){0};
 }
-bool tired_file_target_resolve(const TiredLayout *layout, const TiredFileTarget *target,
-                               TiredResolvedFile *output, TiredError *error)
+bool tired_file_target_validate(const TiredFileTarget *target, TiredError *error)
 {
-    assert(layout != NULL && target != NULL && output != NULL);
+    assert(target != NULL);
     if ((unsigned)target->role > TIRED_FILE_TARGET_RECORD ||
         !tired_uuid_valid(target->service_uuid, strnlen(target->service_uuid, 37)))
         return invalid(error);
@@ -44,6 +43,15 @@ bool tired_file_target_resolve(const TiredLayout *layout, const TiredFileTarget 
     }
     else if (target->unit_name.data != NULL || target->unit_name.length != 0)
         return invalid(error);
+    tired_error_clear(error);
+    return true;
+}
+bool tired_file_target_resolve(const TiredLayout *layout, const TiredFileTarget *target,
+                               TiredResolvedFile *output, TiredError *error)
+{
+    assert(layout != NULL && target != NULL && output != NULL);
+    if (!tired_file_target_validate(target, error))
+        return false;
     TiredLayoutPath id = target->role == TIRED_FILE_TARGET_UNIT ? TIRED_PATH_UNITS
                          : target->role == TIRED_FILE_TARGET_RECORD
                              ? TIRED_PATH_RECORDS
