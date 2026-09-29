@@ -1,4 +1,5 @@
 #include "tired/file_artifact.h"
+#include "tired/file_backup.h"
 #include "tired/io.h"
 #include "tired/private_file.h"
 #include <fcntl.h>
@@ -23,6 +24,8 @@ int main(void)
     const char *staging = ".tired-01234567-89ab-4cde-8fab-0123456789ab.tmp";
     TiredText path = {0};
     TiredDirectory *root = NULL, *artifacts = NULL;
+    TiredOperationLock *lock = NULL;
+    TiredPublication *publication = NULL;
     TiredLayout layout = {.user_scope = true};
     TiredArtifactObservation observed = {0};
     TiredError error = {0};
@@ -41,6 +44,7 @@ int main(void)
     TiredText base = {.data = cwd, .length = strlen(cwd)};
     CHECK(tired_path_absolute(&base, created, strlen(created), &path, &error));
     CHECK(tired_directory_open(path.data, getuid(), true, &root, &error));
+    CHECK(tired_operation_lock_acquire(root, &lock, &error));
     CHECK(tired_text_set(&layout.paths[TIRED_PATH_UNITS], path.data, path.length, 4096, &error));
     CHECK(tired_file_artifact_observe(&layout, root, &change, false, 100, &observed, &error));
     CHECK(observed.state == TIRED_ARTIFACT_MISSING);
@@ -64,6 +68,25 @@ int main(void)
     CHECK(tired_file_fingerprint(root, staging, 100, &change.after, &error));
     CHECK(tired_file_artifact_observe(&layout, root, &change, false, 100, &observed, &error));
     CHECK(observed.state == TIRED_ARTIFACT_MATCH);
+    CHECK(unlinkat(backup_fd, change.rollback_uuid, 0) == 0);
+    change.before = change.after;
+    CHECK(tired_file_backup(root, staging, &change.before, artifacts, change.rollback_uuid, lock,
+                            &publication, &error));
+    CHECK(tired_publication_durable(publication));
+    tired_publication_destroy(publication);
+    publication = NULL;
+    CHECK(tired_file_artifact_observe(&layout, root, &change, true, 100, &observed, &error));
+    CHECK(observed.state == TIRED_ARTIFACT_MATCH && observed.actual.mode == 0600);
+    CHECK(!tired_file_backup(root, staging, &change.before, artifacts, change.rollback_uuid, lock,
+                             &publication, &error));
+    CHECK(!tired_publication_published(publication));
+    CHECK(tired_publication_discard(publication, &error));
+    tired_publication_destroy(publication);
+    publication = NULL;
+    ++change.before.inode;
+    CHECK(!tired_file_backup(root, staging, &change.before, artifacts, change.rollback_uuid, lock,
+                             &publication, &error));
+    CHECK(error.status == TIRED_CONFLICT && publication == NULL);
     ++change.after.inode;
     CHECK(tired_file_artifact_observe(&layout, root, &change, false, 100, &observed, &error));
     CHECK(observed.state == TIRED_ARTIFACT_DIFFERENT);
@@ -74,12 +97,17 @@ int main(void)
     CHECK(observed.state == TIRED_ARTIFACT_DIFFERENT);
     result = 0;
 cleanup:
+    if (publication != NULL)
+        (void)tired_publication_discard(publication, &error);
+    tired_publication_destroy(publication);
+    tired_operation_lock_destroy(lock);
     if (artifacts != NULL)
         (void)unlinkat(tired_directory_fd(artifacts), change.rollback_uuid, 0);
     tired_directory_destroy(artifacts);
     if (root != NULL)
     {
         (void)unlinkat(tired_directory_fd(root), staging, 0);
+        (void)unlinkat(tired_directory_fd(root), "operation.lock", 0);
         (void)unlinkat(tired_directory_fd(root), "artifacts", AT_REMOVEDIR);
     }
     tired_directory_destroy(root);

@@ -48,7 +48,7 @@ int main(void)
     int result = 1;
     char fixture[] = "fingerprint-test-XXXXXX";
     char *created = NULL, *cwd = getcwd(NULL, 0);
-    TiredText path = {0}, encoded = {0}, loaded = {0};
+    TiredText path = {0}, encoded = {0}, loaded = {0}, captured = {0};
     TiredDirectory *directory = NULL;
     TiredFileFingerprint snapshot = {0}, original = {0};
     TiredError error = {0};
@@ -93,6 +93,9 @@ int main(void)
     CHECK(!tired_file_fingerprint(directory, "../unit", 3, &snapshot, &error));
     CHECK(tired_file_fingerprint_equal(&snapshot, &original));
     CHECK(tired_private_file_create(directory, "empty", NULL, 0, &error));
+    CHECK(tired_private_file_create(directory, "binary", "a\0b", 3, &error));
+    CHECK(tired_file_snapshot(directory, "binary", 3, &snapshot, &captured, &error));
+    CHECK(captured.length == 3 && memcmp(captured.data, "a\0b", 3) == 0);
     CHECK(tired_file_fingerprint(directory, "empty", 0, &snapshot, &error));
     CHECK(snapshot.exists && snapshot.size == 0 &&
           strcmp(snapshot.sha256,
@@ -101,7 +104,8 @@ int main(void)
     watched_device = original.device;
     watched_inode = original.inode;
     mutation = 1;
-    CHECK(!tired_file_fingerprint(directory, "unit", 3, &snapshot, &error));
+    CHECK(!tired_file_snapshot(directory, "unit", 3, &snapshot, &captured, &error));
+    CHECK(captured.length == 3 && memcmp(captured.data, "a\0b", 3) == 0);
     CHECK(mutation == 0 && error.status == TIRED_CONFLICT);
     CHECK(tired_file_fingerprint_equal(&snapshot, &original));
     CHECK(tired_file_fingerprint(directory, "unit", 3, &snapshot, &error));
@@ -118,8 +122,8 @@ cleanup:
     mutation = 0;
     if (directory != NULL)
     {
-        const char *names[] = {"unit",  "saved",           "hard", "link", "fifo",
-                               "empty", "fingerprint.json"};
+        const char *names[] = {
+            "unit", "saved", "hard", "link", "fifo", "empty", "fingerprint.json", "binary"};
         for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i)
             (void)unlinkat(tired_directory_fd(directory), names[i], 0);
     }
@@ -129,6 +133,7 @@ cleanup:
     tired_text_destroy(&path);
     tired_text_destroy(&encoded);
     tired_text_destroy(&loaded);
+    tired_text_destroy(&captured);
     free(cwd);
     return result;
 }

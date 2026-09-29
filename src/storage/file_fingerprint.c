@@ -1,9 +1,11 @@
 #include "tired/file_fingerprint.h"
 #include "tired/capture.h"
+#include "tired/encode.h"
 #include "tired/private_file.h"
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <string.h>
 #include <unistd.h>
@@ -28,8 +30,8 @@ static bool same(const struct stat *a, const struct stat *b)
            a->st_mtim.tv_nsec == b->st_mtim.tv_nsec && a->st_ctim.tv_sec == b->st_ctim.tv_sec &&
            a->st_ctim.tv_nsec == b->st_ctim.tv_nsec;
 }
-bool tired_file_fingerprint(TiredDirectory *directory, const char *name, size_t limit,
-                            TiredFileFingerprint *output, TiredError *error)
+static bool inspect(TiredDirectory *directory, const char *name, size_t limit,
+                    TiredFileFingerprint *output, TiredText *bytes, TiredError *error)
 {
     assert(directory != NULL && name != NULL && output != NULL);
     size_t length = strnlen(name, 256);
@@ -49,6 +51,8 @@ bool tired_file_fingerprint(TiredDirectory *directory, const char *name, size_t 
         if (!tired_directory_check(directory, error))
             return false;
         *output = (TiredFileFingerprint){0};
+        if (bytes != NULL)
+            tired_text_destroy(bytes);
         tired_error_clear(error);
         return true;
     }
@@ -62,6 +66,8 @@ bool tired_file_fingerprint(TiredDirectory *directory, const char *name, size_t 
     if (fd < 0)
         return io_error(error);
     EVP_MD_CTX *context = NULL;
+    TiredBuffer contents;
+    tired_buffer_init(&contents, limit);
     TiredFileFingerprint result = {0};
     bool ok = false;
     if (fstat(fd, &opened) != 0)
@@ -99,6 +105,9 @@ bool tired_file_fingerprint(TiredDirectory *directory, const char *name, size_t 
             goto done;
         }
         consumed += (size_t)count;
+        if (bytes != NULL &&
+            !tired_buffer_append(&contents, (const char *)buffer, (size_t)count, error))
+            goto done;
         if (EVP_DigestUpdate(context, buffer, (size_t)count) != 1)
             goto digest_error;
     }
@@ -140,12 +149,28 @@ done:
     EVP_MD_CTX_free(context);
     if (close(fd) != 0 && ok)
         ok = io_error(error);
+    if (ok && bytes != NULL)
+        ok = tired_buffer_take(&contents, bytes, error);
+    if (contents.data != NULL)
+        OPENSSL_cleanse(contents.data, contents.length);
+    tired_buffer_destroy(&contents);
     if (ok)
     {
         *output = result;
         tired_error_clear(error);
     }
     return ok;
+}
+bool tired_file_fingerprint(TiredDirectory *directory, const char *name, size_t limit,
+                            TiredFileFingerprint *output, TiredError *error)
+{
+    return inspect(directory, name, limit, output, NULL, error);
+}
+bool tired_file_snapshot(TiredDirectory *directory, const char *name, size_t limit,
+                         TiredFileFingerprint *output, TiredText *bytes, TiredError *error)
+{
+    assert(bytes != NULL);
+    return inspect(directory, name, limit, output, bytes, error);
 }
 bool tired_file_fingerprint_equal(const TiredFileFingerprint *a, const TiredFileFingerprint *b)
 {

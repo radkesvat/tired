@@ -20,6 +20,10 @@ typedef struct
  * a reservation. Callers revalidate under the mutation lock before publication. */
 bool tired_file_fingerprint(TiredDirectory *directory, const char *name, size_t limit,
                             TiredFileFingerprint *fingerprint, TiredError *error);
+/* Capture the exact bytes hashed by the same stable read. Binary bytes are owned
+ * by the caller and may be sensitive. Both outputs remain unchanged on failure. */
+bool tired_file_snapshot(TiredDirectory *directory, const char *name, size_t limit,
+                         TiredFileFingerprint *fingerprint, TiredText *bytes, TiredError *error);
 /* Compare absence or regular-file identity, metadata and content. Timestamps are
  * used for read stability, not equality; touching unchanged bytes is not drift. */
 bool tired_file_fingerprint_equal(const TiredFileFingerprint *a, const TiredFileFingerprint *b);

@@ -29,3 +29,18 @@ does not prove approval, create backups, authorize writes or perform recovery.
 Native tests cover missing parents/files, private rollback copies with distinct
 inodes, changed modes/digests, exact staged identity, size limits, symlinks and
 preservation on failure.
+
+`tired_file_backup` creates a UUID-named rollback copy in an already opened private
+artifacts directory. It captures bytes and their fingerprint in one stable source
+read, compares that fingerprint with the approved before-state, stages mode-0600
+bytes, rechecks the source, and publishes under the scope lock without replacement.
+The publication handle retains durability and cleanup state even on failure.
+An existing artifact is never overwritten. Captured backup bytes are cleared before
+release; callers of the underlying snapshot API own their potentially sensitive
+buffer and its cleanup.
+
+Backup creation does not freeze the source after return or authorize restoration.
+The transaction controller must revalidate before changing live files and retain
+the backup until history/recovery rules allow cleanup. Tests verify durable copy
+creation, changed-source rejection and preservation of existing artifacts. Snapshot
+tests cover binary contents and atomic outputs during an injected source replacement.
