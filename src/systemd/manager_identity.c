@@ -287,3 +287,8 @@ void tired_manager_identity_destroy(TiredManagerIdentity *identity)
     tired_text_destroy(&identity->owner);
     free(identity);
 }
+sd_bus *tired_manager_identity_bus(TiredManagerIdentity *identity)
+{
+    assert(identity != NULL);
+    return identity->bus;
+}

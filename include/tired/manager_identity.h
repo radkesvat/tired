@@ -24,5 +24,7 @@ bool tired_manager_identity_step(TiredManagerIdentity *identity);
 bool tired_manager_identity_poll(TiredManagerIdentity *identity, struct pollfd *descriptor,
                                  uint64_t *deadline_usec, TiredError *error);
 TiredManagerIdentityResult tired_manager_identity_result(const TiredManagerIdentity *identity);
+/* Borrowed connection for backend operations tied to this identity. */
+sd_bus *tired_manager_identity_bus(TiredManagerIdentity *identity);
 void tired_manager_identity_destroy(TiredManagerIdentity *identity);
 #endif

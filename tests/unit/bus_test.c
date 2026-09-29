@@ -1,6 +1,7 @@
 #include "tired/io.h"
 #include "tired/manager.h"
 #include "tired/manager_identity.h"
+#include "tired/unit_query.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -24,8 +25,40 @@
 typedef struct
 {
     uint32_t uid;
+    unsigned unit_case;
     bool matched, change_during_uid, silent_match, pinned_version;
 } Broker;
+static int properties(sd_bus_message *request, Broker *broker)
+{
+    const char *interface = NULL;
+    if (sd_bus_message_read(request, "s", &interface) <= 0)
+        return -1;
+    bool service = strcmp(interface, "org.freedesktop.systemd1.Service") == 0;
+    if (service && broker->unit_case == 8)
+    {
+        struct timespec delay = {.tv_nsec = 30000000};
+        (void)nanosleep(&delay, NULL);
+    }
+    if (service && broker->unit_case == 4)
+        return sd_bus_reply_method_errorf(request, SD_BUS_ERROR_UNKNOWN_OBJECT, "Gone");
+    sd_bus_message *message = NULL;
+    int rc = sd_bus_message_new_method_return(request, &message);
+    if (rc >= 0)
+        rc = sd_bus_message_open_container(message, SD_BUS_TYPE_ARRAY, "{sv}");
+    if (rc >= 0 && service)
+        rc = broker->unit_case == 3 ? sd_bus_message_append(message, "{sv}", "MainPID", "s", "42")
+                                    : sd_bus_message_append(message, "{sv}", "MainPID", "u", 42U);
+    if (rc >= 0 && !service)
+        rc = sd_bus_message_append(message, "{sv}", "Id", "s", "fixture.service");
+    if (rc >= 0 && !service)
+        rc = sd_bus_message_append(message, "{sv}", "ActiveState", "s", "active");
+    if (rc >= 0)
+        rc = sd_bus_message_close_container(message);
+    if (rc >= 0)
+        rc = sd_bus_send(sd_bus_message_get_bus(request), message, NULL);
+    sd_bus_message_unref(message);
+    return rc;
+}
 static int changed(sd_bus *bus)
 {
     sd_bus_message *message = NULL;
@@ -44,6 +77,43 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
 {
     Broker *broker = userdata;
     (void)error;
+    bool file_query = sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager",
+                                                    "GetUnitFileState") > 0;
+    bool object_query =
+        sd_bus_message_is_method_call(message, "org.freedesktop.systemd1.Manager", "GetUnit") > 0;
+    bool property_query =
+        sd_bus_message_is_method_call(message, "org.freedesktop.DBus.Properties", "GetAll") > 0;
+    if (file_query || object_query || property_query)
+    {
+        const char *destination = sd_bus_message_get_destination(message);
+        if (destination == NULL || strcmp(destination, ":1.42") != 0 ||
+            sd_bus_message_get_auto_start(message) != 0 ||
+            sd_bus_message_get_allow_interactive_authorization(message) != 0)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_INVALID_ARGS,
+                                              "Invalid unit query");
+        if (property_query)
+            return properties(message, broker);
+        const char *name = NULL;
+        if (sd_bus_message_read(message, "s", &name) <= 0 || strcmp(name, "fixture.service") != 0)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_INVALID_ARGS,
+                                              "Invalid unit name");
+        if (file_query)
+        {
+            if (broker->unit_case == 1)
+                return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_FILE_NOT_FOUND, "Absent");
+            if (broker->unit_case == 5)
+                return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_ACCESS_DENIED, "Denied");
+            if (broker->unit_case == 6)
+                return 1;
+            return sd_bus_reply_method_return(message, "s",
+                                              broker->unit_case == 2 ? "disabled" : "enabled");
+        }
+        if (broker->unit_case == 1 || broker->unit_case == 2)
+            return sd_bus_reply_method_errorf(message, "org.freedesktop.systemd1.NoSuchUnit",
+                                              "Absent");
+        return sd_bus_reply_method_return(message, "o",
+                                          "/org/freedesktop/systemd1/unit/fixture_2eservice");
+    }
     if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus", "Hello") > 0)
         return sd_bus_reply_method_return(message, "s", ":1.99");
     if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus", "AddMatch") > 0)
@@ -82,6 +152,7 @@ int main(void)
     sd_bus_slot *slot = NULL;
     TiredManagerProbe *probe = NULL;
     TiredManagerIdentity *identity = NULL;
+    TiredUnitQuery *query = NULL;
     Broker broker = {.uid = (uint32_t)getuid()};
     CHECK(cwd != NULL);
     CHECK(unsetenv("XDG_RUNTIME_DIR") == 0);
@@ -184,6 +255,59 @@ int main(void)
             CHECK(tired_manager_probe_result(probe).done &&
                   tired_manager_probe_result(probe).error.status == TIRED_OK);
             CHECK(broker.pinned_version);
+            TiredText unit_base = {.data = "fixture", .length = 7};
+            for (unsigned unit_case = 0; unit_case < 9; ++unit_case)
+            {
+                broker.unit_case = unit_case;
+                CHECK(tired_unit_query_start(identity, &unit_base,
+                                             unit_case == 6 || unit_case == 8 ? 20 : 1000, &query,
+                                             &error));
+                if (unit_case == 7)
+                    tired_unit_query_cancel(query);
+                for (unsigned i = 0; i < 2000; ++i)
+                {
+                    CHECK(sd_bus_process(server, NULL) >= 0);
+                    if (tired_unit_query_step(query))
+                        break;
+                    struct timespec delay = {.tv_nsec = 1000000};
+                    (void)nanosleep(&delay, NULL);
+                }
+                TiredUnitQueryResult observation = tired_unit_query_result(query);
+                CHECK(observation.done);
+                if (unit_case < 3)
+                {
+                    CHECK(observation.error.status == TIRED_OK && observation.observation != NULL);
+                    CHECK(observation.file_found == (unit_case != 1) &&
+                          observation.object_found == (unit_case == 0));
+                    CHECK(observation.observation->fields[TIRED_OBS_MAIN_PID].known ==
+                          (unit_case == 0));
+                    if (unit_case == 0)
+                        CHECK(observation.observation->fields[TIRED_OBS_MAIN_PID]
+                                  .value.unsigned_value == 42);
+                }
+                else
+                {
+                    const TiredStatus expected[] = {TIRED_INVALID,       TIRED_CONFLICT,
+                                                    TIRED_AUTHORIZATION, TIRED_RUNTIME_FAILED,
+                                                    TIRED_CANCELLED,     TIRED_RUNTIME_FAILED};
+                    CHECK(observation.error.status == expected[unit_case - 3] &&
+                          observation.observation == NULL);
+                }
+                tired_unit_query_destroy(query);
+                query = NULL;
+            }
+            broker.unit_case = 0;
+            CHECK(tired_unit_query_start(identity, &unit_base, 1000, &query, &error));
+            for (unsigned i = 0; i < 2000; ++i)
+            {
+                CHECK(sd_bus_process(server, NULL) >= 0);
+                if (tired_unit_query_step(query))
+                    break;
+                struct timespec delay = {.tv_nsec = 1000000};
+                (void)nanosleep(&delay, NULL);
+            }
+            CHECK(tired_unit_query_result(query).done &&
+                  tired_unit_query_result(query).error.status == TIRED_OK);
             CHECK(changed(server) >= 0);
             for (unsigned i = 0; i < 2000; ++i)
             {
@@ -196,6 +320,10 @@ int main(void)
             }
             owner = tired_manager_identity_result(identity);
             CHECK(!owner.ready && owner.changed && owner.error.status == TIRED_CONFLICT);
+            CHECK(tired_unit_query_result(query).error.status == TIRED_CONFLICT &&
+                  tired_unit_query_result(query).observation == NULL);
+            tired_unit_query_destroy(query);
+            query = NULL;
         }
         else if (scenario == 1)
             CHECK(!owner.ready && owner.error.status == TIRED_AUTHORIZATION);
@@ -245,6 +373,7 @@ int main(void)
     }
     result = 0;
 cleanup:
+    tired_unit_query_destroy(query);
     tired_manager_identity_destroy(identity);
     tired_manager_probe_destroy(probe);
     sd_bus_slot_unref(slot);

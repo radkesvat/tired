@@ -38,5 +38,31 @@ and must be destroyed after use.
 
 Native message fixtures exercise known-zero versus absent values, exact integer
 width/sign, large timestamps, unknown variants, duplicate keys, type errors,
-property-count limits, preservation on failure and clearing stale fields. Actual
-GetAll request orchestration and status/doctor/frontend presentation remain pending.
+property-count limits, preservation on failure and clearing stale fields.
+
+The asynchronous query layer performs GetUnitFileState, GetUnit and (when an object
+exists) Unit and Service GetAll. It targets the verified unique manager name and
+checks identity readiness at each stage. One deadline covers the entire sequence;
+late replies, cancellation, access errors, disappearing objects or malformed
+properties produce a failed result without publishing partial observations.
+
+File-state availability and manager-object existence are separate. A manager may
+report an installed unit's file state while GetUnit reports no loaded object; its
+runtime fields then remain unknown. Conversely, generated or transient units may
+have state without an ordinary persistent file. `file_found` means GetUnitFileState
+returned a state, not that tired proved a regular file exists. The query does not
+call LoadUnit or reserve a name. Missing manager entries are not sufficient proof
+that a filesystem pathname is safe to overwrite.
+
+The identity tracker must outlive its queries. Destroy/cancel detaches pending
+callbacks. Results borrow query storage and are available only after successful
+completion; a subsequently observed manager identity change hides a completed
+snapshot and returns the identity error. These sequential reads are not a
+transactional manager snapshot and make no application-health claim.
+
+Native broker tests cover loaded, unloaded and absent cases, exact destinations
+and flags, malformed replies, authorization, disappearance, late responses,
+cancellation and completed-snapshot invalidation. A read-only host integration test
+discovers the system manager and observes systemd-journald; it explicitly skips if
+the system bus/manager is unavailable or inaccessible. Status/doctor/frontend
+presentation and combined filesystem collision checks remain pending.
