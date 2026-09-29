@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private typed service model snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "fields"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "fields": {
+      "type": "object",
+      "description": "Native validation requires exactly every registered ServiceSpec field.",
+      "additionalProperties": {"$ref": "#/$defs/field"}
+    }
+  },
+  "$defs": {
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "inherit", "value"],
+      "properties": {
+        "origin": {"enum": ["unset", "inherited", "default", "administrator-config", "user-config", "profile", "user", "capture"]},
+        "inherit": {"type": "boolean"},
+        "value": {"oneOf": [
+          {"type": "null"},
+          {"type": "string"},
+          {"type": "array", "maxItems": 4096, "items": {"type": "string"}}
+        ]}
+      }
+    }
+  }
+}
