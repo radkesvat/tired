@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Transaction progress record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "transaction_uuid", "service_uuid", "unit_name", "scope", "operation", "approved_sha256", "sequence", "action", "state"],
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"}
+  },
+  "properties": {
+    "schema_version": {"const": 1},
+    "transaction_uuid": {"$ref": "#/$defs/uuid"},
+    "service_uuid": {"$ref": "#/$defs/uuid"},
+    "unit_name": {"type": "string", "maxLength": 208, "pattern": "^(?!.*\\.\\.)[A-Za-z0-9](?:[A-Za-z0-9._-]{0,198}[A-Za-z0-9])?\\.service$"},
+    "scope": {"enum": ["system", "user"]},
+    "operation": {"enum": ["create", "edit", "remove", "rename", "restore", "start", "stop", "restart", "enable", "disable"]},
+    "approved_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "sequence": {"type": "integer", "minimum": 1, "maximum": 4096},
+    "action": {"enum": ["prepare", "publish_files", "reload", "enable", "disable", "start", "stop", "restart", "observe", "store_record", "remove_files", "rollback", "commit"]},
+    "state": {"enum": ["intent", "completed", "failed", "uncertain"]}
+  }
+}

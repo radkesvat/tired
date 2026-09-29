@@ -113,6 +113,7 @@ target_sources(tired_core PRIVATE src/storage/directory.c)
 target_sources(tired_core PRIVATE src/storage/operation_lock.c)
 target_sources(tired_core PRIVATE src/storage/private_file.c)
 target_sources(tired_core PRIVATE src/storage/publication.c)
+target_sources(tired_core PRIVATE src/storage/transaction_record.c)
 target_sources(tired_core PRIVATE src/model/name_selection.c)
 target_sources(tired_core PRIVATE src/systemd/verify.c)
 target_sources(tired_core PRIVATE src/systemd/manager.c)
@@ -137,6 +138,10 @@ add_custom_command(TARGET tired POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(tired_transaction_record_test tests/unit/transaction_record_test.c)
+    target_link_libraries(tired_transaction_record_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.transaction_record COMMAND tired_transaction_record_test "${CMAKE_CURRENT_SOURCE_DIR}/schemas/transaction-progress.schema.json")
+    set_tests_properties(tired.transaction_record PROPERTIES LABELS unit)
     add_executable(tired_publication_test tests/unit/publication_test.c)
     target_compile_definitions(tired_publication_test PRIVATE _POSIX_C_SOURCE=200809L)
     target_link_libraries(tired_publication_test PRIVATE tired_core tired_build_options)
@@ -331,7 +336,7 @@ if(BUILD_TESTING)
 endif()
 
 install(TARGETS tired RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-install(FILES schemas/profile.schema.json schemas/settings.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
+install(FILES schemas/profile.schema.json schemas/settings.schema.json schemas/transaction-progress.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
 install(DIRECTORY profiles/ DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/profiles.d"
     FILES_MATCHING PATTERN "*.json")
 
