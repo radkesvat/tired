@@ -1,5 +1,6 @@
 #include "tired/load_paths.h"
 #include "tired/manager.h"
+#include "tired/name_query.h"
 #include "tired/unit_query.h"
 #include <stdio.h>
 #include <time.h>
@@ -15,6 +16,7 @@ int main(void)
     TiredManagerProbe *probe = NULL;
     TiredUnitQuery *query = NULL;
     TiredLoadPaths *paths = NULL;
+    TiredNameQuery *names = NULL;
     TiredError error = {0};
     int result = 1;
     if (!tired_manager_bus_open(false, &bus, &error))
@@ -67,8 +69,24 @@ int main(void)
            observed.object_found ? "present" : "absent",
            observed.observation->fields[TIRED_OBS_MAIN_PID].known ? "known" : "unknown");
     printf("Manager load locations: %zu\n", locations.directories->count);
+    if (observed.file_found || observed.object_found)
+    {
+        TiredText destination = {.data = "/etc/systemd/system", .length = 19};
+        TiredTextList pending = {0};
+        if (!tired_name_query_start(identity, &name, true, &destination, &pending, 3000, &names,
+                                    &error))
+            goto done;
+        for (unsigned i = 0; i < 5000 && !tired_name_query_step(names); ++i)
+            tick();
+        TiredNameQueryResult selected = tired_name_query_result(names);
+        error = selected.error;
+        if (!selected.done || error.status != TIRED_CONFLICT || selected.unit_name != NULL)
+            goto done;
+        printf("Existing explicit name rejected by live name discovery.\n");
+    }
     result = 0;
 done:
+    tired_name_query_destroy(names);
     tired_load_paths_destroy(paths);
     if (result != 0)
         fprintf(stderr, "Live manager query %s: %s [%s]\n", result == 77 ? "unavailable" : "failed",

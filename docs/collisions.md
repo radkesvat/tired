@@ -45,9 +45,8 @@ results after manager identity invalidation. The identity must outlive the query
 Native tests cover typed variants, relative/control/oversized paths, empty and
 excessive arrays, failure preservation, destination/authorization flags, cancellation,
 timeout and invalidation. Live manager integration retrieves the host's UnitPath.
-The naming controller still needs to combine these paths with the intended write
-destination, transaction inventory and suffix selection under commit-time locking.
-# Candidate selection
+
+## Candidate selection
 
 `TiredNameSelection` copies the complete location and pending-name inventories
 and proposes the unsuffixed name first. Feed it a successful manager query for
@@ -62,3 +61,23 @@ candidate accessor returns a full unit name, whereas the unit-query API accepts
 a normalized base without the final `.service` suffix. A successful selection
 does not reserve the name. Commit-time locking, fresh inventories, rechecking,
 and approval invalidation remain the mutation controller's responsibility.
+
+`TiredNameQuery` coordinates live discovery: it obtains UnitPath through the
+authenticated manager identity, includes the supplied destination if not already
+listed, and queries each candidate before asking the selector to inspect it.
+The caller supplies the complete pending-transaction inventory for the selected
+scope. The combined location list retains the 256-directory/1 MiB limit; exceeding
+it fails rather than omitting paths. All inputs are copied. The identity must
+outlive the coordinator, and later owner invalidation hides a completed result.
+
+One monotonic deadline covers load-path discovery and every candidate, with at
+most one candidate inspection per step. Poll integration includes that deadline;
+cancellation detaches active queries. Filesystem operations are synchronous and
+can delay a step on a stalled filesystem; a result after the deadline is rejected.
+This API does not perform commit-time locking or read the transaction store.
+
+Broker fixtures exercise deterministic suffixes across manager, pending and
+filesystem collisions, a destination outside UnitPath, explicit-name conflicts,
+malformed paths, cancellation, a deadline spanning multiple candidates and owner
+invalidation. Live integration checks rejection of an existing explicit name
+without modifying the manager or its files.

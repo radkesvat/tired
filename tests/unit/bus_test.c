@@ -2,6 +2,7 @@
 #include "tired/load_paths.h"
 #include "tired/manager.h"
 #include "tired/manager_identity.h"
+#include "tired/name_query.h"
 #include "tired/unit_query.h"
 #include <fcntl.h>
 #include <signal.h>
@@ -28,6 +29,8 @@ typedef struct
     uint32_t uid;
     unsigned unit_case;
     unsigned path_mode;
+    unsigned name_mode, name_requests;
+    const char *name_directory;
     bool matched, change_during_uid, silent_match, pinned_version;
 } Broker;
 static int properties(sd_bus_message *request, Broker *broker)
@@ -96,7 +99,19 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
         if (property_query)
             return properties(message, broker);
         const char *name = NULL;
-        if (sd_bus_message_read(message, "s", &name) <= 0 || strcmp(name, "fixture.service") != 0)
+        if (sd_bus_message_read(message, "s", &name) <= 0)
+            return -1;
+        if (broker->name_mode != 0)
+        {
+            ++broker->name_requests;
+            if (!file_query)
+                return sd_bus_reply_method_errorf(message, "org.freedesktop.systemd1.NoSuchUnit",
+                                                  "Absent");
+            if (broker->name_mode == 2 || strcmp(name, "fixture.service") == 0)
+                return sd_bus_reply_method_return(message, "s", "disabled");
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_FILE_NOT_FOUND, "Absent");
+        }
+        if (strcmp(name, "fixture.service") != 0)
             return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_INVALID_ARGS,
                                               "Invalid unit name");
         if (file_query)
@@ -151,6 +166,8 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
                                                   "Invalid path query");
             if (broker->path_mode == 2)
                 return 1;
+            if (broker->name_directory != NULL && broker->path_mode == 0)
+                return sd_bus_reply_method_return(message, "v", "as", 1, broker->name_directory);
             return broker->path_mode == 1
                        ? sd_bus_reply_method_return(message, "v", "s", "bad")
                        : sd_bus_reply_method_return(message, "v", "as", 2, "/etc/systemd/system",
@@ -166,7 +183,7 @@ int main(void)
     int result = 1, parent = -1, listener = -1, accepted = -1;
     char fixture[] = "bus-test-XXXXXX";
     char *created = NULL, *cwd = getcwd(NULL, 0);
-    TiredText directory = {0}, socket_path = {0}, link_path = {0};
+    TiredText directory = {0}, socket_path = {0}, link_path = {0}, load_directory = {0};
     TiredError error = {0};
     sd_bus *client = NULL, *server = NULL;
     sd_bus_slot *slot = NULL;
@@ -174,6 +191,7 @@ int main(void)
     TiredManagerIdentity *identity = NULL;
     TiredUnitQuery *query = NULL;
     TiredLoadPaths *paths = NULL;
+    TiredNameQuery *names = NULL;
     Broker broker = {.uid = (uint32_t)getuid()};
     CHECK(cwd != NULL);
     CHECK(unsetenv("XDG_RUNTIME_DIR") == 0);
@@ -185,6 +203,7 @@ int main(void)
     CHECK(tired_path_absolute(&base, created, strlen(created), &directory, &error));
     CHECK(tired_path_absolute(&directory, "bus", 3, &socket_path, &error));
     CHECK(tired_path_absolute(&directory, "link", 4, &link_path, &error));
+    CHECK(tired_path_absolute(&directory, "loads", 5, &load_directory, &error));
     parent = open(directory.data, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     CHECK(parent >= 0);
     listener = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -362,6 +381,59 @@ int main(void)
             }
             CHECK(tired_unit_query_result(query).done &&
                   tired_unit_query_result(query).error.status == TIRED_OK);
+            CHECK(symlinkat("missing", parent, "fixture-3.service") == 0);
+            TiredText pending_name = {.data = "fixture-2.service", .length = 17};
+            TiredTextList pending_names = {.items = &pending_name, .count = 1};
+            broker.name_directory = directory.data;
+            for (unsigned name_case = 0; name_case < 6; ++name_case)
+            {
+                broker.name_directory = name_case == 5 ? load_directory.data : directory.data;
+                broker.name_mode = name_case == 2 ? 2 : 1;
+                broker.name_requests = 0;
+                broker.path_mode = name_case == 3 ? 1 : 0;
+                CHECK(tired_name_query_start(identity, &unit_base, name_case == 1, &directory,
+                                             &pending_names, name_case == 2 ? 80 : 1000, &names,
+                                             &error));
+                CHECK(tired_name_query_poll(names, &poll_descriptor, &poll_deadline, &error));
+                CHECK(poll_descriptor.fd >= 0 && poll_deadline != UINT64_MAX);
+                if (name_case == 0)
+                    tired_name_query_cancel(names);
+                for (unsigned i = 0; i < 2000; ++i)
+                {
+                    CHECK(sd_bus_process(server, NULL) >= 0);
+                    if (tired_name_query_step(names))
+                        break;
+                    struct timespec delay = {.tv_nsec = 1000000};
+                    (void)nanosleep(&delay, NULL);
+                }
+                TiredNameQueryResult selected = tired_name_query_result(names);
+                CHECK(selected.done);
+                if (name_case >= 4)
+                {
+                    CHECK(selected.error.status == TIRED_OK && selected.unit_name != NULL);
+                    CHECK(strcmp(selected.unit_name->data, "fixture-4.service") == 0);
+                    CHECK(broker.name_requests == 8);
+                    if (name_case == 4)
+                    {
+                        tired_name_query_destroy(names);
+                        names = NULL;
+                    }
+                }
+                else
+                {
+                    const TiredStatus expected[] = {TIRED_CANCELLED, TIRED_CONFLICT,
+                                                    TIRED_RUNTIME_FAILED, TIRED_INVALID};
+                    CHECK(selected.error.status == expected[name_case] &&
+                          selected.unit_name == NULL);
+                    if (name_case == 2)
+                        CHECK(broker.name_requests > 4);
+                    tired_name_query_destroy(names);
+                    names = NULL;
+                }
+            }
+            broker.name_mode = 0;
+            broker.name_directory = NULL;
+            CHECK(unlinkat(parent, "fixture-3.service", 0) == 0);
             CHECK(changed(server) >= 0);
             for (unsigned i = 0; i < 2000; ++i)
             {
@@ -374,6 +446,10 @@ int main(void)
             }
             owner = tired_manager_identity_result(identity);
             CHECK(!owner.ready && owner.changed && owner.error.status == TIRED_CONFLICT);
+            CHECK(tired_name_query_result(names).error.status == TIRED_CONFLICT &&
+                  tired_name_query_result(names).unit_name == NULL);
+            tired_name_query_destroy(names);
+            names = NULL;
             CHECK(tired_load_paths_result(paths).directories == NULL &&
                   tired_load_paths_result(paths).error.status == TIRED_CONFLICT);
             tired_load_paths_destroy(paths);
@@ -431,6 +507,7 @@ int main(void)
     }
     result = 0;
 cleanup:
+    tired_name_query_destroy(names);
     tired_load_paths_destroy(paths);
     tired_unit_query_destroy(query);
     tired_manager_identity_destroy(identity);
@@ -443,6 +520,8 @@ cleanup:
     if (listener >= 0)
         (void)close(listener);
     if (parent >= 0)
+        (void)unlinkat(parent, "fixture-3.service", 0);
+    if (parent >= 0)
         (void)close(parent);
     if (link_path.data != NULL)
         (void)unlink(link_path.data);
@@ -454,5 +533,6 @@ cleanup:
     tired_text_destroy(&directory);
     tired_text_destroy(&socket_path);
     tired_text_destroy(&link_path);
+    tired_text_destroy(&load_directory);
     return result;
 }
