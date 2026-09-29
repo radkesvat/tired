@@ -41,12 +41,26 @@ failure. Nested progress records and fingerprints use their existing codecs.
 The installed JSON Schema describes structure; native cross-field validation also
 checks operation shape, target uniqueness, immutable revisions and references.
 
+`tired_manifest_publish` durably publishes immutable `files.json` in the private
+transaction directory under the scope lock. Publish it before the journal's first
+prepare/completed record. Publication never overwrites an existing entry and
+returns its handle for durability retry or unpublished-staging cleanup on failure.
+The controller remains responsible for selecting the scope and UUID directory.
+
+`tired_manifest_load` reads that private file and the same directory's `journal/`,
+requiring an exact match with its first record. Empty journals, unpublished journal
+staging and mismatched identities/digests fail without replacing the caller's
+previous output. This read does not create a filesystem snapshot or lock out other
+writers; a controller must revalidate observations under its scope lock.
+
 Parsing does not prove approval, artifact existence or current file identity. Before
 any mutation the controller must load from trusted private storage, bind the anchor
 to the journal and approved request, verify staging/rollback bytes and fingerprints,
 resolve targets through the trusted scope layout and revalidate under the scope
-lock. Manifest persistence, comparison and application remain integration work.
+lock. Inventory integration, artifact comparison and application remain pending.
 
 Tests cover create/edit/remove/rename round trips, restore validation, lifecycle-only plans, arbitrary-path
 rejection, service mismatch, duplicate targets, immutable revisions, missing
 references, incorrect modes/in-place identity, and failure preservation.
+Storage tests cover durable publication, no replacement, missing/empty/staged
+journals, mismatched preparation digests, unsafe modes and symlink rejection.
