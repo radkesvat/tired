@@ -34,9 +34,42 @@ The journal/controller must enforce sequence continuity, stable identities/diges
 allowed action order, evidence for completion, and durable intent before external
 effects. Recovery must compare records with actual filesystem and manager state
 before deciding whether an uncertain action can be finished or rolled back.
-Durable journal storage and that controller are still separate unfinished work.
+The controller and live reconciliation remain unfinished work.
 
 The installed JSON Schema documents the structural format. Native tests cover
 round trips across action and outcome vocabularies, scope retention, malformed
 IDs/digests/names, version/sequence bounds, missing/extra/duplicate fields and
 failure preservation. Strict numeric parsing remains authoritative in the codec.
+
+## Durable journal storage
+
+A dedicated private journal directory contains immutable `0001.json` through
+`4096.json` progress records. Reading requires a contiguous sequence whose file
+names and embedded numbers agree. Every record must retain the same transaction
+and service UUIDs, unit name, scope, overall operation and approved-request digest.
+Associated manifests and evidence belong outside this dedicated directory.
+
+Reading never creates or cleans files. It rejects unknown directory entries,
+unsafe record files, malformed content, gaps and identity mismatches. Recognized
+UUID-based publication staging names are counted separately, never replayed as
+progress. At most 128 such entries are accepted. They remain untouched for
+inspection. Failed reads preserve the caller's previous journal snapshot.
+The reader uses an independent directory stream, validates each file, and rejects
+observed directory changes during the scan. This does not make a read-only scan
+an atomic snapshot against noncooperating in-place edits.
+
+Append requires the held scope lock, rereads the history, validates the next
+sequence and stable transaction identity, and publishes the encoded record through
+the atomic no-overwrite publication API. It refuses unexplained staging with
+`journal-staging`/recovery-required. The caller receives the publication handle
+even on a partial failure: inspect its published/durable flags, retry directory
+sync if appropriate, or explicitly discard unpublished staging and report cleanup
+failure. Never perform the external action until its intent is durably recorded.
+
+This layer checks storage structure and identity continuity. It does not decide
+whether an action is authorized, ordered correctly, observed complete, or safe to
+repeat. Operation-specific transitions, manifest validation, pending-transaction
+inventory discovery and live recovery still belong to the transaction controller.
+Native journal tests cover append/readback, duplicate and mismatched appends,
+missing/corrupt/misnumbered records, changed identities, unexpected entries,
+symlinks, unpublished staging and preservation of earlier valid output.
