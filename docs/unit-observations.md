@@ -68,3 +68,30 @@ the system bus/manager is unavailable or inaccessible. Status/doctor/frontend
 presentation remains pending. The [collision checker](collisions.md) can combine
 this query result with supplied load locations and pending reservations; discovery
 and commit-time integration remain pending.
+
+## Observing multiple units
+
+`TiredUnitBatch` copies up to 1024 safe full service names and queries them in
+input order through the same authenticated manager identity. Duplicates remain
+distinct observations. One monotonic deadline covers the entire batch; it is not
+reset for every unit. Each step pumps bounded bus work and admits at most one
+new unit query. Poll integration and cancellation are available.
+
+Results distinguish batch failure from per-unit failure. A denied or malformed
+unit response remains an error for that item while other units can still be
+observed. Deadline, cancellation or loss of manager identity stops new queries.
+Unattempted items are marked explicitly and receive the batch error, never an
+invented absent/stopped state. Callers must check each item's completion and error
+before interpreting presence or property values.
+
+Completed queries have a realtime microsecond completion timestamp, including
+error replies. Zero means no completed observation. Successful results remain
+borrowed from the batch until destruction. The manager identity must outlive the
+batch; owner invalidation hides successful snapshots even after completion.
+Sequential observations are not an atomic view of all units, and wall-clock
+timestamps may jump; monotonic time alone governs deadlines.
+
+Broker fixtures cover successful/denied batches, cancellation, a deadline shared
+across several delayed queries, empty batches and post-completion invalidation.
+Live integration reads the existing journald unit through this API without loading
+or mutating units. Recovery frontend integration remains separate work.

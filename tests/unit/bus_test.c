@@ -3,6 +3,7 @@
 #include "tired/manager.h"
 #include "tired/manager_identity.h"
 #include "tired/name_query.h"
+#include "tired/unit_batch.h"
 #include "tired/unit_query.h"
 #include <fcntl.h>
 #include <signal.h>
@@ -194,6 +195,7 @@ int main(void)
     TiredLoadPaths *paths = NULL;
     TiredNameQuery *names = NULL;
     TiredNameQuery *discovery = NULL;
+    TiredUnitBatch *batch = NULL;
     Broker broker = {.uid = (uint32_t)getuid()};
     CHECK(cwd != NULL);
     CHECK(unsetenv("XDG_RUNTIME_DIR") == 0);
@@ -373,6 +375,76 @@ int main(void)
                 tired_unit_query_destroy(query);
                 query = NULL;
             }
+            TiredText batch_names[10];
+            for (size_t i = 0; i < 10; ++i)
+                batch_names[i] = (TiredText){.data = "fixture.service", .length = 15};
+            TiredTextList list = {.items = batch_names};
+            CHECK(tired_unit_batch_start(identity, &list, 1000, &batch, &error));
+            CHECK(tired_unit_batch_result(batch).done && tired_unit_batch_result(batch).count == 0);
+            tired_unit_batch_destroy(batch);
+            batch = NULL;
+            const char *bad_names[] = {"../bad.service", "fixture.timer", "unit@instance.service"};
+            list.count = 1;
+            for (size_t i = 0; i < sizeof(bad_names) / sizeof(bad_names[0]); ++i)
+            {
+                batch_names[0] =
+                    (TiredText){.data = (char *)bad_names[i], .length = strlen(bad_names[i])};
+                CHECK(!tired_unit_batch_start(identity, &list, 1000, &batch, &error));
+                CHECK(batch == NULL);
+            }
+            batch_names[0] = (TiredText){.data = "fixture.service", .length = 15};
+            for (unsigned batch_case = 0; batch_case < 4; ++batch_case)
+            {
+                list.count = batch_case == 2 ? 10 : 2;
+                broker.unit_case = batch_case == 0 ? 5 : batch_case == 2 ? 8 : 0;
+                CHECK(tired_unit_batch_start(identity, &list, batch_case == 2 ? 80 : 1000, &batch,
+                                             &error));
+                CHECK(tired_unit_batch_poll(batch, &poll_descriptor, &poll_deadline, &error));
+                CHECK(poll_descriptor.fd >= 0 && poll_deadline != UINT64_MAX);
+                if (batch_case == 1)
+                    tired_unit_batch_cancel(batch);
+                for (unsigned i = 0; i < 2000; ++i)
+                {
+                    CHECK(sd_bus_process(server, NULL) >= 0);
+                    if (tired_unit_batch_step(batch))
+                        break;
+                    struct timespec delay = {.tv_nsec = 1000000};
+                    (void)nanosleep(&delay, NULL);
+                }
+                TiredUnitBatchResult batch_result = tired_unit_batch_result(batch);
+                CHECK(batch_result.done && batch_result.count == list.count);
+                if (batch_case == 1 || batch_case == 2)
+                {
+                    CHECK(batch_result.error.status ==
+                          (batch_case == 1 ? TIRED_CANCELLED : TIRED_RUNTIME_FAILED));
+                    TiredUnitBatchItem last = tired_unit_batch_item(batch, list.count - 1);
+                    CHECK(!last.attempted && last.query.done &&
+                          last.query.error.status != TIRED_OK && last.query.observation == NULL &&
+                          last.completed_realtime_usec == 0);
+                }
+                else
+                {
+                    CHECK(batch_result.error.status == TIRED_OK);
+                    for (size_t i = 0; i < list.count; ++i)
+                    {
+                        TiredUnitBatchItem item = tired_unit_batch_item(batch, i);
+                        CHECK(item.attempted && item.query.done &&
+                              item.completed_realtime_usec > 0);
+                        if (batch_case == 0)
+                            CHECK(item.query.error.status == TIRED_AUTHORIZATION &&
+                                  item.query.observation == NULL);
+                        else
+                            CHECK(item.query.error.status == TIRED_OK && item.query.object_found &&
+                                  item.query.observation->fields[TIRED_OBS_MAIN_PID]
+                                          .value.unsigned_value == 42);
+                    }
+                }
+                if (batch_case != 3)
+                {
+                    tired_unit_batch_destroy(batch);
+                    batch = NULL;
+                }
+            }
             broker.unit_case = 0;
             CHECK(tired_unit_query_start(identity, &unit_base, 1000, &query, &error));
             for (unsigned i = 0; i < 2000; ++i)
@@ -471,6 +543,10 @@ int main(void)
             }
             owner = tired_manager_identity_result(identity);
             CHECK(!owner.ready && owner.changed && owner.error.status == TIRED_CONFLICT);
+            CHECK(tired_unit_batch_result(batch).error.status == TIRED_CONFLICT);
+            CHECK(tired_unit_batch_item(batch, 0).query.observation == NULL);
+            tired_unit_batch_destroy(batch);
+            batch = NULL;
             CHECK(tired_name_query_result(names).error.status == TIRED_CONFLICT &&
                   tired_name_query_result(names).unit_name == NULL);
             tired_name_query_destroy(names);
@@ -532,6 +608,7 @@ int main(void)
     }
     result = 0;
 cleanup:
+    tired_unit_batch_destroy(batch);
     tired_name_query_destroy(discovery);
     tired_name_query_destroy(names);
     tired_load_paths_destroy(paths);

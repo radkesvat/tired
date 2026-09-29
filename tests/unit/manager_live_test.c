@@ -1,6 +1,7 @@
 #include "tired/load_paths.h"
 #include "tired/manager.h"
 #include "tired/name_query.h"
+#include "tired/unit_batch.h"
 #include "tired/unit_query.h"
 #include <stdio.h>
 #include <time.h>
@@ -17,6 +18,7 @@ int main(void)
     TiredUnitQuery *query = NULL;
     TiredLoadPaths *paths = NULL;
     TiredNameQuery *names = NULL;
+    TiredUnitBatch *batch = NULL;
     TiredError error = {0};
     int result = 1;
     if (!tired_manager_bus_open(false, &bus, &error))
@@ -69,6 +71,20 @@ int main(void)
            observed.object_found ? "present" : "absent",
            observed.observation->fields[TIRED_OBS_MAIN_PID].known ? "known" : "unknown");
     printf("Manager load locations: %zu\n", locations.directories->count);
+    TiredText full_name = {.data = "systemd-journald.service", .length = 24};
+    TiredTextList batch_names = {.items = &full_name, .count = 1};
+    if (!tired_unit_batch_start(identity, &batch_names, 3000, &batch, &error))
+        goto done;
+    for (unsigned i = 0; i < 5000 && !tired_unit_batch_step(batch); ++i)
+        tick();
+    TiredUnitBatchResult batch_result = tired_unit_batch_result(batch);
+    error = batch_result.error;
+    if (!batch_result.done || error.status != TIRED_OK)
+        goto done;
+    TiredUnitBatchItem item = tired_unit_batch_item(batch, 0);
+    error = item.query.error;
+    if (!item.query.done || error.status != TIRED_OK || item.completed_realtime_usec == 0)
+        goto done;
     if (observed.file_found || observed.object_found)
     {
         TiredText destination = {.data = "/etc/systemd/system", .length = 19};
@@ -86,6 +102,7 @@ int main(void)
     }
     result = 0;
 done:
+    tired_unit_batch_destroy(batch);
     tired_name_query_destroy(names);
     tired_load_paths_destroy(paths);
     if (result != 0)
