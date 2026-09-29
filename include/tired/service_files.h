@@ -31,4 +31,9 @@ typedef struct
  * and operation approval must also be checked before any mutation. No writes. */
 bool tired_service_files_inspect(const TiredLayout *layout, const TiredServiceRecord *record,
                                  TiredServiceFiles *output, TiredError *error);
+/* Multi-service variant. Shared budget charges successful observed bytes and a
+ * failed read's bounded allowance. Exhaustion yields UNKNOWN with a diagnostic. */
+bool tired_service_files_inspect_budget(const TiredLayout *layout, const TiredServiceRecord *record,
+                                        size_t *remaining, TiredServiceFiles *output,
+                                        TiredError *error);
 #endif

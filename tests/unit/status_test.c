@@ -1,5 +1,6 @@
 #include "tired/io.h"
 #include "tired/json.h"
+#include "tired/list_frontend.h"
 #include "tired/status_frontend.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -110,6 +111,16 @@ int main(void)
     CHECK(status != TIRED_OK && strstr(output.data, "\"record\":\"missing\"") != NULL &&
           strstr(output.data, "\"status\":\"unknown\"") != NULL);
     CHECK(access(path.data, F_OK) == 0);
+    const char *list_args[] = {"tired", "list", "--user", "--json"};
+    CHECK(tired_cli_parse((int)(sizeof(list_args) / sizeof(list_args[0])), list_args, &request,
+                          &error));
+    CHECK(tired_list_command(&request, &output, &status, &error));
+    CHECK(status == TIRED_OK && strstr(output.data, "\"command\":\"list\"") != NULL);
+    CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &document, &error));
+    CHECK(json_object_object_get_ex(document, "services", &value) &&
+          json_object_array_length(value) == 0);
+    CHECK(rmdir(created) == 0); /* Read-only discovery did not create state beneath it. */
+    created = NULL;
     result = 0;
 cleanup:
     if (created != NULL)

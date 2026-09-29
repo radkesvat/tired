@@ -21,6 +21,10 @@ conflict rather than being followed or treated as missing. Unit reads have a 4 M
 bound; environment reads have a 16 MiB bound. No file contents are returned or
 logged. The temporary unit snapshot is cleared before release.
 
+The budgeted variant shares a caller-supplied byte allowance across services.
+Successful reads charge observed bytes; failed reads conservatively charge their
+bounded allowance. Exhaustion is an unknown observation with a specific diagnostic.
+
 For an existing file, separate flags report digest, owner and mode agreement.
 The expected modes are 0644 for units and 0600 for owned environments. The unit
 also requires the canonical first-line ownership comment with the record's UUID

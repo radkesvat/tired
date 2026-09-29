@@ -9,7 +9,7 @@
 #include <unistd.h>
 
 static void inspect(const TiredLayout *layout, const TiredFileTarget *target, const char *digest,
-                    TiredServiceFile *file)
+                    size_t *remaining, TiredServiceFile *file)
 {
     TiredResolvedFile resolved = {0};
     TiredDirectory *directory = NULL;
@@ -28,11 +28,20 @@ static void inspect(const TiredLayout *layout, const TiredFileTarget *target, co
         }
         goto done;
     }
-    bool known =
-        unit ? tired_file_snapshot(directory, resolved.name.data, TIRED_UNIT_LIMIT, &file->actual,
-                                   &bytes, &file->error)
-             : tired_file_fingerprint(directory, resolved.name.data, TIRED_PRIVATE_FILE_LIMIT,
-                                      &file->actual, &file->error);
+    if (*remaining == 0)
+    {
+        tired_error_set(&file->error, TIRED_RECOVERY_REQUIRED, "service-files-budget",
+                        "Service file inspection byte budget exhausted.", 0);
+        goto done;
+    }
+    size_t limit = unit ? TIRED_UNIT_LIMIT : TIRED_PRIVATE_FILE_LIMIT;
+    if (*remaining < limit)
+        limit = *remaining;
+    bool known = unit ? tired_file_snapshot(directory, resolved.name.data, limit, &file->actual,
+                                            &bytes, &file->error)
+                      : tired_file_fingerprint(directory, resolved.name.data, limit, &file->actual,
+                                               &file->error);
+    *remaining -= known ? (size_t)file->actual.size : limit;
     if (!known)
         goto done;
     if (!file->actual.exists)
@@ -64,10 +73,11 @@ done:
     tired_resolved_file_destroy(&resolved);
 }
 
-bool tired_service_files_inspect(const TiredLayout *layout, const TiredServiceRecord *record,
-                                 TiredServiceFiles *output, TiredError *error)
+bool tired_service_files_inspect_budget(const TiredLayout *layout, const TiredServiceRecord *record,
+                                        size_t *remaining, TiredServiceFiles *output,
+                                        TiredError *error)
 {
-    assert(layout != NULL && record != NULL && output != NULL);
+    assert(layout != NULL && record != NULL && remaining != NULL && output != NULL);
     if (!tired_service_record_check_layout(record, layout, error))
         return false;
     if (record->metadata.owner_uid != (layout->user_scope ? geteuid() : 0))
@@ -77,16 +87,22 @@ bool tired_service_files_inspect(const TiredLayout *layout, const TiredServiceRe
     TiredFileTarget target = {.role = TIRED_FILE_TARGET_UNIT,
                               .unit_name = record->metadata.unit_name};
     memcpy(target.service_uuid, record->metadata.service_uuid, 37);
-    inspect(layout, &target, record->metadata.unit_sha256, &result.unit);
+    inspect(layout, &target, record->metadata.unit_sha256, remaining, &result.unit);
     if (record->has_environment)
     {
         target.role = TIRED_FILE_TARGET_ENVIRONMENT;
         target.unit_name = (TiredText){0};
         memcpy(target.revision_uuid, record->environment_revision, 37);
         result.environment = (TiredServiceFile){0};
-        inspect(layout, &target, record->environment_sha256, &result.environment);
+        inspect(layout, &target, record->environment_sha256, remaining, &result.environment);
     }
     *output = result;
     tired_error_clear(error);
     return true;
+}
+bool tired_service_files_inspect(const TiredLayout *layout, const TiredServiceRecord *record,
+                                 TiredServiceFiles *output, TiredError *error)
+{
+    size_t remaining = TIRED_UNIT_LIMIT + TIRED_PRIVATE_FILE_LIMIT;
+    return tired_service_files_inspect_budget(layout, record, &remaining, output, error);
 }

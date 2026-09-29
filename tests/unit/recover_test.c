@@ -1,6 +1,7 @@
 #include "../../src/cli/recover_live.h"
 #include "tired/io.h"
 #include "tired/json.h"
+#include "tired/list_frontend.h"
 #include "tired/manifest_storage.h"
 #include "tired/private_file.h"
 #include "tired/recover_frontend.h"
@@ -70,6 +71,11 @@ int main(void)
         .state = TIRED_ACTION_COMPLETED,
         .sequence = 1};
     CHECK(tired_transaction_journal_append(journal, lock, &record, &publication, &error));
+    request.command = TIRED_COMMAND_LIST;
+    CHECK(tired_list_command(&request, &output, &status, &error));
+    CHECK(strstr(output.data, "\"transactions\":\"pending\"") != NULL &&
+          strstr(output.data, "relay.service") != NULL);
+    request.command = TIRED_COMMAND_RECOVER;
     CHECK(tired_recover_command(&request, &output, &status, &error));
     CHECK(status == TIRED_RECOVERY_REQUIRED);
     CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &document, &error));
@@ -165,6 +171,18 @@ int main(void)
           strcmp(json_object_get_string(value), "unknown") == 0);
     CHECK(!json_object_object_get_ex(live_row, "object_found", &value));
     CHECK(tired_directory_child(transaction, "artifacts", true, true, &artifacts, &error));
+    request.command = TIRED_COMMAND_LIST;
+    CHECK(tired_list_command(&request, &output, &status, &error));
+    CHECK(tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &document, &error));
+    CHECK(json_object_object_get_ex(document, "services", &entries) &&
+          json_object_array_length(entries) == 2);
+    CHECK(strstr(output.data, "old.service") != NULL &&
+          strstr(output.data, "relay.service") != NULL);
+    row = json_object_array_get_idx(entries, 0);
+    CHECK(json_object_object_get_ex(row, "live", &live_row));
+    CHECK(json_object_object_get_ex(live_row, "status", &value) &&
+          strcmp(json_object_get_string(value), "unknown") == 0);
+    request.command = TIRED_COMMAND_RECOVER;
     CHECK(tired_private_file_create(artifacts, changes[0].rollback_uuid, "", 0, &error));
     CHECK(mkdirat(tired_directory_fd(transactions), bad_name, 0700) == 0);
     CHECK(tired_recover_command(&request, &output, &status, &error));

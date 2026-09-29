@@ -86,7 +86,7 @@ bool tired_unit_batch_start(TiredManagerIdentity *identity, const TiredTextList 
 {
     assert(identity != NULL && names != NULL && output != NULL && *output == NULL);
     TiredManagerIdentityResult owner = tired_manager_identity_result(identity);
-    if (!owner.ready || owner.error.status != TIRED_OK || names->count > 2048 || timeout_ms == 0 ||
+    if (!owner.ready || owner.error.status != TIRED_OK || names->count > 3072 || timeout_ms == 0 ||
         timeout_ms > 300000)
         return tired_error_set(error, TIRED_INVALID, "unit-batch-input",
                                "Invalid unit batch input or manager identity.", 0);
@@ -114,7 +114,7 @@ bool tired_unit_batch_start(TiredManagerIdentity *identity, const TiredTextList 
                             "Expected full safe service names.", 0);
             goto failed;
         }
-        if (!tired_text_list_append(&batch->bases, name->data, name->length - 8, 2048,
+        if (!tired_text_list_append(&batch->bases, name->data, name->length - 8, 3072,
                                     TIRED_INPUT_LIMIT, error))
             goto failed;
     }

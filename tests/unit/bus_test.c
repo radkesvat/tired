@@ -660,12 +660,22 @@ int main(void)
                 tired_unit_query_destroy(query);
                 query = NULL;
             }
-            TiredText batch_names[10];
-            for (size_t i = 0; i < 10; ++i)
+            TiredText batch_names[3072];
+            for (size_t i = 0; i < 3072; ++i)
                 batch_names[i] = (TiredText){.data = "fixture.service", .length = 15};
             TiredTextList list = {.items = batch_names};
             CHECK(tired_unit_batch_start(identity, &list, 1000, &batch, &error));
             CHECK(tired_unit_batch_result(batch).done && tired_unit_batch_result(batch).count == 0);
+            tired_unit_batch_destroy(batch);
+            batch = NULL;
+            list.count = 3073;
+            CHECK(!tired_unit_batch_start(identity, &list, 1000, &batch, &error));
+            CHECK(batch == NULL);
+            list.count = 3072;
+            CHECK(tired_unit_batch_start(identity, &list, 1000, &batch, &error));
+            tired_unit_batch_cancel(batch);
+            CHECK(tired_unit_batch_result(batch).count == 3072 &&
+                  tired_unit_batch_item(batch, 3071).query.error.status == TIRED_CANCELLED);
             tired_unit_batch_destroy(batch);
             batch = NULL;
             const char *bad_names[] = {"../bad.service", "fixture.timer", "unit@instance.service"};

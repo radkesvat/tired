@@ -1,6 +1,7 @@
 #include "tired/encode.h"
 #include "tired/file_target.h"
 #include "tired/io.h"
+#include "tired/list_frontend.h"
 #include "tired/private_file.h"
 #include "tired/render.h"
 #include "tired/service_files.h"
@@ -51,6 +52,12 @@ static int file_checks(TiredLayout *layout, TiredServiceRecord *record, TiredDir
     memcpy(record->metadata.unit_sha256, fingerprint.sha256, 65);
     CHECK(tired_service_files_inspect(layout, record, &files, &error));
     CHECK(files.unit.state == TIRED_SERVICE_FILE_MATCH && files.unit.marker_matches);
+    size_t remaining = unit.length;
+    CHECK(tired_service_files_inspect_budget(layout, record, &remaining, &files, &error));
+    CHECK(remaining == 0 && files.unit.state == TIRED_SERVICE_FILE_MATCH);
+    CHECK(tired_service_files_inspect_budget(layout, record, &remaining, &files, &error));
+    CHECK(files.unit.state == TIRED_SERVICE_FILE_UNKNOWN &&
+          files.unit.error.status == TIRED_RECOVERY_REQUIRED);
     CHECK(fchmodat(fd, "relay.service", 0600, 0) == 0);
     CHECK(tired_service_files_inspect(layout, record, &files, &error));
     CHECK(files.unit.state == TIRED_SERVICE_FILE_DRIFTED && !files.unit.mode_matches &&
@@ -180,10 +187,33 @@ static int status_checks(TiredDirectory *root, const TiredText *path, TiredServi
           strstr(output.data, "\"state\":\"missing\"") != NULL &&
           strstr(output.data, "secret") == NULL);
     CHECK(status != TIRED_OK); /* Isolated runtime directory contains no bus. */
+    const char *list_args[] = {"tired", "list", "--user", "--json"};
+    CHECK(tired_cli_parse((int)(sizeof(list_args) / sizeof(list_args[0])), list_args, &request,
+                          &error));
+    CHECK(tired_list_command(&request, &output, &status, &error));
+    CHECK(strstr(output.data, "\"command\":\"list\"") != NULL &&
+          strstr(output.data, "\"record\":\"present\"") != NULL &&
+          strstr(output.data, "\"profile\":\"generic\"") != NULL &&
+          strstr(output.data, "secret") == NULL && status != TIRED_OK);
+    int bad = openat(tired_directory_fd(records), "bad\n\xff",
+                     O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC, 0600);
+    CHECK(bad >= 0 && close(bad) == 0);
+    CHECK(tired_list_command(&request, &output, &status, &error));
+    CHECK(status == TIRED_RECOVERY_REQUIRED &&
+          strstr(output.data, "\"inventory_complete\":false") != NULL &&
+          strstr(output.data, "\"record\":\"present\"") != NULL);
+    request.json = false;
+    CHECK(tired_list_command(&request, &output, &status, &error));
+    CHECK(strstr(output.data, "bad\\x0a\\xff") != NULL &&
+          strstr(output.data, "relay.service") != NULL &&
+          memchr(output.data, 255, output.length) == NULL);
     result = 0;
 cleanup:
     if (records != NULL)
+    {
+        (void)unlinkat(tired_directory_fd(records), "bad\n\xff", 0);
         (void)unlinkat(tired_directory_fd(records), filename, 0);
+    }
     if (state != NULL)
         (void)unlinkat(tired_directory_fd(state), "services", AT_REMOVEDIR);
     (void)unlinkat(tired_directory_fd(root), "tired", AT_REMOVEDIR);

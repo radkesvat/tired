@@ -1,7 +1,7 @@
 # tired
 
 C17 service-management project under implementation. Offline planning and profile,
-configuration, status, and stored-journal inspection are available; service installation,
+configuration, service listing/status, and stored-journal inspection are available; service installation,
 live validation, and lifecycle management are not implemented yet. No public release
 is available.
 
@@ -17,6 +17,7 @@ Live reconciliation and recovery resolutions remain under implementation.
 
 `tired status NAME [--user] [--json] [--check-active]` provides
 [fresh service status](docs/status.md) with separate saved-record and disk-file evidence.
+`tired list [--user] [--json]` provides a [managed-service inventory](docs/list.md).
 
 Plans perform no service changes and do not execute the workload. After staging
 installation, omit `--profile none` to use installed
