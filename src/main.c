@@ -1,3 +1,4 @@
+#include "tired/config_frontend.h"
 #include "tired/io.h"
 #include "tired/plan_output.h"
 #include "tired/profile_frontend.h"
@@ -90,6 +91,7 @@ int main(int argc, char **argv)
     {
         fputs("Usage: tired plan --offline [--profile auto|none|ID] [options] -- COMMAND [ARG...]\n"
               "       tired profiles list | show ID | validate FILE [--json]\n"
+              "       tired config validate FILE [--user] [--json]\n"
               "       tired --help | --version\n\n"
               "Offline planning and profile inspection are implemented. Service installation,\n"
               "live validation, and management commands are still under implementation.\n"
@@ -112,15 +114,19 @@ int main(int argc, char **argv)
     }
     if (request.command != TIRED_COMMAND_PLAN || !request.offline)
     {
-        if (request.command == TIRED_COMMAND_PROFILES)
+        if (request.command == TIRED_COMMAND_PROFILES || request.command == TIRED_COMMAND_CONFIG)
         {
-            if (!tired_profiles_command(&request, TIRED_BUNDLED_PROFILE_DIRECTORY, &output, &error))
+            bool ok = request.command == TIRED_COMMAND_CONFIG
+                          ? tired_config_command(&request, &output, &error)
+                          : tired_profiles_command(&request, TIRED_BUNDLED_PROFILE_DIRECTORY,
+                                                   &output, &error);
+            if (!ok)
                 goto failed;
             if (fwrite(output.data, 1, output.length, stdout) != output.length)
             {
                 json = false;
                 tired_error_set(&error, TIRED_INTERNAL, "output-write",
-                                "Cannot write profile output.", 0);
+                                "Cannot write command output.", 0);
                 goto failed;
             }
             goto done;

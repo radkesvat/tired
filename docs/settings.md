@@ -38,5 +38,12 @@ Owning `TiredSettings` objects must be initialized to zero before first use and
 destroyed when finished. Parsed layers must be merged before use. Parsing and
 merging perform no filesystem or manager operations.
 
-File discovery, CLI application, and `config show`/`config validate` integration
-remain under implementation. The executable does not yet consume these settings.
+`tired config validate FILE [--user] [--json]` reads the explicit file and validates
+it over built-in defaults without loading installed settings or contacting a manager.
+`--user` additionally enforces user-layer restrictions. Validation does not check
+file trust or the existence or trust of profile directories. JSON output identifies
+the validation base and this trust limitation. A partial file that relies on another
+layer's retry policy must include that policy to pass standalone validation.
+
+File discovery, applying settings to commands, and `config show` remain under
+implementation. The executable does not yet consume settings for other operations.
