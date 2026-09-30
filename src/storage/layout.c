@@ -132,6 +132,33 @@ bool tired_layout_discover(bool user_scope, TiredLayout *layout, TiredError *err
     tired_account_destroy(&account);
     return ok;
 }
+bool tired_layout_discover_profiles(bool user_scope, TiredLayout *output, TiredError *error)
+{
+    if (!user_scope)
+        return tired_layout_discover(false, output, error);
+    if (getuid() != geteuid() || getgid() != getegid())
+        return tired_error_set(error, TIRED_AUTHORIZATION, "layout-identity",
+                               "Profile discovery requires matching process identities.", 0);
+    TiredAccount account = {0};
+    TiredText root = {0};
+    TiredLayout layout = {.user_scope = true};
+    const char *config = getenv("XDG_CONFIG_HOME");
+    bool ok =
+        (config != NULL && config[0] != '\0') || tired_account_by_uid(getuid(), &account, error);
+    ok = ok && home_default(config, account.home.data, "/.config", &root, error) &&
+         append(&root, "/tired/config.json", &layout.paths[TIRED_PATH_CONFIG], error) &&
+         append(&root, "/tired/profiles.d", &layout.paths[TIRED_PATH_PROFILES], error);
+    if (ok)
+    {
+        tired_layout_destroy(output);
+        *output = layout;
+        layout = (TiredLayout){0};
+    }
+    tired_layout_destroy(&layout);
+    tired_account_destroy(&account);
+    tired_text_destroy(&root);
+    return ok;
+}
 bool tired_layout_check_unit_path(const TiredLayout *layout, const TiredTextList *load_paths,
                                   TiredError *error)
 {

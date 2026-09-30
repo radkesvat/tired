@@ -1,0 +1,5 @@
+# ncurses 6.3 retains its process-wide terminfo parameter cache and attribute
+# lookup tree after delscreen(). Full unwinding identifies these library frames;
+# application allocations remain checked.
+leak:_nc_tiparm
+leak:libncursesw.so.6

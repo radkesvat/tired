@@ -32,6 +32,8 @@ typedef enum
     TIRED_ACTION_REMOVE_FILES,
     TIRED_ACTION_ROLLBACK,
     TIRED_ACTION_COMMIT,
+    TIRED_ACTION_LINGER,
+    TIRED_ACTION_RESET_FAILED,
     TIRED_ACTION_COUNT
 } TiredTransactionAction;
 typedef enum
@@ -63,4 +65,5 @@ bool tired_transaction_record_encode(const TiredTransactionRecord *record, Tired
                                      TiredError *error);
 void tired_transaction_record_destroy(TiredTransactionRecord *record);
 const char *tired_transaction_action_name(TiredTransactionAction action);
+const char *tired_transaction_operation_name(TiredTransactionOperation operation);
 #endif

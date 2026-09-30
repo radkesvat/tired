@@ -8,8 +8,8 @@
     "approved_sha256": {"type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}$"},
     "argument_count": {"type": "integer", "minimum": 1, "maximum": 4096},
     "acknowledged_risks": {
-      "type": "array", "maxItems": 7, "uniqueItems": true,
-      "items": {"enum": ["run-as-root", "privileged-capabilities", "writable-privileged-code", "rapid-persistent-retry", "sensitive-command-data", "restore-drifted-unit", "sensitive-export"]}
+      "type": "array", "maxItems": 8, "uniqueItems": true,
+      "items": {"enum": ["run-as-root", "privileged-capabilities", "writable-privileged-code", "rapid-persistent-retry", "sensitive-command-data", "restore-drifted-unit", "sensitive-export", "leave-child-processes"]}
     },
     "sensitive_arguments": {
       "type": "array", "maxItems": 4095, "uniqueItems": true,

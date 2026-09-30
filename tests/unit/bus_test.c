@@ -44,7 +44,8 @@ typedef struct
     bool job_match, subscribed;
     unsigned name_mode, name_requests;
     const char *name_directory;
-    bool matched, change_during_uid, silent_match, pinned_version, login;
+    bool matched, change_during_uid, silent_match, pinned_version, login, initial_acquisition;
+    bool owner_absent_once, owner_absent;
 } Broker;
 static int properties(sd_bus_message *request, Broker *broker)
 {
@@ -81,7 +82,7 @@ static int properties(sd_bus_message *request, Broker *broker)
     sd_bus_message_unref(message);
     return rc;
 }
-static int changed_service(sd_bus *bus, const char *service)
+static int owner_signal(sd_bus *bus, const char *service, const char *previous, const char *next)
 {
     sd_bus_message *message = NULL;
     int rc = sd_bus_message_new_signal(bus, &message, "/org/freedesktop/DBus",
@@ -89,11 +90,15 @@ static int changed_service(sd_bus *bus, const char *service)
     if (rc >= 0)
         rc = sd_bus_message_set_sender(message, "org.freedesktop.DBus");
     if (rc >= 0)
-        rc = sd_bus_message_append(message, "sss", service, ":1.42", ":1.43");
+        rc = sd_bus_message_append(message, "sss", service, previous, next);
     if (rc >= 0)
         rc = sd_bus_send(bus, message, NULL);
     sd_bus_message_unref(message);
     return rc;
+}
+static int changed_service(sd_bus *bus, const char *service)
+{
+    return owner_signal(bus, service, ":1.42", ":1.43");
 }
 static int changed(sd_bus *bus) { return changed_service(bus, "org.freedesktop.systemd1"); }
 static int job_signal(sd_bus *bus, uint32_t id, const char *result)
@@ -357,6 +362,10 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
         if (strstr(rule, "JobRemoved") != NULL)
             broker->job_match = true;
         broker->matched = true;
+        if (broker->initial_acquisition &&
+            owner_signal(sd_bus_message_get_bus(message), "org.freedesktop.systemd1", "", ":1.42") <
+                0)
+            return -1;
         return broker->silent_match ? 1 : sd_bus_reply_method_return(message, "");
     }
     if (sd_bus_message_is_method_call(message, "org.freedesktop.DBus", "RemoveMatch") > 0)
@@ -369,6 +378,17 @@ static int respond(sd_bus_message *message, void *userdata, sd_bus_error *error)
                    broker->login ? "org.freedesktop.login1" : "org.freedesktop.systemd1") != 0)
             return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_INVALID_ARGS,
                                               "Wrong owner query");
+        if (broker->owner_absent_once)
+        {
+            broker->owner_absent_once = false;
+            int rc = sd_bus_reply_method_errorf(message, SD_BUS_ERROR_NAME_HAS_NO_OWNER,
+                                                "Not yet registered");
+            if (rc >= 0)
+                rc = owner_signal(sd_bus_message_get_bus(message), service, "", ":1.42");
+            return rc;
+        }
+        if (broker->owner_absent)
+            return sd_bus_reply_method_errorf(message, SD_BUS_ERROR_NAME_HAS_NO_OWNER, "Absent");
         return broker->matched
                    ? sd_bus_reply_method_return(message, "s", ":1.42")
                    : sd_bus_reply_method_errorf(message, SD_BUS_ERROR_FAILED, "Match missing");
@@ -520,14 +540,17 @@ int main(void)
     TiredManagerProbeResult observed = tired_manager_probe_result(probe);
     CHECK(observed.done && observed.error.status == TIRED_OK && observed.major_version == 249);
     CHECK(sd_bus_is_ready(client) > 0);
-    for (unsigned scenario = 0; scenario < 4; ++scenario)
+    for (unsigned scenario = 0; scenario < 7; ++scenario)
     {
         broker.uid = (uint32_t)getuid() ^ (scenario == 1 ? 1U : 0U);
         broker.change_during_uid = scenario == 2;
+        broker.initial_acquisition = scenario == 4;
+        broker.owner_absent_once = scenario == 5;
+        broker.owner_absent = scenario == 6;
         broker.silent_match = scenario == 3;
         broker.matched = false;
-        CHECK(tired_manager_identity_start(client, true, scenario == 3 ? 20 : 1000, &identity,
-                                           &error));
+        CHECK(tired_manager_identity_start(client, true, scenario == 3 || scenario == 6 ? 20 : 1000,
+                                           &identity, &error));
         struct pollfd poll_descriptor;
         uint64_t poll_deadline;
         CHECK(tired_manager_identity_poll(identity, &poll_descriptor, &poll_deadline, &error));
@@ -934,8 +957,7 @@ int main(void)
                 broker.name_requests = 0;
                 broker.path_mode = name_case == 3 ? 1 : 0;
                 CHECK(tired_name_query_start(identity, &unit_base, name_case == 1, &directory,
-                                             &pending_names, name_case == 2 ? 80 : 1000, &names,
-                                             &error));
+                                             &pending_names, 1000, &names, &error));
                 CHECK(tired_name_query_poll(names, &poll_descriptor, &poll_deadline, &error));
                 CHECK(poll_descriptor.fd >= 0 && poll_deadline != UINT64_MAX);
                 if (name_case == 0)
@@ -1042,6 +1064,12 @@ int main(void)
             CHECK(!owner.ready && owner.error.status == TIRED_AUTHORIZATION);
         else if (scenario == 2)
             CHECK(!owner.ready && owner.changed && owner.error.status == TIRED_CONFLICT);
+        else if (scenario == 4 || scenario == 5)
+            CHECK(owner.ready && !owner.changed && owner.error.status == TIRED_OK &&
+                  owner.uid == getuid() && strcmp(owner.unique_name, ":1.42") == 0);
+        else if (scenario == 6)
+            CHECK(!owner.ready && owner.error.status == TIRED_NOT_FOUND &&
+                  strcmp(owner.error.code, "manager-unavailable") == 0);
         else
             CHECK(!owner.ready && strcmp(owner.error.code, "manager-owner-timeout") == 0);
         tired_manager_identity_destroy(identity);
@@ -1049,6 +1077,8 @@ int main(void)
     }
     for (unsigned scenario = 0; scenario < 4; ++scenario)
     {
+        broker.initial_acquisition = false;
+        broker.owner_absent_once = broker.owner_absent = false;
         broker.login = true;
         broker.uid = scenario == 1 ? 1000U : 0U;
         broker.change_during_uid = scenario == 2;

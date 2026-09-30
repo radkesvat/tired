@@ -8,11 +8,11 @@
  * Caller chooses a limit <=16 MiB and validates the application format separately. */
 bool tired_private_file_read(TiredDirectory *directory, const char *name, size_t limit,
                              TiredText *output, TiredError *error);
-/* Exclusively create one 0600 file, write all bytes, sync file, check binding,
- * close, and sync directory. Never overwrite or truncate an existing entry.
- * Creation is visible before completion: use only for private staging/immutable
- * revisions under the operation lock, not publication of a current record.
- * Failure may leave an incomplete private file. Never unlink blindly on error. */
+/* Write and sync an unnamed 0600 inode, check writer close, then link it
+ * exclusively and sync the directory. Never overwrite an existing entry.
+ * Requires O_TMPFILE and procfs descriptor linking. Failure after linking can
+ * leave complete bytes with unknown directory durability; never unlink blindly.
+ * Current-record replacements still require the checked publication API. */
 bool tired_private_file_create(TiredDirectory *directory, const char *name, const char *data,
                                size_t length, TiredError *error);
 #endif

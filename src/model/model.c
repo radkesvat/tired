@@ -346,6 +346,51 @@ bool tired_spec_choice_is(const TiredServiceSpec *spec, TiredFieldId id, const c
            index == spec->fields[id].value.choice;
 }
 
+const char *tired_hardening_baseline_notice(void)
+{
+    return "Baseline hardening selects these exact settings:\n"
+           "  NoNewPrivileges=true\n  PrivateTmp=true\n  ProtectSystem=full\n\n"
+           "Compatibility warnings:\n"
+           "Privilege gains are blocked. Temporary files are private.\n"
+           "/usr, /boot and /etc become read-only.\n"
+           "Applications may need explicit writable paths.\n"
+           "Mount namespace support is required. Nonroot user\n"
+           "services cannot use this preset on the supported baseline.\n"
+           "Review the generated unit and application requirements.\n";
+}
+
+bool tired_spec_uses_hardening_baseline(const TiredServiceSpec *spec)
+{
+    return tired_field_has_value(&spec->fields[TIRED_FIELD_NO_NEW_PRIVILEGES]) &&
+           spec->fields[TIRED_FIELD_NO_NEW_PRIVILEGES].value.boolean &&
+           tired_field_has_value(&spec->fields[TIRED_FIELD_PRIVATE_TMP]) &&
+           spec->fields[TIRED_FIELD_PRIVATE_TMP].value.boolean &&
+           tired_spec_choice_is(spec, TIRED_FIELD_PROTECT_SYSTEM, "full");
+}
+
+bool tired_spec_hardening_baseline(TiredServiceSpec *spec, TiredError *error)
+{
+    TiredServiceSpec selected = {0};
+    bool ok = true;
+    for (size_t i = 0; ok && i < TIRED_FIELD_COUNT; ++i)
+        ok = tired_spec_copy_field(&selected, spec, (TiredFieldId)i, error);
+    if (ok)
+        ok = tired_spec_set(&selected, TIRED_FIELD_NO_NEW_PRIVILEGES, "true", 4, TIRED_ORIGIN_USER,
+                            true, error) &&
+             tired_spec_set(&selected, TIRED_FIELD_PRIVATE_TMP, "true", 4, TIRED_ORIGIN_USER, true,
+                            error) &&
+             tired_spec_set(&selected, TIRED_FIELD_PROTECT_SYSTEM, "full", 4, TIRED_ORIGIN_USER,
+                            true, error);
+    if (ok)
+    {
+        tired_spec_destroy(spec);
+        *spec = selected;
+        selected = (TiredServiceSpec){0};
+    }
+    tired_spec_destroy(&selected);
+    return ok;
+}
+
 bool tired_spec_validate_scalars(const TiredServiceSpec *spec, TiredError *error)
 {
     assert(spec != NULL);

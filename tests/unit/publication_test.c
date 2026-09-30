@@ -10,6 +10,32 @@
 #include <sys/stat.h>
 #include <unistd.h>
 static int fail_sync_fd = -1;
+static int fail_write_error, fail_rename_error;
+static bool short_write;
+ssize_t __real_write(int fd, const void *bytes, size_t length);
+ssize_t __wrap_write(int fd, const void *bytes, size_t length);
+ssize_t __wrap_write(int fd, const void *bytes, size_t length)
+{
+    if (fail_write_error)
+    {
+        errno = fail_write_error;
+        fail_write_error = 0;
+        return -1;
+    }
+    return __real_write(fd, bytes, short_write && length > 3 ? 3 : length);
+}
+int __real_renameat2(int oldfd, const char *old, int newfd, const char *new, unsigned flags);
+int __wrap_renameat2(int oldfd, const char *old, int newfd, const char *new, unsigned flags);
+int __wrap_renameat2(int oldfd, const char *old, int newfd, const char *new, unsigned flags)
+{
+    if (fail_rename_error)
+    {
+        errno = fail_rename_error;
+        fail_rename_error = 0;
+        return -1;
+    }
+    return __real_renameat2(oldfd, old, newfd, new, flags);
+}
 int __real_fsync(int fd);
 int __wrap_fsync(int fd);
 int __wrap_fsync(int fd)
@@ -135,6 +161,32 @@ int main(void)
     publication = NULL;
     CHECK(!tired_publication_prepare(directory, "../escape", "", 0, 0600, &publication, &error));
     CHECK(publication == NULL);
+    fail_write_error = ENOSPC;
+    CHECK(!tired_publication_prepare(directory, "full", "data", 4, 0600, &publication, &error));
+    CHECK(publication != NULL && !tired_publication_published(publication));
+    CHECK(tired_publication_discard(publication, &error));
+    CHECK(fstatat(fd, "full", &status, 0) < 0 && errno == ENOENT);
+    tired_publication_destroy(publication);
+    publication = NULL;
+    short_write = true;
+    CHECK(tired_publication_prepare(directory, "io-failed", "complete", 8, 0600, &publication,
+                                    &error));
+    short_write = false;
+    const int failures[] = {EIO, EACCES};
+    for (size_t i = 0; i < sizeof(failures) / sizeof(failures[0]); ++i)
+    {
+        fail_rename_error = failures[i];
+        CHECK(!tired_publication_commit(publication, lock, &error));
+        CHECK(!tired_publication_published(publication));
+        CHECK(fstatat(fd, "io-failed", &status, 0) < 0 && errno == ENOENT);
+        CHECK(tired_private_file_read(directory, "record", 100, &contents, &error));
+        CHECK(strcmp(contents.data, "complete") == 0);
+    }
+    CHECK(tired_publication_commit(publication, lock, &error));
+    CHECK(tired_private_file_read(directory, "io-failed", 100, &contents, &error));
+    CHECK(strcmp(contents.data, "complete") == 0 && unlinkat(fd, "io-failed", 0) == 0);
+    tired_publication_destroy(publication);
+    publication = NULL;
     fail_sync_fd = -2;
     CHECK(!tired_publication_prepare(directory, "prepare-failed", "data", 4, 0600, &publication,
                                      &error));
@@ -258,6 +310,8 @@ int main(void)
     result = 0;
 cleanup:
     fail_sync_fd = -1;
+    fail_write_error = fail_rename_error = 0;
+    short_write = false;
     if (publication != NULL)
         (void)tired_publication_discard(publication, &error);
     tired_publication_destroy(publication);

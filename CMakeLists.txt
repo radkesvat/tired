@@ -85,16 +85,25 @@ include(CTest)
 option(TIRED_WARNINGS_AS_ERRORS "Treat first-party compiler warnings as errors" ON)
 add_executable(tired src/main.c)
 target_compile_definitions(tired PRIVATE TIRED_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(tired PRIVATE TIRED_LINKAGE_MODE="${TIRED_DEPENDENCY_MODE}"
+    TIRED_LTO=$<IF:$<CONFIG:Release>,1,0>)
 target_compile_definitions(tired PRIVATE _POSIX_C_SOURCE=200809L)
 target_compile_definitions(tired PRIVATE TIRED_BUNDLED_PROFILE_DIRECTORY="${CMAKE_INSTALL_FULL_DATADIR}/tired/profiles.d")
 add_library(tired_build_options INTERFACE)
+option(TIRED_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+if(TIRED_SANITIZERS)
+    target_compile_options(tired_build_options INTERFACE -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(tired_build_options INTERFACE -fsanitize=address,undefined)
+endif()
 target_compile_options(tired_build_options INTERFACE
     -Wall -Wextra -Wpedantic -Wformat=2 -Wformat-security
     -Wstrict-prototypes -Wmissing-prototypes
     "$<$<BOOL:${TIRED_WARNINGS_AS_ERRORS}>:-Werror>"
+    "-ffile-prefix-map=${PROJECT_SOURCE_DIR}=."
+    "-fdebug-prefix-map=${PROJECT_BINARY_DIR}=build"
 )
 add_library(tired_core STATIC src/util/value.c src/model/name.c src/model/model.c src/model/limit.c src/model/process_value.c src/model/environment.c src/model/environment_file.c src/model/proposal.c src/capture/capture.c src/capture/identity.c src/render/encode.c src/render/unit.c src/cli/parse.c)
-target_sources(tired_core PRIVATE src/util/json.c)
+target_sources(tired_core PRIVATE src/util/json.c src/util/payload.c)
 target_sources(tired_core PRIVATE src/storage/io.c)
 target_sources(tired_core PRIVATE src/cli/plan.c src/cli/plan_output.c)
 target_sources(tired_core PRIVATE src/model/redaction.c)
@@ -148,6 +157,7 @@ target_sources(tired_core PRIVATE src/profiles/snapshot.c)
 target_sources(tired_core PRIVATE src/storage/executable_evidence.c)
 target_sources(tired_core PRIVATE src/storage/service_record.c)
 target_sources(tired_core PRIVATE src/storage/service_record_storage.c)
+target_sources(tired_core PRIVATE src/storage/environment_hydrate.c src/storage/history.c src/storage/transaction_cleanup.c src/storage/cleanup_ledger.c src/storage/backup_ledger.c)
 target_sources(tired_core PRIVATE src/storage/service_inventory.c)
 target_sources(tired_core PRIVATE src/storage/service_files.c)
 target_sources(tired_core PRIVATE src/storage/publication.c)
@@ -175,10 +185,22 @@ target_sources(tired_core PRIVATE src/cli/logs.c)
 target_sources(tired_core PRIVATE src/systemd/unit_batch.c)
 target_sources(tired_core PRIVATE src/systemd/load_paths.c)
 target_sources(tired_core PRIVATE src/systemd/name_query.c)
+target_sources(tired_core PRIVATE src/systemd/backend.c src/transaction/request.c
+    src/transaction/final_name.c src/transaction/validate.c src/transaction/controller.c src/transaction/output.c)
+target_sources(tired_core PRIVATE src/privilege/protocol.c src/privilege/dispatch.c src/privilege/record.c src/privilege/helper.c
+    src/ui/review.c src/ui/dashboard.c src/ui/inputs.c src/ui/diff.c src/cli/frontend.c src/cli/edit_inputs.c src/cli/doctor.c src/cli/profile_mutation.c)
+file(RELATIVE_PATH _helper_relative "${CMAKE_INSTALL_FULL_BINDIR}" "${CMAKE_INSTALL_FULL_LIBEXECDIR}/tired/tired-helper")
+file(RELATIVE_PATH _profiles_relative "${CMAKE_INSTALL_FULL_BINDIR}" "${CMAKE_INSTALL_FULL_DATADIR}/tired/profiles.d")
+target_compile_definitions(tired_core PRIVATE
+    TIRED_HELPER_PATH="${CMAKE_INSTALL_FULL_LIBEXECDIR}/tired/tired-helper"
+    TIRED_PROFILE_PATH="${CMAKE_INSTALL_FULL_DATADIR}/tired/profiles.d"
+    TIRED_HELPER_RELATIVE="${_helper_relative}" TIRED_PROFILES_RELATIVE="${_profiles_relative}")
 target_compile_definitions(tired_core PRIVATE _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 target_include_directories(tired_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c tired_crypto tired_systemd)
+target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c tired_crypto tired_systemd tired_curses)
 target_link_libraries(tired PRIVATE tired_core tired_build_options)
+add_executable(tired-helper src/helper_main.c)
+target_link_libraries(tired-helper PRIVATE tired_core tired_build_options)
 
 add_custom_command(TARGET tired POST_BUILD
     COMMAND "${CMAKE_COMMAND}"
@@ -188,8 +210,32 @@ add_custom_command(TARGET tired POST_BUILD
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckLinkage.cmake"
     VERBATIM
 )
+add_custom_command(TARGET tired-helper POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" "-DBINARY=$<TARGET_FILE:tired-helper>"
+        "-DREADELF=${TIRED_READELF}" "-DDEPENDENCY_MODE=${TIRED_DEPENDENCY_MODE}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckLinkage.cmake" VERBATIM)
 
 if(BUILD_TESTING)
+    add_executable(tired_protocol_test tests/unit/protocol_test.c)
+    target_link_libraries(tired_protocol_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.protocol COMMAND tired_protocol_test)
+    set_tests_properties(tired.protocol PROPERTIES LABELS "unit;security" TIMEOUT 10)
+    add_executable(tired_ui_diff_test tests/unit/ui_diff_test.c)
+    target_link_libraries(tired_ui_diff_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.ui_diff COMMAND tired_ui_diff_test)
+    set_tests_properties(tired.ui_diff PROPERTIES LABELS "unit;ui" TIMEOUT 10)
+    add_executable(tired_frontend_pty_test tests/pty/frontend_test.c)
+    target_link_libraries(tired_frontend_pty_test PRIVATE tired_core tired_build_options util)
+    add_test(NAME tired.frontend_pty COMMAND tired_frontend_pty_test $<TARGET_FILE:tired>)
+    set_tests_properties(tired.frontend_pty PROPERTIES LABELS "integration;pty" TIMEOUT 90 SKIP_RETURN_CODE 77)
+    if(TIRED_SANITIZERS)
+        set_tests_properties(tired.frontend_pty PROPERTIES ENVIRONMENT
+            "ASAN_OPTIONS=fast_unwind_on_malloc=0;LSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/tests/lsan.supp")
+    endif()
+    add_executable(tired_controller_test tests/transaction/controller_test.c)
+    target_link_libraries(tired_controller_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.controller COMMAND tired_controller_test)
+    set_tests_properties(tired.controller PROPERTIES LABELS "unit;transaction" TIMEOUT 600)
     add_executable(tired_logs_test tests/unit/logs_test.c)
     target_compile_definitions(tired_logs_test PRIVATE _POSIX_C_SOURCE=200809L)
     target_link_libraries(tired_logs_test PRIVATE tired_core tired_build_options)
@@ -342,7 +388,8 @@ if(BUILD_TESTING)
     add_executable(tired_publication_test tests/unit/publication_test.c)
     target_compile_definitions(tired_publication_test PRIVATE _POSIX_C_SOURCE=200809L)
     target_link_libraries(tired_publication_test PRIVATE tired_core tired_build_options)
-    target_link_options(tired_publication_test PRIVATE "LINKER:--wrap=fsync")
+    target_link_options(tired_publication_test PRIVATE "LINKER:--wrap=fsync"
+        "LINKER:--wrap=write" "LINKER:--wrap=renameat2")
     add_test(NAME tired.publication COMMAND tired_publication_test)
     set_tests_properties(tired.publication PROPERTIES LABELS unit TIMEOUT 10)
     add_executable(tired_private_file_test tests/unit/private_file_test.c)
@@ -457,6 +504,23 @@ if(BUILD_TESTING)
     target_link_libraries(tired_catalog_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.catalog COMMAND tired_catalog_test "${CMAKE_CURRENT_SOURCE_DIR}/profiles")
     set_tests_properties(tired.catalog PROPERTIES LABELS unit)
+    add_executable(tired_profile_replacement_test tests/unit/profile_replacement_test.c)
+    target_compile_definitions(tired_profile_replacement_test PRIVATE _POSIX_C_SOURCE=200809L)
+    target_link_libraries(tired_profile_replacement_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.profile_replacement COMMAND tired_profile_replacement_test "${CMAKE_CURRENT_SOURCE_DIR}/profiles")
+    set_tests_properties(tired.profile_replacement PROPERTIES LABELS unit)
+    add_executable(tired_review_refresh_test tests/unit/review_refresh_test.c)
+    target_link_libraries(tired_review_refresh_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.review_refresh COMMAND tired_review_refresh_test)
+    set_tests_properties(tired.review_refresh PROPERTIES LABELS unit)
+    add_executable(tired_dashboard_view_test tests/unit/dashboard_view_test.c)
+    target_link_libraries(tired_dashboard_view_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.dashboard_view COMMAND tired_dashboard_view_test)
+    set_tests_properties(tired.dashboard_view PROPERTIES LABELS unit)
+    add_test(NAME tired.frontend_settings COMMAND tired_frontend_pty_test $<TARGET_FILE:tired> --settings-only)
+    set_tests_properties(tired.frontend_settings PROPERTIES LABELS "integration;pty" TIMEOUT 20)
+    add_test(NAME tired.editor_resize COMMAND tired_frontend_pty_test --editors-only)
+    set_tests_properties(tired.editor_resize PROPERTIES LABELS "integration;pty" TIMEOUT 40)
     add_executable(tired_bundled_profiles_test tests/unit/bundled_profiles_test.c)
     target_link_libraries(tired_bundled_profiles_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.bundled_profiles COMMAND tired_bundled_profiles_test
@@ -533,6 +597,10 @@ if(BUILD_TESTING)
 endif()
 
 install(TARGETS tired RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(TARGETS tired-helper RUNTIME DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}/tired")
+install(FILES defaults.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired")
+install(FILES schemas/helper-request.schema.json schemas/operation-result.schema.json
+    schemas/machine-output.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
 install(FILES schemas/model-snapshot.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
 install(FILES schemas/environment-snapshot.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
 install(FILES schemas/service-metadata.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")

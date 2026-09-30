@@ -7,6 +7,7 @@ typedef struct
     TiredText directory_name, unit_name, previous_unit_name;
     TiredTransactionProgress progress;
     TiredError error;
+    bool cleanup_pending;
 } TiredTransactionInventoryEntry;
 typedef struct
 {

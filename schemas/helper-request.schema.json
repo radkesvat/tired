@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tired helper protocol request, major 1",
+  "$comment": "A request is not authority. Native validation enforces the 1 MiB wire limit, byte bounds, scope, actor, immutable identities, digests, risks and derived destinations independently. Do not replay public CLI output into this protocol.",
+  "oneOf": [
+    {"$ref": "#/$defs/mutation"},
+    {"$ref": "#/$defs/recovery"},
+    {"$ref": "#/$defs/record"},
+    {"$ref": "#/$defs/linger"}
+  ],
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "digest": {"type": "string", "pattern": "^([0-9a-f]{64})?$"},
+    "mutation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocol_version", "operation", "proposal", "values", "previous_name", "expected_unit_sha256", "expected_record_sha256", "now", "defer", "restore_drift", "keep_history", "recovery", "finish", "observation_usec", "history_revisions"],
+      "properties": {
+        "protocol_version": {"const": 1},
+        "actor_uid": {"type": "integer", "minimum": 0, "maximum": 4294967294},
+        "operation": {"type": "integer", "minimum": 0, "maximum": 9, "$comment": "create, edit, remove, rename, restore, start, stop, restart, enable, disable in that order"},
+        "proposal": {"$ref": "service-record.schema.json"},
+        "values": {"oneOf": [{"type": "null"}, {"$ref": "environment-snapshot.schema.json"}]},
+        "previous_name": {"type": "string", "maxLength": 208},
+        "expected_unit_sha256": {"$ref": "#/$defs/digest"},
+        "expected_record_sha256": {"$ref": "#/$defs/digest"},
+        "now": {"type": "boolean"}, "defer": {"type": "boolean"},
+        "restore_drift": {"type": "boolean"}, "keep_history": {"type": "boolean"},
+        "recovery": {"type": "boolean"}, "finish": {"type": "boolean"},
+        "observation_usec": {"type": "integer", "minimum": 100000, "maximum": 300000000},
+        "history_revisions": {"type": "integer", "minimum": 1, "maximum": 1000}
+      }
+    },
+    "recovery": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocol_version", "kind", "user_scope", "transaction_uuid", "finish"],
+      "properties": {
+        "protocol_version": {"const": 1}, "kind": {"const": "recover"},
+        "user_scope": {"type": "boolean"}, "transaction_uuid": {"$ref": "#/$defs/uuid"},
+        "finish": {"type": "boolean"}
+      }
+    },
+    "record": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocol_version", "kind", "unit_name", "hydrate"],
+      "properties": {
+        "protocol_version": {"const": 1}, "kind": {"const": "service_record"},
+        "unit_name": {"type": "string", "minLength": 9, "maxLength": 208},
+        "hydrate": {"type": "boolean"}
+      }
+    },
+    "linger": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocol_version", "kind", "uid"],
+      "properties": {
+        "protocol_version": {"const": 1}, "kind": {"const": "enable_linger"},
+        "uid": {"type": "integer", "minimum": 0, "maximum": 4294967294}
+      }
+    }
+  }
+}

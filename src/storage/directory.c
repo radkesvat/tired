@@ -153,6 +153,13 @@ bool tired_directory_open(const char *path, uid_t owner, bool private_directory,
 bool tired_directory_child(TiredDirectory *parent, const char *name, bool create,
                            bool private_directory, TiredDirectory **output, TiredError *error)
 {
+    return tired_directory_child_mode(parent, name, create, private_directory, 0700, output, error);
+}
+bool tired_directory_child_mode(TiredDirectory *parent, const char *name, bool create,
+                                bool private_directory, unsigned creation_mode,
+                                TiredDirectory **output, TiredError *error)
+{
+    assert(creation_mode == 0700 || (creation_mode == 0755 && !private_directory));
     assert(parent != NULL && name != NULL && output != NULL && *output == NULL);
     if (!component(name, strnlen(name, 256), error) || !tired_directory_check(parent, error))
         return false;
@@ -185,6 +192,21 @@ bool tired_directory_child(TiredDirectory *parent, const char *name, bool create
     TiredDirectory *directory = NULL;
     if (!own(fd, parent_copy, name, parent->owner, private_directory || created, &directory, error))
         return false;
+    if (created && creation_mode == 0755 && fchmod(fd, 0755) != 0)
+    {
+        io_error(error, "directory-mode", "Cannot set a new public configuration directory mode.");
+        tired_directory_destroy(directory);
+        return false;
+    }
+    if (created && creation_mode == 0755)
+    {
+        directory->private_directory = false;
+        if (!tired_directory_check(directory, error))
+        {
+            tired_directory_destroy(directory);
+            return false;
+        }
+    }
     if (created && (fsync(fd) != 0 || fsync(parent_copy) != 0))
     {
         io_error(error, "directory-sync", "Cannot make storage directory creation durable.");

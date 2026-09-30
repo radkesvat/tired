@@ -10,4 +10,6 @@ bool tired_profiles_discover_settings(const char *bundled_directory, bool user_s
                                       TiredError *error);
 bool tired_profiles_command(const TiredRequest *request, const char *bundled_directory,
                             TiredText *output, TiredError *error);
+bool tired_profiles_mutate(const TiredRequest *request, const char *bundled_directory,
+                           TiredText *output, TiredError *error);
 #endif

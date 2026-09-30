@@ -4,7 +4,9 @@
 #include "tired/render.h"
 #include "tired/risk.h"
 #include <assert.h>
+#include <inttypes.h>
 #include <json-c/json.h>
+#include <stdio.h>
 #include <string.h>
 
 static bool add(struct json_object *object, const char *key, struct json_object *child)
@@ -105,6 +107,13 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
                         bool explain, TiredText *output, TiredError *error)
 {
     assert(plan != NULL && output != NULL);
+    bool enable_linger = tired_field_has_value(&plan->spec.fields[TIRED_FIELD_ENABLE_LINGER]) &&
+                         plan->spec.fields[TIRED_FIELD_ENABLE_LINGER].value.boolean;
+    if (enable_linger &&
+        (unit_only || explain || !tired_spec_choice_is(&plan->spec, TIRED_FIELD_SCOPE, "user")))
+        return tired_error_set(error, TIRED_INVALID, "linger-review",
+                               "Account lingering requests require a full user-scope plan review.",
+                               0);
     TiredServiceSpec display = {0};
     TiredText unit = {0};
     TiredBuffer text;
@@ -127,6 +136,8 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
                             .sensitive_export = include_sensitive};
     TiredRiskReport risks;
     tired_risk_assess(&plan->spec, &facts, &risks);
+    if (plan->live_validated)
+        risks = plan->live_risks;
     if (json)
     {
         root = json_object_new_object();
@@ -134,6 +145,9 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
         environment = json_object_new_array();
         warnings = json_object_new_array();
         if (root == NULL || fields == NULL || environment == NULL || warnings == NULL)
+            goto allocation;
+        if (tired_spec_uses_hardening_baseline(&plan->spec) &&
+            !push(warnings, json_object_new_string(tired_hardening_baseline_notice())))
             goto allocation;
         for (unsigned i = 0; i < TIRED_FIELD_COUNT; ++i)
         {
@@ -215,8 +229,10 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
             !add(root, "command", json_object_new_string(explain ? "profiles explain" : "plan")) ||
             !add(root, "ok", json_object_new_boolean(true)) ||
             !add(root, "exit_code", json_object_new_int(0)) ||
-            !add(root, "live_validation", json_object_new_string("not_performed")) ||
-            !add(root, "collision_check", json_object_new_string("not_performed")) ||
+            !add(root, "live_validation",
+                 json_object_new_string(plan->live_validated ? "performed" : "not_performed")) ||
+            !add(root, "collision_check",
+                 json_object_new_string(plan->live_validated ? "performed" : "not_performed")) ||
             !add(root, "replayable", json_object_new_boolean(false)) ||
             !add(root, "profile",
                  json_object_new_string(plan->profile.id == NULL ? "generic" : plan->profile.id)) ||
@@ -233,6 +249,31 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
             !add(root, "unit", json_object_new_string_len(unit.data, (int)unit.length)))
             goto allocation;
         struct json_object *candidates = json_object_new_array();
+        if (enable_linger)
+        {
+            struct json_object *account = json_object_new_object();
+            bool built = account != NULL &&
+                         add(account, "action", json_object_new_string("enable_linger")) &&
+                         add(account, "uid", json_object_new_uint64(plan->invoking.uid)) &&
+                         add(account, "origin", json_object_new_string("explicit_user_request")) &&
+                         add(account, "authorization", json_object_new_string("not_performed")) &&
+                         add(account, "observed_linger",
+                             json_object_new_string(!plan->linger_known    ? "unknown"
+                                                    : plan->linger_enabled ? "enabled"
+                                                                           : "disabled")) &&
+                         add(account, "applied", json_object_new_boolean(false));
+            if (!built)
+            {
+                json_object_put(account);
+                json_object_put(candidates);
+                goto allocation;
+            }
+            if (!add(root, "account_change", account))
+            {
+                json_object_put(candidates);
+                goto allocation;
+            }
+        }
         if (candidates == NULL)
             goto allocation;
         for (size_t i = 0; i < plan->profile_candidates.count; ++i)
@@ -332,9 +373,15 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
     }
     else
     {
+        if (tired_spec_uses_hardening_baseline(&plan->spec) &&
+            !comment(&text, "Compatibility warning", tired_hardening_baseline_notice(), error))
+            goto fail;
         const char *heading =
-            redacted ? "# Redacted non-installable view; live validation not performed\n"
-                     : "# Offline proposal; live validation and collision checks not performed\n";
+            plan->live_validated
+                ? redacted ? "# Redacted non-installable view; live validation performed\n"
+                           : "# Live proposal; validation and collision checks performed\n"
+            : redacted ? "# Redacted non-installable view; live validation not performed\n"
+                       : "# Offline proposal; live validation and collision checks not performed\n";
         if (!tired_buffer_append(&text, heading, strlen(heading), error))
             goto fail;
         if (explain && !comment(&text, "Profile explanation",
@@ -342,6 +389,17 @@ static bool output_plan(const TiredPlan *plan, bool json, bool unit_only, bool i
             goto fail;
         if (!unit_only)
         {
+            if (enable_linger)
+            {
+                char account[256];
+                (void)snprintf(account, sizeof(account),
+                               "enable lingering for invoking UID %" PRIuMAX
+                               "; explicit request, host authorization and live verification "
+                               "pending; not applied",
+                               (uintmax_t)plan->invoking.uid);
+                if (!comment(&text, "Account change", account, error))
+                    goto fail;
+            }
             for (unsigned i = 0; i < TIRED_RISK_COUNT; ++i)
             {
                 if (!risks.present[i] && !risks.pending[i])

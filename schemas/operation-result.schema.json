@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tired mutation result, schema 1",
+  "type": "object",
+  "required": ["schema_version", "command", "ok", "exit_code", "outcome", "transaction", "service", "installation", "runtime", "warnings", "errors"],
+  "properties": {
+    "schema_version": {"const": 1}, "command": {"type": "string"},
+    "ok": {"type": "boolean"}, "exit_code": {"type": "integer"},
+    "outcome": {"type": "string"}, "transaction": {"type": "string"},
+    "error": {"type": "string"}, "message": {"type": "string"},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "errors": {"type": "array", "items": {
+      "type": "object", "required": ["exit_code", "code", "message"],
+      "properties": {"exit_code": {"type": "integer"}, "code": {"type": "string"}, "message": {"type": "string"}}
+    }},
+    "service": {
+      "type": "object", "required": ["id", "unit", "unit_path", "scope", "run_as"],
+      "properties": {
+        "id": {"type": "string"}, "unit": {"type": "string"}, "unit_path": {"type": "string"},
+        "scope": {"enum": ["system", "user"]}, "run_as": {"type": ["string", "null"]}
+      }
+    },
+    "installation": {
+      "type": "object", "required": ["state", "enabled", "rollback", "recovery_required"],
+      "properties": {
+        "state": {"enum": ["committed", "rolled_back", "removed", "unknown"]},
+        "enabled": {"type": ["boolean", "null"]}, "rollback": {"type": "boolean"},
+        "recovery_required": {"type": "boolean"}
+      }
+    },
+    "runtime": {
+      "type": "object", "required": ["active_state", "sub_state", "observation", "application_health", "earlier_start_context"],
+      "properties": {
+        "active_state": {"type": ["string", "null"]}, "sub_state": {"type": ["string", "null"]},
+        "observation": {"enum": ["initial_process_running", "completed", "not_running_or_unknown"]},
+        "application_health": {"const": "not_verified"}, "earlier_start_context": {"type": "boolean"}
+      }
+    }
+  }
+}

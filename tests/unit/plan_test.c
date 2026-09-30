@@ -169,6 +169,52 @@ int main(int argc, char **argv)
     CHECK(tired_plan_output(&plan, true, false, true, &output, &error));
     CHECK(strstr(output.data, "unrecognized-private-value") != NULL);
     tired_text_destroy(&output);
+    const char *linger_args[] = {"tired",           "plan", "--offline",    "--user",
+                                 "--enable-linger", "--",   "/usr/bin/true"};
+    CHECK(tired_cli_parse(7, linger_args, &request, &error));
+    CHECK(tired_plan_prepare(&request, &plan, &error) &&
+          plan.spec.fields[TIRED_FIELD_ENABLE_LINGER].value.boolean);
+    CHECK(tired_plan_output(&plan, true, false, false, &output, &error));
+    struct json_object *account_document = NULL, *account = NULL, *unit_value = NULL;
+    TiredText unit_copy = {0};
+    CHECK(
+        tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &account_document, &error));
+    CHECK(json_object_object_get_ex(account_document, "account_change", &account));
+    CHECK(json_object_object_get_ex(account, "uid", &flag) &&
+          json_object_get_uint64(flag) == getuid());
+    CHECK(json_object_object_get_ex(account, "applied", &flag) && !json_object_get_boolean(flag));
+    CHECK(json_object_object_get_ex(account, "authorization", &flag) &&
+          strcmp(json_object_get_string(flag), "not_performed") == 0);
+    CHECK(json_object_object_get_ex(account_document, "unit", &unit_value));
+    const char *unit_bytes = json_object_get_string(unit_value);
+    CHECK(tired_text_set(&unit_copy, unit_bytes, strlen(unit_bytes), TIRED_INPUT_LIMIT, &error));
+    CHECK(tired_plan_output(&plan, false, false, false, &output, &error));
+    CHECK(strstr(output.data, "Account change: enable lingering for invoking UID") != NULL);
+    char *saved_output = output.data;
+    CHECK(!tired_plan_output(&plan, false, true, false, &output, &error) &&
+          output.data == saved_output);
+    CHECK(tired_spec_set(&plan.spec, TIRED_FIELD_ENABLE_LINGER, "false", 5, TIRED_ORIGIN_USER, true,
+                         &error));
+    CHECK(tired_plan_output(&plan, true, false, false, &output, &error));
+    CHECK(
+        tired_json_parse(output.data, output.length, TIRED_INPUT_LIMIT, &account_document, &error));
+    CHECK(!json_object_object_get_ex(account_document, "account_change", &account));
+    CHECK(json_object_object_get_ex(account_document, "unit", &unit_value) &&
+          strcmp(unit_copy.data, json_object_get_string(unit_value)) == 0);
+    json_object_put(account_document);
+    tired_text_destroy(&unit_copy);
+    CHECK(!tired_spec_uses_hardening_baseline(&plan.spec));
+    CHECK(tired_spec_hardening_baseline(&plan.spec, &error));
+    CHECK(tired_plan_output(&plan, true, false, false, &output, &error));
+    CHECK(strstr(output.data, "NoNewPrivileges=true") != NULL &&
+          strstr(output.data, "ProtectSystem=full") != NULL &&
+          strstr(output.data, "Nonroot user") != NULL);
+    CHECK(tired_plan_output(&plan, false, true, false, &output, &error));
+    CHECK(strstr(output.data, "Compatibility warning") != NULL &&
+          strstr(output.data, "NoNewPrivileges=yes") != NULL &&
+          strstr(output.data, "PrivateTmp=yes") != NULL &&
+          strstr(output.data, "ProtectSystem=full") != NULL);
+    tired_text_destroy(&output);
     tired_plan_destroy(&plan);
     tired_request_destroy(&request);
     return 0;

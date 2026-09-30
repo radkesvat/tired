@@ -15,6 +15,11 @@ bool tired_directory_open(const char *path, uid_t owner, bool private_directory,
  * never automatically remove it by an unverified pathname. No recursive creation. */
 bool tired_directory_child(TiredDirectory *parent, const char *name, bool create,
                            bool private_directory, TiredDirectory **directory, TiredError *error);
+/* As above, but new directories may be explicitly public 0755 for administrator
+ * configuration/profile discovery. Existing entries are never chmod'ed. */
+bool tired_directory_child_mode(TiredDirectory *parent, const char *name, bool create,
+                                bool private_directory, unsigned creation_mode,
+                                TiredDirectory **directory, TiredError *error);
 /* Recheck permissions/type and the immediate parent/name binding. A descriptor
  * pins an inode, not every ancestor's location; controllers must reopen/revalidate
  * the scope root before commit and hold their mutation lock. */

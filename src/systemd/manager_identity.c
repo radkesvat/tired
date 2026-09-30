@@ -13,7 +13,7 @@ struct TiredManagerIdentity
     TiredText owner;
     uid_t expected, uid;
     uint64_t deadline;
-    bool ready, changed, user_scope;
+    bool ready, changed, user_scope, waiting_owner;
     TiredManagerKind kind;
     TiredError error;
 };
@@ -125,6 +125,17 @@ static int owner_reply(sd_bus_message *message, void *userdata, sd_bus_error *er
 {
     (void)error;
     TiredManagerIdentity *identity = userdata;
+    const sd_bus_error *remote = sd_bus_message_get_error(message);
+    if (identity->error.status == TIRED_OK && remote != NULL && identity->owner.data == NULL &&
+        (sd_bus_error_has_name(remote, SD_BUS_ERROR_NAME_HAS_NO_OWNER) ||
+         sd_bus_error_has_name(remote, SD_BUS_ERROR_SERVICE_UNKNOWN)))
+    {
+        /* An already running user manager can still be registering with its
+         * socket-activated broker. Watch for its first owner within the original
+         * deadline; neither the lookup nor this wait activates a manager. */
+        identity->waiting_owner = true;
+        return 1;
+    }
     if (identity->error.status != TIRED_OK || remote_failure(identity, message))
         return 1;
     const char *owner = NULL;
@@ -138,6 +149,7 @@ static int owner_reply(sd_bus_message *message, void *userdata, sd_bus_error *er
     }
     if (!tired_text_set(&identity->owner, owner, strlen(owner), 255, &identity->error))
         return 1;
+    identity->waiting_owner = false;
     (void)queue(identity, "GetConnectionUnixUser", identity->owner.data, uid_reply);
     return 1;
 }
@@ -171,6 +183,15 @@ static int owner_changed(sd_bus_message *message, void *userdata, sd_bus_error *
              "Broker returned an invalid owner-change signal.");
     else if (strcmp(name, service_name(identity)) == 0 && strcmp(previous, next) != 0)
     {
+        /* Socket activation can announce the first owner while the initial
+         * broker lookup is still pending. No identity is pinned yet. The
+         * outstanding lookup must still verify the unique owner and its UID. */
+        if (identity->owner.data == NULL && !identity->ready && previous[0] == '\0' &&
+            next[0] != '\0')
+        {
+            (void)queue(identity, "GetNameOwner", service_name(identity), owner_reply);
+            return 0;
+        }
         identity->changed = true;
         fail(identity, TIRED_CONFLICT, "manager-owner-changed",
              "Manager ownership changed; repeat discovery before continuing.");
@@ -240,8 +261,14 @@ bool tired_manager_identity_step(TiredManagerIdentity *identity)
             fail(identity, TIRED_INTERNAL, "manager-clock",
                  "Cannot read identity discovery clock.");
         else if (now >= identity->deadline)
-            fail(identity, TIRED_RUNTIME_FAILED, "manager-owner-timeout",
-                 "Manager identity discovery timed out.");
+        {
+            if (identity->waiting_owner)
+                fail(identity, TIRED_NOT_FOUND, "manager-unavailable",
+                     "No manager acquired the requested bus name within the discovery deadline.");
+            else
+                fail(identity, TIRED_RUNTIME_FAILED, "manager-owner-timeout",
+                     "Manager identity discovery timed out.");
+        }
     }
     for (unsigned i = 0; identity->error.status == TIRED_OK && i < 16; ++i)
     {

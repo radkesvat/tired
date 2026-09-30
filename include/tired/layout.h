@@ -28,6 +28,9 @@ bool tired_layout_resolve(bool user_scope, const char *home, const char *config,
 /* Production discovery: system paths never inspect HOME or XDG. User paths use
  * current account home and XDG values, requiring matched real/effective IDs. */
 bool tired_layout_discover(bool user_scope, TiredLayout *layout, TiredError *error);
+/* Configuration/profile paths only; usable without a session or user manager.
+ * Other paths remain unset. Never creates or guesses a runtime directory. */
+bool tired_layout_discover_profiles(bool user_scope, TiredLayout *layout, TiredError *error);
 /* User destinations must occur in the selected manager's complete UnitPath list.
  * Comparison is lexical (trailing separators ignored), without filesystem alias
  * resolution. System scope has no user XDG check. No missing-path fallback. */

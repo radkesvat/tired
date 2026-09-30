@@ -143,9 +143,10 @@ done:
     tired_publication_destroy(publication);
     return ok;
 }
-bool tired_publication_prepare(TiredDirectory *directory, const char *name, const char *data,
-                               size_t length, unsigned mode, TiredPublication **output,
-                               TiredError *error)
+bool tired_publication_prepare_recorded(TiredDirectory *directory, const char *name,
+                                        const char *data, size_t length, unsigned mode,
+                                        TiredStageRecorder recorder, void *context,
+                                        TiredPublication **output, TiredError *error)
 {
     assert(directory != NULL && name != NULL && output != NULL && *output == NULL);
     assert(data != NULL || length == 0);
@@ -168,12 +169,41 @@ bool tired_publication_prepare(TiredDirectory *directory, const char *name, cons
     if (!directory_check(publication, error) || !tired_uuid_create(uuid, error))
         goto failed;
     (void)snprintf(publication->temporary, sizeof(publication->temporary), ".tired-%s.tmp", uuid);
-    publication->fd = openat(tired_directory_fd(directory), publication->temporary,
-                             O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    publication->fd =
+        recorder == NULL
+            ? openat(tired_directory_fd(directory), publication->temporary,
+                     O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600)
+            : openat(tired_directory_fd(directory), ".", O_TMPFILE | O_RDWR | O_CLOEXEC, 0600);
     if (publication->fd < 0)
     {
         io_error(error, "publication-stage", "Cannot create publication staging file.");
         goto failed;
+    }
+    if (recorder != NULL)
+    {
+        struct stat allocated;
+        TiredFileFingerprint identity = {.exists = true, .mode = 0600};
+        if (fstat(publication->fd, &allocated) != 0)
+        {
+            io_error(error, "publication-identity", "Cannot inspect allocated staging inode.");
+            goto failed;
+        }
+        identity.device = allocated.st_dev;
+        identity.inode = allocated.st_ino;
+        identity.uid = allocated.st_uid;
+        identity.gid = allocated.st_gid;
+        memcpy(identity.sha256, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+               65);
+        if (!recorder(context, uuid, &identity, error))
+            goto failed;
+        char source[64];
+        (void)snprintf(source, sizeof(source), "/proc/self/fd/%d", publication->fd);
+        if (linkat(AT_FDCWD, source, tired_directory_fd(directory), publication->temporary,
+                   AT_SYMLINK_FOLLOW) != 0)
+        {
+            io_error(error, "publication-stage-link", "Cannot link recorded staging inode.");
+            goto failed;
+        }
     }
     publication->staged = true;
     *output = publication;
@@ -218,6 +248,13 @@ bool tired_publication_prepare(TiredDirectory *directory, const char *name, cons
 failed:
     tired_publication_destroy(publication);
     return false;
+}
+bool tired_publication_prepare(TiredDirectory *directory, const char *name, const char *data,
+                               size_t length, unsigned mode, TiredPublication **output,
+                               TiredError *error)
+{
+    return tired_publication_prepare_recorded(directory, name, data, length, mode, NULL, NULL,
+                                              output, error);
 }
 bool tired_publication_commit(TiredPublication *publication, const TiredOperationLock *lock,
                               TiredError *error)

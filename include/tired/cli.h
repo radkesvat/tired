@@ -33,14 +33,16 @@ typedef struct
     TiredCommand command;
     TiredServiceSpec overrides;
     bool seen[TIRED_FIELD_COUNT];
-    TiredTextList arguments; /* Workload argv or management operands. */
+    TiredTextList arguments;   /* Workload argv or management operands. */
+    TiredTextList replacement; /* Literal edit command after its -- boundary. */
     TiredEnvironment environment;
     TiredTextList pass_environment, import_files, environment_files, credentials, allowed_risks;
-    TiredText profile, working_directory, output, color;
+    TiredText profile, working_directory, output, color, apply_mode, resolution, transaction;
     TiredText active_filter, enabled_filter, search;
     TiredLogOptions logs;
     bool help, version, json, no_tui, yes, quiet, verbose, offline, unit, dry_run,
-        include_sensitive, check_active, effective;
+        include_sensitive, check_active, effective, now, keep_history, refresh_profile,
+        restore_drift, build_info;
     bool explicit_boundary;
     bool profile_explain;
     bool sensitive_arguments[TIRED_ARGUMENT_LIMIT]; /* Workload argv indices; index 0 excluded. */
@@ -48,7 +50,8 @@ typedef struct
 /* Parse argv including the frontend executable. No filesystem, environment,
  * manager, or workload access. Output is atomic and owns copies. */
 bool tired_cli_parse(int argc, const char *const *argv, TiredRequest *request, TiredError *error);
-/* Reports a recognized --json flag even when later parsing fails. */
+/* Select JSON presentation anywhere in frontend grammar, including after an
+ * invalid option/value; workload arguments and literal option values are ignored. */
 bool tired_cli_parse_format(int argc, const char *const *argv, TiredRequest *request,
                             bool *json_requested, TiredError *error);
 const char *tired_command_name(TiredCommand command);

@@ -1,4 +1,5 @@
 #include "tired/transaction_inventory.h"
+#include "tired/history.h"
 #include "tired/manifest_storage.h"
 #include <assert.h>
 #include <dirent.h>
@@ -81,6 +82,8 @@ static bool inspect(TiredDirectory *root, bool user_scope, TiredTransactionInven
         ok = false;
         goto done;
     }
+    if (!tired_transaction_cleanup_pending(transaction, &entry->cleanup_pending, &entry->error))
+        goto done;
     if (journal.staging_count != 0)
         invalid(&entry->error, "Transaction has unexplained journal staging.");
     else if (first->operation == TIRED_TRANSACTION_RENAME &&
@@ -180,8 +183,8 @@ bool tired_transaction_inventory_read(TiredDirectory *root, bool user_scope,
             goto done;
         if (entry->error.status != TIRED_OK)
             inventory.complete = false;
-        else if (entry->progress.mode != TIRED_PROGRESS_COMMITTED &&
-                 entry->progress.mode != TIRED_PROGRESS_ROLLED_BACK)
+        else if (entry->cleanup_pending || (entry->progress.mode != TIRED_PROGRESS_COMMITTED &&
+                                            entry->progress.mode != TIRED_PROGRESS_ROLLED_BACK))
         {
             if (!tired_text_list_append(&inventory.pending_names, entry->unit_name.data,
                                         entry->unit_name.length, 4096, TIRED_INPUT_LIMIT, error))

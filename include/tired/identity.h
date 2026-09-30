@@ -25,6 +25,10 @@ bool tired_account_resolve(const char *selector, size_t length, TiredAccount *ac
                            TiredError *error);
 bool tired_group_by_gid(gid_t gid, TiredGroup *group, TiredError *error);
 bool tired_group_resolve(const char *selector, size_t length, TiredGroup *group, TiredError *error);
+/* Capture the invoking account. For root system-scope frontends only, validated
+ * sudo UID/name hints select the original account as a safe workload default.
+ * These hints never authorize anything; user scope always uses the current UID. */
+bool tired_invoking_account(bool user_scope, TiredAccount *account, TiredError *error);
 void tired_account_destroy(TiredAccount *account);
 void tired_group_destroy(TiredGroup *group);
 #endif

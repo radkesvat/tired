@@ -26,4 +26,10 @@ void tired_transaction_journal_destroy(TiredTransactionJournal *journal);
 bool tired_transaction_journal_append(TiredDirectory *directory, const TiredOperationLock *lock,
                                       const TiredTransactionRecord *record,
                                       TiredPublication **publication, TiredError *error);
+/* Atomic private metadata append: the inode remains unnamed until its complete
+ * contents are synced. Process death cannot leave partial records or staging. */
+bool tired_transaction_journal_append_atomic(TiredDirectory *directory,
+                                             const TiredOperationLock *lock,
+                                             const TiredTransactionRecord *record,
+                                             TiredError *error);
 #endif

@@ -175,12 +175,12 @@ done:
     tired_transaction_journal_destroy(&journal);
     return ok;
 }
-bool tired_transaction_journal_append(TiredDirectory *directory, const TiredOperationLock *lock,
-                                      const TiredTransactionRecord *record,
-                                      TiredPublication **publication, TiredError *error)
+static bool journal_append(TiredDirectory *directory, const TiredOperationLock *lock,
+                           const TiredTransactionRecord *record, TiredPublication **publication,
+                           TiredError *error)
 {
-    assert(directory != NULL && lock != NULL && record != NULL && publication != NULL &&
-           *publication == NULL);
+    assert(directory != NULL && lock != NULL && record != NULL &&
+           (publication == NULL || *publication == NULL));
     TiredTransactionJournal journal = {0};
     TiredText bytes = {0};
     bool ok = false;
@@ -205,11 +205,28 @@ bool tired_transaction_journal_append(TiredDirectory *directory, const TiredOper
     if (!tired_transaction_progress_advance(&journal.progress, record, error))
         goto done;
     (void)snprintf(name, sizeof(name), "%04u.json", (unsigned)record->sequence);
-    ok = tired_publication_prepare(directory, name, bytes.data, bytes.length, 0600, publication,
-                                   error) &&
-         tired_publication_commit(*publication, lock, error);
+    if (publication == NULL)
+        ok = tired_private_file_create(directory, name, bytes.data, bytes.length, error);
+    else
+        ok = tired_publication_prepare(directory, name, bytes.data, bytes.length, 0600, publication,
+                                       error) &&
+             tired_publication_commit(*publication, lock, error);
 done:
     tired_text_destroy(&bytes);
     tired_transaction_journal_destroy(&journal);
     return ok;
+}
+bool tired_transaction_journal_append(TiredDirectory *directory, const TiredOperationLock *lock,
+                                      const TiredTransactionRecord *record,
+                                      TiredPublication **publication, TiredError *error)
+{
+    assert(publication != NULL);
+    return journal_append(directory, lock, record, publication, error);
+}
+bool tired_transaction_journal_append_atomic(TiredDirectory *directory,
+                                             const TiredOperationLock *lock,
+                                             const TiredTransactionRecord *record,
+                                             TiredError *error)
+{
+    return journal_append(directory, lock, record, NULL, error);
 }

@@ -1,9 +1,11 @@
+#define _GNU_SOURCE
 #include "tired/private_file.h"
 #include "tired/capture.h"
 #include "tired/io.h"
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -96,11 +98,14 @@ bool tired_private_file_create(TiredDirectory *directory, const char *name, cons
     if (!inputs(directory, name, length, error))
         return false;
     int parent = tired_directory_fd(directory);
-    int fd =
-        openat(parent, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC | O_NOCTTY, 0600);
+    /* The inode remains unnamed until every byte is synced and the writer is
+     * checked. A process death during a write cannot expose partial metadata. */
+    int fd = openat(parent, ".", O_RDWR | O_TMPFILE | O_CLOEXEC, 0600);
     if (fd < 0)
-        return io_error(error, "private-file-create", "Cannot exclusively create private file.");
-    bool ok = binding(directory, name, fd, error);
+        return io_error(error, "private-file-create", "Cannot allocate an unnamed private file.");
+    bool ok = fchmod(fd, 0600) == 0;
+    if (!ok)
+        io_error(error, "private-file-mode", "Cannot protect the private file.");
     size_t written = 0;
     while (ok && written < length)
     {
@@ -123,11 +128,25 @@ bool tired_private_file_create(TiredDirectory *directory, const char *name, cons
     if (ok && fsync(fd) != 0)
         ok = io_error(error, "private-file-sync",
                       "Private file sync failed; durability is unknown.");
-    if (ok)
-        ok = binding(directory, name, fd, error);
+    if (ok && !inputs(directory, name, length, error))
+        ok = false;
+    int retained = ok ? fcntl(fd, F_DUPFD_CLOEXEC, 3) : -1;
+    if (ok && retained < 0)
+        ok = io_error(error, "private-file-retain", "Cannot retain private file identity.");
     if (close(fd) != 0 && ok)
-        ok = io_error(error, "private-file-close",
-                      "Private file close failed; completion is unknown.");
+        ok = io_error(error, "private-file-close", "Cannot close the private writer.");
+    if (ok)
+    {
+        char source[64];
+        (void)snprintf(source, sizeof(source), "/proc/self/fd/%d", retained);
+        if (linkat(AT_FDCWD, source, parent, name, AT_SYMLINK_FOLLOW) != 0)
+            ok = io_error(error, "private-file-link",
+                          "Cannot exclusively publish the private file.");
+        else
+            ok = binding(directory, name, retained, error);
+    }
+    if (retained >= 0 && close(retained) != 0 && ok)
+        ok = io_error(error, "private-file-close", "Cannot close private file identity.");
     if (ok && fsync(parent) != 0)
         ok = io_error(error, "private-file-directory-sync",
                       "Directory sync failed; durability is unknown.");

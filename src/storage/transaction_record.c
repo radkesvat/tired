@@ -9,10 +9,16 @@
 
 static const char *const operations[] = {"create", "edit", "remove",  "rename", "restore",
                                          "start",  "stop", "restart", "enable", "disable"};
-static const char *const actions[] = {
-    "prepare", "publish_files", "reload",       "enable",       "disable",  "start", "stop",
-    "restart", "observe",       "store_record", "remove_files", "rollback", "commit"};
+static const char *const actions[] = {"prepare", "publish_files", "reload",       "enable",
+                                      "disable", "start",         "stop",         "restart",
+                                      "observe", "store_record",  "remove_files", "rollback",
+                                      "commit",  "enable_linger", "reset_failed"};
 static const char *const states[] = {"intent", "completed", "failed", "uncertain"};
+const char *tired_transaction_operation_name(TiredTransactionOperation operation)
+{
+    return (unsigned)operation < TIRED_TRANSACTION_OPERATION_COUNT ? operations[operation]
+                                                                   : "unknown";
+}
 _Static_assert(sizeof(operations) / sizeof(operations[0]) == TIRED_TRANSACTION_OPERATION_COUNT,
                "Operation names");
 _Static_assert(sizeof(actions) / sizeof(actions[0]) == TIRED_ACTION_COUNT, "Action names");

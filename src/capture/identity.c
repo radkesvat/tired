@@ -6,6 +6,7 @@
 #include <pwd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 void tired_group_destroy(TiredGroup *group)
 {
@@ -171,4 +172,25 @@ bool tired_group_resolve(const char *selector, size_t length, TiredGroup *group,
     if (!selector_copy(selector, length, name, &numeric, &id, error))
         return false;
     return group_lookup(numeric ? NULL : name, (gid_t)id, group, error);
+}
+bool tired_invoking_account(bool user_scope, TiredAccount *account, TiredError *error)
+{
+    const char *uid_hint = getenv("SUDO_UID"), *name_hint = getenv("SUDO_USER");
+    if (user_scope || getuid() != 0 || (uid_hint == NULL && name_hint == NULL))
+        return tired_account_by_uid(getuid(), account, error);
+    TiredAccount original = {0};
+    uint64_t uid;
+    bool ok = uid_hint != NULL && name_hint != NULL &&
+              tired_parse_u64(uid_hint, strlen(uid_hint), 0, UINT32_MAX - 1, &uid, error) &&
+              tired_account_resolve(name_hint, strlen(name_hint), &original, error) &&
+              original.uid == (uid_t)uid;
+    if (ok)
+    {
+        tired_account_destroy(account);
+        *account = original;
+        original = (TiredAccount){0};
+    }
+    tired_account_destroy(&original);
+    return ok || tired_error_set(error, TIRED_INVALID, "sudo-origin",
+                                 "Sudo account hints do not match the account database.", 0);
 }

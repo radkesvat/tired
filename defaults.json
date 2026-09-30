@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "color": "auto",
+  "ascii": false,
+  "tui": true,
+  "retry_policy": "persistent",
+  "restart_sec": "5s",
+  "history_revisions": 5,
+  "log_tail": 100,
+  "observation_sec": "3s"
+}

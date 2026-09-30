@@ -274,9 +274,13 @@ bool tired_list_command(const TiredRequest *request, TiredText *output, TiredSta
             json_object_object_del(row, "command");
             json_object_object_del(row, "schema_version");
             if (view.record != NULL &&
-                !add(row, "profile",
-                     json_object_new_string(record.has_profile ? record.profile.profile.id
-                                                               : "none")))
+                (!add(row, "profile",
+                      json_object_new_string(record.has_profile ? record.profile.profile.id
+                                                                : "none")) ||
+                 (tired_field_has_value(&record.spec.fields[TIRED_FIELD_RUN_AS]) &&
+                  !add(row, "run_as",
+                       json_object_new_string(
+                           record.spec.fields[TIRED_FIELD_RUN_AS].value.text.data)))))
                 goto allocation;
         }
         if (!add(row, "filename_display", json_object_new_string(display.data)) ||

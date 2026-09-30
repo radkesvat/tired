@@ -1,8 +1,11 @@
 #include "tired/config_frontend.h"
+#include "tired/doctor.h"
+#include "tired/frontend.h"
 #include "tired/io.h"
 #include "tired/list_frontend.h"
 #include "tired/logs_frontend.h"
 #include "tired/name.h"
+#include "tired/payload.h"
 #include "tired/plan_output.h"
 #include "tired/profile_frontend.h"
 #include "tired/recover_frontend.h"
@@ -63,7 +66,8 @@ static void report_error(const TiredError *error, bool json, const TiredRequest 
     struct json_object *object = json_object_new_object();
     if (object == NULL)
     {
-        fputs("{\"ok\":false,\"exit_code\":1,\"error\":\"allocation\"}\n", stdout);
+        fputs("{\"schema_version\":1,\"ok\":false,\"exit_code\":1,\"error\":\"allocation\"}\n",
+              stdout);
         return;
     }
     struct json_object *status = json_object_new_int(error->status);
@@ -81,7 +85,8 @@ static void report_error(const TiredError *error, bool json, const TiredRequest 
         json_object_put(ok);
         json_object_put(schema);
         json_object_put(object);
-        fputs("{\"ok\":false,\"exit_code\":1,\"error\":\"allocation\"}\n", stdout);
+        fputs("{\"schema_version\":1,\"ok\":false,\"exit_code\":1,\"error\":\"allocation\"}\n",
+              stdout);
         return;
     }
     /* Fixed literal keys; json-c owns successful insertions. */
@@ -138,7 +143,9 @@ static void report_error(const TiredError *error, bool json, const TiredRequest 
     result |= rc;
     const char *encoded =
         result == 0 ? json_object_to_json_string_ext(object, JSON_C_TO_STRING_PLAIN) : NULL;
-    fputs(encoded == NULL ? "{\"ok\":false,\"exit_code\":1,\"error\":\"allocation\"}" : encoded,
+    fputs(encoded == NULL
+              ? "{\"schema_version\":1,\"ok\":false,\"exit_code\":1,\"error\":\"allocation\"}"
+              : encoded,
           stdout);
     fputc('\n', stdout);
     json_object_put(object);
@@ -155,6 +162,8 @@ int main(int argc, char **argv)
 {
     (void)signal(SIGPIPE, SIG_IGN);
     TiredRequest request = {0};
+    TiredText profile_path = {0};
+    const char *profiles = TIRED_BUNDLED_PROFILE_DIRECTORY;
     TiredPlan plan = {0};
     TiredSettings settings = {0};
     TiredProfileCatalog catalog = {0};
@@ -166,12 +175,18 @@ int main(int argc, char **argv)
         goto failed;
     if (request.help)
     {
-        fputs(
-            "Usage: tired plan --offline [--profile auto|none|ID] [options] -- COMMAND [ARG...]\n"
+        static const char help[] =
+            "Usage: tired [creation options] COMMAND [ARG...]\n"
+            "       tired create [options] -- COMMAND [ARG...]\n"
+            "       tired plan [--offline] [options] -- COMMAND [ARG...]\n"
+            "       tired  (interactive dashboard; compact list without a terminal)\n"
             "       tired profiles list | show ID | validate FILE [--json]\n"
+            "       tired profiles install FILE | remove ID [--user] --yes\n"
             "       tired profiles explain [options] -- COMMAND [ARG...]\n"
             "       tired config show | validate FILE [--user] [--json]\n"
-            "       tired recover [--user] [--json]  (read-only inspection)\n"
+            "       tired recover [--user] [--json]\n"
+            "         [--transaction UUID --resolution finish|rollback --yes]\n"
+            "       tired doctor [NAME] [--user] [--json]\n"
             "       tired status NAME [--user] [--json] [--check-active]\n"
             "       tired list [--user] [--json]\n"
             "         [--active-state STATE] [--enabled-state STATE] [--profile ID] [--search "
@@ -179,31 +194,131 @@ int main(int argc, char **argv)
             "       tired show NAME [--user] [--json | --unit] [--effective] [--output NEW_FILE]\n"
             "       tired logs NAME [--user] [--json] [--follow] [--lines 0..10000]\n"
             "         [--since @SECONDS|UTC_TIMESTAMP] [--boot current|BOOT_ID]\n"
-            "       tired --help | --version\n\n"
-            "Offline planning and profile, configuration, and stored-journal inspection are "
-            "available.\n"
-            "Service installation, live validation, and recovery resolutions are still under "
-            "implementation.\n"
-            "Options: --user, --name NAME, --run-as USER, --group GROUP,\n"
+            "       tired start|stop|restart|enable|disable NAME [--user] [--json]\n"
+            "         enable/disable: --now also changes current runtime state\n"
+            "       tired edit NAME [options] [--refresh-profile] [--restore-managed]\n"
+            "         [--apply-mode restart|defer] [-- COMMAND ARG...]\n"
+            "       tired rename NAME NEW_NAME [--yes] [--user] [--json]\n"
+            "       tired remove NAME [--yes] [--keep-history] [--user] [--json]\n"
+            "       tired --help | --version | --build-info [--json]\n\n"
+            "Common: --system|--user, --json, --no-tui, --yes, --quiet, --verbose,\n"
+            "  --color auto|always|never, --allow-risk CODE (repeatable).\n"
+            "Creation/edit: --name NAME, --description TEXT, --run-as USER, --group GROUP,\n"
             "  --working-directory PATH, --type TYPE, --restart POLICY, --restart-sec TIME,\n"
+            "  --hardening baseline selects an explicit preset with compatibility warnings.\n"
+            "  --start|--no-start, --enable|--no-enable, --network none|network|online,\n"
+            "  --start-limit-interval TIME, --start-limit-burst INTEGER,\n"
             "  --retry-policy persistent|limited, --nofile SOFT:HARD, --set FIELD=VALUE, --unset "
             "FIELD,\n"
             "  --env KEY=VALUE, --pass-env KEY, --env-file PATH, --import-env-file PATH,\n"
             "  --credential NAME=PATH, --unit, --json, --output NEW_FILE.\n"
             "  --sensitive-arg INDEX masks a workload argument (1 is the first after COMMAND).\n"
+            "  --enable-linger explicitly proposes an account change with --user; full review "
+            "required.\n"
             "Sensitive exports: --include-sensitive --allow-risk sensitive-export --output "
             "NEW_FILE.\n"
-            "Arguments after COMMAND or -- belong to the workload. Planning never executes it.\n",
-            stdout);
+            "Arguments after COMMAND or -- belong to the workload. Planning never executes it.\n";
+        if (request.json)
+        {
+            struct json_object *usage = json_object_new_string(help);
+            const char *encoded =
+                usage == NULL ? NULL
+                              : json_object_to_json_string_ext(usage, JSON_C_TO_STRING_PLAIN);
+            if (encoded == NULL)
+            {
+                json_object_put(usage);
+                tired_error_set(&error, TIRED_INTERNAL, "allocation", "Cannot encode help output.",
+                                0);
+                goto failed;
+            }
+            printf("{\"schema_version\":1,\"command\":\"help\",\"ok\":true,\"exit_code\":0,"
+                   "\"usage\":%s}\n",
+                   encoded);
+            json_object_put(usage);
+        }
+        else
+            fputs(help, stdout);
         goto done;
     }
     if (request.version)
     {
-        printf("tired %s\n", TIRED_VERSION);
+        if (request.json)
+            printf("{\"schema_version\":1,\"version\":\"%s\"}\n", TIRED_VERSION);
+        else
+            printf("tired %s\n", TIRED_VERSION);
+        goto done;
+    }
+    if (request.build_info)
+    {
+        if (request.json)
+        {
+            printf("{\"schema_version\":1,\"version\":\"%s\",\"language\":\"C17\","
+                   "\"dependency_mode\":\"%s\",\"compiler\":\"Clang\",\"compiler_version\":\"%s\","
+                   "\"systemd_min\":249,\"glibc_min\":\"2.35\",\"lto\":%s,"
+                   "\"schemas\":{\"profile\":1,\"settings\":1,\"service_record\":1,"
+                   "\"transaction\":1,\"protocol\":1,\"output\":1}}\n",
+                   TIRED_VERSION, TIRED_LINKAGE_MODE, __clang_version__,
+                   TIRED_LTO ? "true" : "false");
+            goto done;
+        }
+        printf("tired %s\nC17; Linux x86-64/ARM64; systemd >=249; glibc >=2.35\n"
+               "Libraries: libsystemd >=249, ncursesw >=6.2, json-c >=0.15, OpenSSL >=3.0\n"
+               "Schemas: profile=1 settings=1 service-record=1 transaction=1 protocol=1 output=1\n",
+               TIRED_VERSION);
+        goto done;
+    }
+    if (request.include_sensitive &&
+        (request.output.data == NULL || !allowed(&request, "sensitive-export")))
+    {
+        tired_error_set(&error, TIRED_INVALID, "sensitive-export",
+                        "Sensitive output requires a new private output file and explicit "
+                        "sensitive-export acknowledgment.",
+                        0);
+        goto failed;
+    }
+    if (!tired_payload_path(false, &profile_path, &error))
+        goto failed;
+    profiles = profile_path.data;
+    if (request.command == TIRED_COMMAND_DASHBOARD || request.command == TIRED_COMMAND_CREATE ||
+        (request.command == TIRED_COMMAND_PLAN && !request.offline) ||
+        (request.command >= TIRED_COMMAND_START && request.command <= TIRED_COMMAND_REMOVE) ||
+        (request.command == TIRED_COMMAND_RECOVER && request.resolution.data != NULL))
+    {
+        TiredStatus status = TIRED_OK;
+        bool ok = request.command == TIRED_COMMAND_DASHBOARD
+                      ? tired_frontend_dashboard(&request, profiles, &output, &status, &error)
+                      : tired_frontend_command(&request, profiles, &output, &status, &error);
+        if (!ok)
+            goto failed;
+        result = status;
+        if (!(request.quiet && !request.json) &&
+            fwrite(output.data, 1, output.length, stdout) != output.length)
+        {
+            json = false;
+            tired_error_set(&error, TIRED_INTERNAL, "output-write", "Cannot write command result.",
+                            errno);
+            goto failed;
+        }
         goto done;
     }
     if (request.command != TIRED_COMMAND_PLAN || !request.offline)
     {
+        if (request.command == TIRED_COMMAND_DOCTOR)
+        {
+            TiredStatus status = TIRED_OK;
+            if (!tired_doctor_command(&request, &output, &status, &error))
+                goto failed;
+            result = status;
+            if (!(request.quiet && !request.json) &&
+                fwrite(output.data, 1, output.length, stdout) != output.length)
+            {
+                json = false;
+                tired_error_set(&error, TIRED_INTERNAL, "output-write", "Cannot write diagnostics.",
+                                errno);
+                goto failed;
+            }
+            goto done;
+        }
         if (request.command == TIRED_COMMAND_LOGS)
         {
             TiredStatus status = TIRED_OK;
@@ -231,12 +346,12 @@ int main(int argc, char **argv)
                           ? tired_recover_command(&request, &output, &command_status, &error)
                       : request.command == TIRED_COMMAND_CONFIG
                           ? tired_config_command(&request, &output, &error)
-                          : tired_profiles_command(&request, TIRED_BUNDLED_PROFILE_DIRECTORY,
-                                                   &output, &error);
+                          : tired_profiles_command(&request, profiles, &output, &error);
             if (!ok)
                 goto failed;
             result = command_status;
-            if (fwrite(output.data, 1, output.length, stdout) != output.length)
+            if (!(request.quiet && !request.json) &&
+                fwrite(output.data, 1, output.length, stdout) != output.length)
             {
                 json = false;
                 tired_error_set(&error, TIRED_INTERNAL, "output-write",
@@ -245,9 +360,8 @@ int main(int argc, char **argv)
             }
             goto done;
         }
-        tired_error_set(
-            &error, TIRED_UNSUPPORTED, "implementation-incomplete",
-            "This command is not implemented in this build; use --help for available commands.", 0);
+        tired_error_set(&error, TIRED_INVALID, "unknown-command",
+                        "Unknown command; use --help for supported commands.", 0);
         goto failed;
     }
     if (request.include_sensitive &&
@@ -267,8 +381,7 @@ int main(int argc, char **argv)
         bool user = tired_spec_choice_is(&plan.spec, TIRED_FIELD_SCOPE, "user");
         TiredProfileContext context = {
             .systemd_version = 249}; /* Declared offline target, not a host observation. */
-        if (!tired_profiles_discover_settings(TIRED_BUNDLED_PROFILE_DIRECTORY, user, &settings,
-                                              &catalog, &error) ||
+        if (!tired_profiles_discover_settings(profiles, user, &settings, &catalog, &error) ||
             !tired_plan_apply_profiles(&plan, &catalog, request.profile.data, &context, &error))
             goto failed;
     }
@@ -286,7 +399,8 @@ int main(int argc, char **argv)
         else if (!request.quiet)
             fputs("Wrote a private offline plan. Live validation was not performed.\n", stdout);
     }
-    else if (fwrite(output.data, 1, output.length, stdout) != output.length)
+    else if (!(request.quiet && !request.json) &&
+             fwrite(output.data, 1, output.length, stdout) != output.length)
     {
         tired_error_set(&error, TIRED_INTERNAL, "output-write", "Cannot write plan output.", 0);
         /* A partial document cannot be repaired by emitting another document. */
@@ -298,6 +412,7 @@ failed:
     result = error.status == TIRED_OK ? TIRED_INTERNAL : error.status;
     report_error(&error, json, &request);
 done:
+    tired_text_destroy(&profile_path);
     tired_text_destroy(&output);
     tired_plan_destroy(&plan);
     tired_settings_destroy(&settings);

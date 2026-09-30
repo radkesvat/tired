@@ -1,6 +1,7 @@
 #include "tired/service_record.h"
 #include "tired/file_target.h"
 #include "tired/io.h"
+#include "tired/name.h"
 #include "tired/render.h"
 #include <assert.h>
 #include <string.h>
@@ -27,6 +28,7 @@ void tired_service_record_destroy(TiredServiceRecord *record)
     tired_text_destroy(&record->unit_path);
     tired_text_destroy(&record->environment_path);
     tired_text_list_destroy(&record->external_config_paths);
+    tired_text_list_destroy(&record->former_unit_names);
     *record = (TiredServiceRecord){0};
 }
 static bool related(const TiredServiceRecord *record, TiredError *error)
@@ -49,6 +51,7 @@ static bool related(const TiredServiceRecord *record, TiredError *error)
                executable->value.text.length) != 0 ||
         !path_valid(&record->unit_path, error) ||
         (record->environment.count != 0 && !record->has_environment) ||
+        (record->linger_requested && !record->metadata.user_scope) ||
         (record->has_profile && !record->metadata.user_scope &&
          record->profile.source_origin == TIRED_PROFILE_USER))
         return invalid(error);
@@ -72,6 +75,14 @@ static bool related(const TiredServiceRecord *record, TiredError *error)
     for (size_t i = 0; i < record->external_config_paths.count; ++i)
         if (!path_valid(&record->external_config_paths.items[i], error))
             return invalid(error);
+    for (size_t i = 0; i < record->former_unit_names.count; ++i)
+    {
+        const TiredText *name = &record->former_unit_names.items[i];
+        if (name->length <= 8 || name->length > 208 ||
+            strcmp(name->data + name->length - 8, ".service") != 0 ||
+            !tired_name_validate_base(name->data, name->length - 8, error))
+            return invalid(error);
+    }
     TiredText rendered = {0};
     bool ok = tired_render_unit(&record->spec, record->metadata.service_uuid,
                                 record->has_environment ? &record->environment_path : NULL,
@@ -102,6 +113,32 @@ static bool read_text(struct json_object *document, const char *key, TiredText *
     return tired_text_set(output, json_object_get_string(value),
                           (size_t)json_object_get_string_len(value), 4096, error);
 }
+static bool inputs_parse(struct json_object *document, TiredServiceRecord *record,
+                         TiredError *error)
+{
+    struct json_object *inputs = NULL, *environment = NULL;
+    if (!json_object_object_get_ex(document, "inputs", &inputs) ||
+        !json_object_object_get_ex(inputs, "environment", &environment) ||
+        !json_object_is_type(environment, json_type_array))
+        return invalid(error);
+    /* Persisted metadata deliberately has no plaintext assignment values. */
+    for (size_t i = 0; i < json_object_array_length(environment); ++i)
+    {
+        struct json_object *entry = json_object_array_get_idx(environment, i), *value = NULL;
+        if (!json_object_object_get_ex(entry, "value", &value) || value != NULL)
+            return invalid(error);
+        struct json_object *empty = json_object_new_string("");
+        if (empty == NULL || json_object_object_add(entry, "value", empty) != 0)
+        {
+            json_object_put(empty);
+            return false;
+        }
+    }
+    const char *bytes = json_object_to_json_string_ext(inputs, JSON_C_TO_STRING_PLAIN);
+    return bytes != NULL &&
+           tired_environment_snapshot_parse(bytes, strlen(bytes), &record->environment,
+                                            &record->credentials, error);
+}
 bool tired_service_record_parse(const char *data, size_t length, TiredServiceRecord *output,
                                 TiredError *error)
 {
@@ -109,13 +146,13 @@ bool tired_service_record_parse(const char *data, size_t length, TiredServiceRec
     TiredServiceRecord record = {0};
     TiredText bytes = {0}, revision = {0}, digest = {0};
     struct json_object *document = NULL, *version = NULL, *profile = NULL, *environment = NULL,
-                       *configs = NULL;
+                       *configs = NULL, *former = NULL, *linger = NULL;
     uint64_t schema;
     bool ok = false;
     if (!tired_json_parse(data, length, TIRED_SERVICE_RECORD_LIMIT, &document, error))
         goto done;
     if (!json_object_is_type(document, json_type_object) ||
-        json_object_object_length(document) != 10 ||
+        json_object_object_length(document) < 10 || json_object_object_length(document) > 12 ||
         !json_object_object_get_ex(document, "schema_version", &version) ||
         !tired_json_u64(version, 1, 1, &schema, error) ||
         !json_object_object_get_ex(document, "profile", &profile) ||
@@ -123,19 +160,28 @@ bool tired_service_record_parse(const char *data, size_t length, TiredServiceRec
         !json_object_object_get_ex(document, "external_config_paths", &configs) ||
         !json_object_is_type(configs, json_type_array))
         goto bad;
+    if (json_object_object_get_ex(document, "former_unit_names", &former))
+    {
+        if (!json_object_is_type(former, json_type_array))
+            goto bad;
+    }
+    bool has_linger = json_object_object_get_ex(document, "linger_requested", &linger);
+    if ((has_linger && !json_object_is_type(linger, json_type_boolean)) ||
+        json_object_object_length(document) != 10 + (former != NULL) + has_linger)
+        goto bad;
     if (!nested(document, "metadata", &bytes, error) ||
         !tired_service_metadata_parse(bytes.data, bytes.length, &record.metadata, error) ||
         !nested(document, "model", &bytes, error) ||
         !tired_spec_parse(bytes.data, bytes.length, &record.spec, error) ||
-        !nested(document, "inputs", &bytes, error) ||
-        !tired_environment_snapshot_parse(bytes.data, bytes.length, &record.environment,
-                                          &record.credentials, error) ||
-        !nested(document, "review", &bytes, error) ||
+        !inputs_parse(document, &record, error) || !nested(document, "review", &bytes, error) ||
         !tired_review_snapshot_parse(bytes.data, bytes.length, &record.review, error) ||
         !nested(document, "executable", &bytes, error) ||
         !tired_executable_evidence_parse(bytes.data, bytes.length, &record.executable, error) ||
         !read_text(document, "unit_path", &record.unit_path, error))
         goto done;
+    record.linger_requested = has_linger
+                                  ? json_object_get_boolean(linger)
+                                  : record.spec.fields[TIRED_FIELD_ENABLE_LINGER].value.boolean;
     if (profile != NULL)
     {
         if (!nested(document, "profile", &bytes, error) ||
@@ -165,6 +211,15 @@ bool tired_service_record_parse(const char *data, size_t length, TiredServiceRec
                                     (size_t)json_object_get_string_len(value), 256,
                                     TIRED_INPUT_LIMIT, error))
             goto done;
+    }
+    for (size_t i = 0; former != NULL && i < json_object_array_length(former); ++i)
+    {
+        struct json_object *value = json_object_array_get_idx(former, i);
+        if (!json_object_is_type(value, json_type_string) ||
+            !tired_text_list_append(&record.former_unit_names, json_object_get_string(value),
+                                    (size_t)json_object_get_string_len(value), 256,
+                                    TIRED_INPUT_LIMIT, error))
+            goto bad;
     }
     if (!related(&record, error))
         goto done;
@@ -227,6 +282,13 @@ bool tired_service_record_encode(const TiredServiceRecord *record, TiredText *ou
         !tired_executable_evidence_encode(&record->executable, &bytes, error) ||
         !store(document, "executable", &bytes, error))
         goto done;
+    struct json_object *inputs = NULL, *assignments = NULL;
+    if (!json_object_object_get_ex(document, "inputs", &inputs) ||
+        !json_object_object_get_ex(inputs, "environment", &assignments))
+        goto done;
+    for (size_t i = 0; i < json_object_array_length(assignments); ++i)
+        if (json_object_object_add(json_object_array_get_idx(assignments, i), "value", NULL) != 0)
+            goto allocation;
     if (record->has_profile)
     {
         if (!tired_profile_snapshot_encode(&record->profile, &bytes, error) ||
@@ -269,6 +331,22 @@ bool tired_service_record_encode(const TiredServiceRecord *record, TiredText *ou
     if (!inserted || !add(document, "schema_version", json_object_new_int(1)) ||
         !add(document, "unit_path",
              json_object_new_string_len(record->unit_path.data, (int)record->unit_path.length)))
+        goto allocation;
+    struct json_object *former = json_object_new_array();
+    if (former == NULL)
+        goto allocation;
+    for (size_t i = 0; i < record->former_unit_names.count; ++i)
+    {
+        struct json_object *name = json_object_new_string(record->former_unit_names.items[i].data);
+        if (name == NULL || json_object_array_add(former, name) != 0)
+        {
+            json_object_put(name);
+            json_object_put(former);
+            goto allocation;
+        }
+    }
+    if (!add(document, "former_unit_names", former) ||
+        !add(document, "linger_requested", json_object_new_boolean(record->linger_requested)))
         goto allocation;
     const char *serialized = json_object_to_json_string_ext(document, JSON_C_TO_STRING_PLAIN);
     if (serialized == NULL)

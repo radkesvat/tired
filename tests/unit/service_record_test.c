@@ -359,7 +359,8 @@ static int status_checks(TiredDirectory *root, const TiredText *path, TiredServi
     CHECK(strstr(output.data, "\"command\":\"list\"") != NULL &&
           strstr(output.data, "\"record\":\"present\"") != NULL &&
           strstr(output.data, "\"profile\":\"generic\"") != NULL &&
-          strstr(output.data, "secret") == NULL && status != TIRED_OK);
+          strstr(output.data, "\"run_as\"") == NULL && strstr(output.data, "secret") == NULL &&
+          status != TIRED_OK);
     CHECK(show_checks(root, path, record) == 0);
     CHECK(set(&request.search, "ReLaY", &error));
     CHECK(set(&request.active_filter, "active", &error));
@@ -406,6 +407,19 @@ cleanup:
 }
 int main(int argc, char **argv)
 {
+    if (argc == 3 && strcmp(argv[1], "--record") == 0)
+    {
+        TiredText bytes = {0};
+        TiredServiceRecord record = {0};
+        TiredError error = {0};
+        bool ok = tired_read_file(argv[2], TIRED_SERVICE_RECORD_LIMIT, &bytes, &error) &&
+                  tired_service_record_parse(bytes.data, bytes.length, &record, &error);
+        fprintf(stderr, "Record parse: %s (%s)\n", ok ? "ok" : "failed",
+                error.code == NULL ? "none" : error.code);
+        tired_service_record_destroy(&record);
+        tired_text_destroy(&bytes);
+        return ok ? 0 : 1;
+    }
     int result = 1;
     char fixture[] = "record-storage-XXXXXX", name[42], other[42];
     char *created = NULL, *cwd = NULL;
@@ -485,6 +499,15 @@ int main(int argc, char **argv)
     CHECK(strcmp(encoded.data, again.data) == 0);
     CHECK(tired_json_parse(encoded.data, encoded.length, TIRED_SERVICE_RECORD_LIMIT, &document,
                            &error));
+    /* Earlier schema-1 records omit the additive former-name collection. */
+    json_object_object_del(document, "former_unit_names");
+    const char *legacy = json_object_to_json_string_ext(document, JSON_C_TO_STRING_PLAIN);
+    CHECK(legacy != NULL && tired_service_record_parse(legacy, strlen(legacy), &parsed, &error));
+    CHECK(parsed.former_unit_names.count == 0 && parsed.has_environment);
+    json_object_object_del(document, "linger_requested");
+    legacy = json_object_to_json_string_ext(document, JSON_C_TO_STRING_PLAIN);
+    CHECK(legacy != NULL && tired_service_record_parse(legacy, strlen(legacy), &parsed, &error));
+    CHECK(!parsed.linger_requested);
     CHECK(json_object_object_get_ex(document, "review", &review));
     CHECK(json_object_object_add(review, "argument_count", json_object_new_int(3)) == 0);
     const char *bad = json_object_to_json_string_ext(document, JSON_C_TO_STRING_PLAIN);

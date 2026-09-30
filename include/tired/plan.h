@@ -4,6 +4,7 @@
 #include "tired/cli.h"
 #include "tired/profile_merge.h"
 #include "tired/proposal.h"
+#include "tired/risk.h"
 #include "tired/settings.h"
 
 typedef struct
@@ -25,6 +26,8 @@ typedef struct
     TiredRecommendationDisposition *profile_decisions;
     bool profile_matching;
     bool profile_explicit;
+    bool live_validated, linger_known, linger_enabled;
+    TiredRiskReport live_risks;
     bool sensitive_arguments[TIRED_ARGUMENT_LIMIT];
 } TiredPlan;
 /* Read-only preparation. Reads only explicit inputs/account database and captures
@@ -35,6 +38,13 @@ bool tired_plan_prepare(const TiredRequest *request, TiredPlan *output, TiredErr
  * Does not discover settings files; caller supplies an already validated layer. */
 bool tired_plan_prepare_settings(const TiredRequest *request, const TiredSettings *settings,
                                  TiredPlan *output, TiredError *error);
+/* Apply only configured service defaults to a generic or rebuilt base model. */
+bool tired_plan_configured_defaults(TiredServiceSpec *spec, const TiredSettings *settings,
+                                    TiredError *error);
+/* Rebuild generic/configured fallback values from the current captured name.
+ * Used beneath advice when review inputs change; owns output atomically. */
+bool tired_plan_service_defaults(const TiredServiceSpec *spec, const TiredSettings *settings,
+                                 TiredServiceSpec *output, TiredError *error);
 void tired_plan_destroy(TiredPlan *plan);
 /* Apply a selected catalog snapshot atomically and retain provenance. */
 bool tired_plan_apply_profiles(TiredPlan *plan, const TiredProfileCatalog *catalog,

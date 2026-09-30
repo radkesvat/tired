@@ -58,11 +58,17 @@ static bool remote_error(TiredManagerJob *job, sd_bus_message *message)
         return false;
     if (sd_bus_error_has_name(error, SD_BUS_ERROR_ACCESS_DENIED) ||
         sd_bus_error_has_name(error, SD_BUS_ERROR_AUTH_FAILED))
+    {
+        job->result.rejected = true;
         fail(job, TIRED_AUTHORIZATION, "job-authorization",
              "Manager denied job tracking or submission.");
+    }
     else if (sd_bus_error_has_name(error, SD_BUS_ERROR_UNKNOWN_METHOD) ||
              sd_bus_error_has_name(error, SD_BUS_ERROR_UNKNOWN_INTERFACE))
+    {
+        job->result.rejected = true;
         fail(job, TIRED_UNSUPPORTED, "job-unsupported", "Manager job operation is unavailable.");
+    }
     else
         fail(job, TIRED_RUNTIME_FAILED, "job-call",
              "Job request failed or its outcome is unknown.");

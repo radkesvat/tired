@@ -61,6 +61,60 @@ static TiredFieldOrigin configured_origin(TiredSettingsOrigin origin)
     return origin == TIRED_SETTINGS_ADMIN ? TIRED_ORIGIN_CONFIG_ADMIN : TIRED_ORIGIN_CONFIG_USER;
 }
 
+bool tired_plan_configured_defaults(TiredServiceSpec *spec, const TiredSettings *settings,
+                                    TiredError *error)
+{
+    if (settings == NULL)
+        return true;
+    if (settings->supplied[TIRED_SETTING_RETRY])
+    {
+        const char *policy = settings->limited_retries ? "limited" : "persistent";
+        if (!tired_spec_set(spec, TIRED_FIELD_RETRY_POLICY, policy, strlen(policy),
+                            configured_origin(settings->origins[TIRED_SETTING_RETRY]), true, error))
+            return false;
+    }
+    if (settings->supplied[TIRED_SETTING_RESTART_DELAY])
+    {
+        char delay[32];
+        int length = snprintf(delay, sizeof(delay), "%" PRIu64 "us", settings->restart_usec);
+        if (!tired_spec_set(spec, TIRED_FIELD_RESTART_SEC, delay, (size_t)length,
+                            configured_origin(settings->origins[TIRED_SETTING_RESTART_DELAY]), true,
+                            error))
+            return false;
+    }
+    return true;
+}
+
+bool tired_plan_service_defaults(const TiredServiceSpec *spec, const TiredSettings *settings,
+                                 TiredServiceSpec *output, TiredError *error)
+{
+    TiredServiceSpec defaults = {0};
+    TiredBuffer description;
+    tired_buffer_init(&description, TIRED_INPUT_LIMIT);
+    bool ok = tired_spec_defaults(&defaults, error) &&
+              tired_plan_configured_defaults(&defaults, settings, error);
+    if (ok && tired_field_has_value(&spec->fields[TIRED_FIELD_NAME]))
+    {
+        const TiredText *name = &spec->fields[TIRED_FIELD_NAME].value.text;
+        ok = tired_spec_set(&defaults, TIRED_FIELD_SYSLOG_IDENTIFIER, name->data, name->length,
+                            TIRED_ORIGIN_CAPTURE, true, error) &&
+             tired_buffer_append(&description, name->data, name->length, error) &&
+             tired_buffer_append(&description, " (managed by tired)",
+                                 sizeof(" (managed by tired)") - 1, error) &&
+             tired_spec_set(&defaults, TIRED_FIELD_DESCRIPTION, description.data,
+                            description.length, TIRED_ORIGIN_DEFAULT, true, error);
+    }
+    if (ok)
+    {
+        tired_spec_destroy(output);
+        *output = defaults;
+        defaults = (TiredServiceSpec){0};
+    }
+    tired_buffer_destroy(&description);
+    tired_spec_destroy(&defaults);
+    return ok;
+}
+
 bool tired_plan_prepare_settings(const TiredRequest *request, const TiredSettings *settings,
                                  TiredPlan *output, TiredError *error)
 {
@@ -76,26 +130,19 @@ bool tired_plan_prepare_settings(const TiredRequest *request, const TiredSetting
         !tired_proposal_generic(&plan.invocation, user, &plan.spec, &plan.invoking,
                                 &plan.name_basis, error))
         goto fail;
-    if (settings != NULL)
+    if (!user && plan.invocation.uid == 0)
     {
-        if (settings->supplied[TIRED_SETTING_RETRY])
-        {
-            const char *policy = settings->limited_retries ? "limited" : "persistent";
-            if (!tired_spec_set(&plan.spec, TIRED_FIELD_RETRY_POLICY, policy, strlen(policy),
-                                configured_origin(settings->origins[TIRED_SETTING_RETRY]), true,
-                                error))
-                goto fail;
-        }
-        if (settings->supplied[TIRED_SETTING_RESTART_DELAY])
-        {
-            char delay[32];
-            int length = snprintf(delay, sizeof(delay), "%" PRIu64 "us", settings->restart_usec);
-            if (!tired_spec_set(&plan.spec, TIRED_FIELD_RESTART_SEC, delay, (size_t)length,
-                                configured_origin(settings->origins[TIRED_SETTING_RESTART_DELAY]),
-                                true, error))
-                goto fail;
-        }
+        if (!tired_invoking_account(false, &plan.invoking, error) ||
+            !set_text(&plan.spec, TIRED_FIELD_RUN_AS, &plan.invoking.name, TIRED_ORIGIN_CAPTURE,
+                      error) ||
+            !set_text(&plan.spec, TIRED_FIELD_GROUP, &plan.invoking.primary_group.name,
+                      TIRED_ORIGIN_CAPTURE, error))
+            goto fail;
+        plan.invocation.uid = plan.invoking.uid;
+        plan.invocation.gid = plan.invoking.primary_group.gid;
     }
+    if (!tired_plan_configured_defaults(&plan.spec, settings, error))
+        goto fail;
     for (unsigned i = 0; i < TIRED_FIELD_COUNT; ++i)
         if (request->overrides.fields[i].origin == TIRED_ORIGIN_USER &&
             !tired_spec_copy_field(&plan.spec, &request->overrides, (TiredFieldId)i, error))
@@ -265,7 +312,7 @@ bool tired_plan_apply_profiles(TiredPlan *plan, const TiredProfileCatalog *catal
         for (size_t i = 0; i < catalog->count; ++i)
         {
             const TiredProfileEntry *entry = &catalog->items[i];
-            if ((!user && entry->origin == TIRED_PROFILE_USER) ||
+            if (!tired_catalog_entry_active(catalog, i, user) ||
                 strcmp(entry->profile.id, "generic") == 0)
                 continue;
             if (tired_profile_matches(&entry->profile, &plan->invocation.executable) &&

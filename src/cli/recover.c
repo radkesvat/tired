@@ -122,8 +122,9 @@ static bool display_name(const TiredText *name, TiredText *output, TiredError *e
 }
 static bool eligible(const TiredTransactionInventoryEntry *entry)
 {
-    return entry->error.status == TIRED_OK && entry->progress.mode != TIRED_PROGRESS_COMMITTED &&
-           entry->progress.mode != TIRED_PROGRESS_ROLLED_BACK;
+    return entry->error.status == TIRED_OK &&
+           (entry->cleanup_pending || (entry->progress.mode != TIRED_PROGRESS_COMMITTED &&
+                                       entry->progress.mode != TIRED_PROGRESS_ROLLED_BACK));
 }
 static bool live_text(TiredBuffer *buffer, const TiredUnitBatchItem *item, TiredError *error)
 {
@@ -230,8 +231,8 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
     else if (!text(&buffer, "Transaction inspection (", error) ||
              !text(&buffer, user ? "user" : "system", error) ||
              !text(&buffer,
-                   "). Recovery reconciliation incomplete; resolution actions are not yet "
-                   "implemented.\n",
+                   "). Inspect observations before selecting --transaction UUID --resolution "
+                   "finish|rollback --yes.\n",
                    error))
         goto done;
     static const char *const modes[] = {"empty", "forward", "rollback", "committed", "rolled_back"};
@@ -249,8 +250,9 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
         if (observe_previous)
             previous = tired_inspection_live_item(&live, live_index++);
         bool known = entry->error.status == TIRED_OK;
-        if (!known || (entry->progress.mode != TIRED_PROGRESS_COMMITTED &&
-                       entry->progress.mode != TIRED_PROGRESS_ROLLED_BACK))
+        if (!known || entry->cleanup_pending ||
+            (entry->progress.mode != TIRED_PROGRESS_COMMITTED &&
+             entry->progress.mode != TIRED_PROGRESS_ROLLED_BACK))
             required = true;
         const char *mode = known ? modes[entry->progress.mode] : "unknown";
         const char *pending = known && entry->progress.pending
@@ -264,7 +266,10 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
             if (row == NULL ||
                 !add(row, "directory_name_display", json_object_new_string(name.data)) ||
                 !add(row, "journal_state", json_object_new_string(mode)) ||
-                !add(row, "pending_action", json_object_new_string(known ? pending : "unknown")))
+                !add(row, "pending_action",
+                     json_object_new_string(known ? (entry->cleanup_pending ? "cleanup" : pending)
+                                                  : "unknown")) ||
+                !add(row, "cleanup_pending", json_object_new_boolean(entry->cleanup_pending)))
                 goto allocation;
             if (entry->unit_name.data != NULL &&
                 !add(row, "unit_name", json_object_new_string(entry->unit_name.data)))
@@ -382,7 +387,7 @@ bool tired_recover_command(const TiredRequest *request, TiredText *output, Tired
                                         : successful == 0                ? "unavailable"
                                                                          : "partial")) ||
             !add(document, "live_reconciliation", json_object_new_string("not_performed")) ||
-            !add(document, "resolution_actions_supported", json_object_new_boolean(false)))
+            !add(document, "resolution_actions_supported", json_object_new_boolean(true)))
             goto allocation;
         const char *serialized = json_object_to_json_string_ext(document, JSON_C_TO_STRING_PRETTY);
         if (serialized == NULL)

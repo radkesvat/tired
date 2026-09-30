@@ -163,6 +163,9 @@ static bool explain(const TiredRequest *request, const char *bundled_directory, 
 bool tired_profiles_command(const TiredRequest *request, const char *bundled_directory,
                             TiredText *output, TiredError *error)
 {
+    if (request->arguments.count > 0 && (strcmp(request->arguments.items[0].data, "install") == 0 ||
+                                         strcmp(request->arguments.items[0].data, "remove") == 0))
+        return tired_profiles_mutate(request, bundled_directory, output, error);
     if (request->profile_explain)
         return explain(request, bundled_directory, output, error);
     if (request->arguments.count == 0)
@@ -250,6 +253,8 @@ bool tired_profiles_command(const TiredRequest *request, const char *bundled_dir
                 goto allocation;
             for (size_t i = 0; i < catalog.count; ++i)
             {
+                if (!tired_catalog_entry_active(&catalog, i, user))
+                    continue;
                 struct json_object *entry = json_object_new_object();
                 const TiredProfileEntry *item = &catalog.items[i];
                 if (entry == NULL)
@@ -285,6 +290,8 @@ bool tired_profiles_command(const TiredRequest *request, const char *bundled_dir
         {
             for (size_t i = 0; i < catalog.count; ++i)
             {
+                if (!tired_catalog_entry_active(&catalog, i, user))
+                    continue;
                 const TiredProfileEntry *entry = &catalog.items[i];
                 if (!tired_encode_display(entry->profile.name, strlen(entry->profile.name),
                                           &escaped, error) ||

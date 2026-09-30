@@ -3,6 +3,16 @@
 #include "tired/file_fingerprint.h"
 #include "tired/operation_lock.h"
 typedef struct TiredPublication TiredPublication;
+/* Record a newly allocated, still unnamed inode before linking or writing it.
+ * The recorder must make the identity and chosen staging UUID durable. Failure
+ * closes the unnamed inode without creating a directory entry. This is the
+ * preparation boundary used by the transaction controller. */
+typedef bool (*TiredStageRecorder)(void *, const char *, const TiredFileFingerprint *,
+                                   TiredError *);
+bool tired_publication_prepare_recorded(TiredDirectory *directory, const char *name,
+                                        const char *data, size_t length, unsigned mode,
+                                        TiredStageRecorder recorder, void *context,
+                                        TiredPublication **publication, TiredError *error);
 /* Reopen an interrupted publication under the scope lock using journal-bound
  * before/after fingerprints and the original staging UUID. Accept only prepared
  * staging, published creation, or exchanged replacement with retained before-state.

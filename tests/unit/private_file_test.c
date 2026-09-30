@@ -1,5 +1,6 @@
 #include "tired/io.h"
 #include "tired/private_file.h"
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -88,8 +89,8 @@ int main(void)
     CHECK(waitpid(child, &status, 0) == child);
     CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
     struct stat partial;
-    CHECK(fstatat(fd, "partial", &partial, 0) == 0 && partial.st_size == 2);
-    CHECK(!tired_private_file_create(directory, "partial", "abcd", 4, &error));
+    CHECK(fstatat(fd, "partial", &partial, 0) != 0 && errno == ENOENT);
+    CHECK(tired_private_file_create(directory, "partial", "abcd", 4, &error));
     CHECK(tired_private_file_read(directory, "record", 100, &contents, &error));
     CHECK(contents.length == sizeof(data) && memcmp(contents.data, data, sizeof(data)) == 0);
     result = 0;

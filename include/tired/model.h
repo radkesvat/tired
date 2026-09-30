@@ -162,5 +162,10 @@ void tired_spec_destroy(TiredServiceSpec *spec);
  * while constructing a proposal. Full install validation is a separate layer. */
 bool tired_spec_validate_scalars(const TiredServiceSpec *spec, TiredError *error);
 bool tired_spec_choice_is(const TiredServiceSpec *spec, TiredFieldId id, const char *choice);
+/* Explicit opt-in only. Atomically selects NoNewPrivileges, PrivateTmp and
+ * ProtectSystem=full as user choices; ordinary defaults remain unchanged. */
+bool tired_spec_hardening_baseline(TiredServiceSpec *spec, TiredError *error);
+bool tired_spec_uses_hardening_baseline(const TiredServiceSpec *spec);
+const char *tired_hardening_baseline_notice(void);
 
 #endif

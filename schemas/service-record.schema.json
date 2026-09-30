@@ -1,26 +1,181 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Private service record",
-  "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "metadata", "model", "inputs", "review", "executable", "profile", "unit_path", "owned_environment", "external_config_paths"],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "metadata",
+    "model",
+    "inputs",
+    "review",
+    "executable",
+    "profile",
+    "unit_path",
+    "owned_environment",
+    "external_config_paths"
+  ],
   "properties": {
-    "schema_version": {"const": 1},
-    "metadata": {"$ref": "service-metadata.schema.json"},
-    "model": {"$ref": "model-snapshot.schema.json"},
-    "inputs": {"$ref": "environment-snapshot.schema.json"},
-    "review": {"$ref": "review-snapshot.schema.json"},
-    "executable": {"$ref": "executable-evidence.schema.json"},
-    "profile": {"oneOf": [{"type": "null"}, {"$ref": "profile-snapshot.schema.json"}]},
-    "unit_path": {"$ref": "#/$defs/path"},
-    "owned_environment": {"oneOf": [{"type": "null"}, {
-      "type": "object", "additionalProperties": false, "required": ["revision", "sha256", "path"],
-      "properties": {
-        "revision": {"$ref": "transaction-progress.schema.json#/$defs/uuid"},
-        "sha256": {"type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}$"},
-        "path": {"$ref": "#/$defs/path"}
+    "schema_version": {
+      "const": 1
+    },
+    "metadata": {
+      "$ref": "service-metadata.schema.json"
+    },
+    "model": {
+      "$ref": "model-snapshot.schema.json"
+    },
+    "inputs": {
+      "$ref": "#/$defs/inputs"
+    },
+    "review": {
+      "$ref": "review-snapshot.schema.json"
+    },
+    "executable": {
+      "$ref": "executable-evidence.schema.json"
+    },
+    "profile": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "profile-snapshot.schema.json"
+        }
+      ]
+    },
+    "unit_path": {
+      "$ref": "#/$defs/path"
+    },
+    "owned_environment": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "revision",
+            "sha256",
+            "path"
+          ],
+          "properties": {
+            "revision": {
+              "$ref": "transaction-progress.schema.json#/$defs/uuid"
+            },
+            "sha256": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "path": {
+              "$ref": "#/$defs/path"
+            }
+          }
+        }
+      ]
+    },
+    "external_config_paths": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/path"
       }
-    }]},
-    "external_config_paths": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/path"}}
+    },
+    "linger_requested": {
+      "type": "boolean",
+      "description": "Historical explicit account-level request; the model field applies only to this operation."
+    },
+    "former_unit_names": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.service$",
+        "maxLength": 208
+      }
+    }
   },
-  "$defs": {"path": {"type": "string", "minLength": 1, "maxLength": 4095, "pattern": "^/"}}
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4095,
+      "pattern": "^/"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "environment",
+        "credentials"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "environment": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "value",
+              "origin",
+              "sensitive"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                "maxLength": 255
+              },
+              "value": {
+                "type": "null"
+              },
+              "origin": {
+                "enum": [
+                  "default",
+                  "profile",
+                  "config",
+                  "imported",
+                  "passed",
+                  "explicit",
+                  "edited"
+                ]
+              },
+              "sensitive": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "credentials": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "path"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "$ref": "#/$defs/path"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }

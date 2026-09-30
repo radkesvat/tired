@@ -11,7 +11,7 @@ typedef enum
 typedef struct TiredManagerJob TiredManagerJob;
 typedef struct
 {
-    bool done, submitted, accepted, finished;
+    bool done, submitted, accepted, finished, rejected;
     uint32_t job_id;
     TiredJobEvent completion;
     TiredError error;

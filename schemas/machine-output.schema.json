@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tired public JSON envelope, schema 1",
+  "$comment": "Command-specific properties are documented in docs/cli.md and the component references. Outputs are inspection data, never replayable helper requests. Logs are independent NDJSON events. Unknown observations use null or explicit states; consumers must not infer a stopped or healthy service from missing properties. Additive output properties are permitted within major 1.",
+  "type": "object",
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": {"const": 1}, "command": {"type": "string"},
+    "ok": {"type": "boolean"}, "exit_code": {"type": "integer"},
+    "error": {"type": "string"}, "message": {"type": "string"},
+    "outcome": {"type": "string"}, "replayable": {"const": false},
+    "usage": {"type": "string"},
+    "warnings": {"type": "array"}, "errors": {"type": "array"}
+  },
+  "if": {"required": ["outcome", "installation", "runtime", "service"]},
+  "then": {"$ref": "operation-result.schema.json"},
+  "allOf": [{
+    "if": {"required": ["command"], "properties": {"command": {"const": "help"}}},
+    "then": {"required": ["ok", "exit_code", "usage"],
+      "properties": {"ok": {"const": true}, "exit_code": {"const": 0}}}
+  }]
+}

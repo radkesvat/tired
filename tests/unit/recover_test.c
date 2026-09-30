@@ -98,7 +98,7 @@ int main(void)
     CHECK(json_object_object_get_ex(file_report, "status", &value) &&
           strcmp(json_object_get_string(value), "unknown") == 0);
     CHECK(json_object_object_get_ex(document, "resolution_actions_supported", &value) &&
-          !json_object_get_boolean(value));
+          json_object_get_boolean(value));
     tired_publication_destroy(publication);
     publication = NULL;
     CHECK(unlinkat(tired_directory_fd(journal), "0001.json", 0) == 0);

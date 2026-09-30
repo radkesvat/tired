@@ -18,6 +18,18 @@ static bool parse(TiredRequest *request, TiredError *error, const char *const *a
 {
     return tired_cli_parse((int)count, args, request, error);
 }
+static bool presentation(const char *const *arguments, size_t count, bool expected)
+{
+    TiredRequest request = {0};
+    TiredError error = {0};
+    bool json = !expected;
+    (void)tired_cli_parse_format((int)count, arguments, &request, &json, &error);
+    tired_request_destroy(&request);
+    return json == expected;
+}
+#define PRESENTATION(expected, ...)                                                                \
+    presentation((const char *const[]){__VA_ARGS__},                                               \
+                 sizeof((const char *const[]){__VA_ARGS__}) / sizeof(char *), expected)
 int main(void)
 {
     TiredRequest request = {0};
@@ -48,6 +60,33 @@ int main(void)
     CHECK(strcmp(request.working_directory.data, "relative dir") == 0);
     CHECK(strcmp(tired_environment_find(&request.environment, "X", 1)->value.data, "2") == 0);
     CHECK(!PARSE("tired", "--system", "--user", "./server"));
+    CHECK(PARSE("tired", "--hardening", "baseline", "./server"));
+    CHECK(tired_spec_uses_hardening_baseline(&request.overrides));
+    CHECK(request.seen[TIRED_FIELD_PRIVATE_TMP] && request.seen[TIRED_FIELD_PROTECT_SYSTEM] &&
+          request.overrides.fields[TIRED_FIELD_NO_NEW_PRIVILEGES].origin == TIRED_ORIGIN_USER);
+    CHECK(!PARSE("tired", "--hardening", "unknown", "./server"));
+    CHECK(!PARSE("tired", "--hardening", "baseline", "--hardening", "baseline", "./server"));
+    CHECK(!PARSE("tired", "--hardening", "baseline", "--set", "private_tmp=false", "./server"));
+    CHECK(!PARSE("tired", "--unset", "private_tmp", "--hardening", "baseline", "./server"));
+    CHECK(PARSE("tired", "./server", "--hardening", "baseline"));
+    CHECK(!request.seen[TIRED_FIELD_PRIVATE_TMP] && request.arguments.count == 3);
+    CHECK(PARSE("tired", "plan", "--offline", "--user", "--enable-linger", "--", "./server"));
+    CHECK(request.overrides.fields[TIRED_FIELD_ENABLE_LINGER].value.boolean);
+    CHECK(PARSE("tired", "--user", "--enable-linger", "./server"));
+    CHECK(request.overrides.fields[TIRED_FIELD_ENABLE_LINGER].value.boolean &&
+          request.command == TIRED_COMMAND_CREATE);
+    CHECK(PARSE("tired", "edit", "relay", "--user", "--enable-linger"));
+    CHECK(!PARSE("tired", "--enable-linger", "./server"));
+    CHECK(!PARSE("tired", "plan", "--offline", "--system", "--enable-linger", "./server"));
+    CHECK(!PARSE("tired", "plan", "--offline", "--user", "--enable-linger", "--unit", "./server"));
+    CHECK(!PARSE("tired", "plan", "--offline", "--user", "--enable-linger", "--enable-linger",
+                 "./server"));
+    CHECK(!PARSE("tired", "plan", "--offline", "--user", "--enable-linger=true", "./server"));
+    CHECK(!PARSE("tired", "status", "relay", "--user", "--enable-linger"));
+    CHECK(!PARSE("tired", "profiles", "explain", "--user", "--enable-linger", "--", "./server"));
+    CHECK(PARSE("tired", "./server", "--enable-linger"));
+    CHECK(!tired_field_has_value(&request.overrides.fields[TIRED_FIELD_ENABLE_LINGER]) &&
+          request.arguments.count == 2);
     CHECK(!PARSE("tired", "--name", "one", "--set", "name=two", "./server"));
     CHECK(!PARSE("tired", "--set", "restart=always", "--restart", "no", "./server"));
     CHECK(!PARSE("tired", "--name"));
@@ -57,7 +96,7 @@ int main(void)
     CHECK(!PARSE("tired", "--sensitive-arg", "0", "./server", "value"));
     CHECK(!PARSE("tired", "--sensitive-arg", "2", "./server", "value"));
     CHECK(!PARSE("tired", "--sensitive-arg", "-1", "./server", "value"));
-    CHECK(!PARSE("tired", "--sensitive-arg", "1", "edit", "service"));
+    CHECK(PARSE("tired", "--sensitive-arg", "1", "edit", "service"));
     CHECK(!PARSE("tired", "--allow-risk", "invented-risk", "./server"));
     CHECK(PARSE("tired", "--allow-risk", "run-as-root", "./server"));
     CHECK(!PARSE("tired", "--yes=false", "./server"));
@@ -171,6 +210,12 @@ int main(void)
     CHECK(!PARSE("tired", "--env-file", "env", "--unset", "environment_files", "./server"));
     CHECK(!PARSE("tired", "rename", "old"));
     CHECK(PARSE("tired", "rename", "old", "new"));
+    CHECK(PARSE("tired", "edit", "old", "--yes", "--sensitive-arg", "2", "--", "/bin/echo", "",
+                "--json"));
+    CHECK(request.arguments.count == 1 && request.replacement.count == 3 && !request.json);
+    CHECK(request.replacement.items[1].length == 0 && request.sensitive_arguments[2]);
+    CHECK(!PARSE("tired", "edit", "old", "--"));
+    CHECK(!PARSE("tired", "edit", "--", "/bin/echo"));
     CHECK(PARSE("tired", "profiles", "explain", "--profile", "backhaul", "--json", "--",
                 "/bin/true", "--help", "--json"));
     CHECK(request.profile_explain && request.json && !request.help);
@@ -182,6 +227,22 @@ int main(void)
     CHECK(request.help);
     CHECK(PARSE("tired"));
     CHECK(request.command == TIRED_COMMAND_DASHBOARD);
+    CHECK(PRESENTATION(true, "tired", "plan", "--type", "invalid", "--json", "--", "/bin/true"));
+    CHECK(PRESENTATION(true, "tired", "--unknown", "--json"));
+    CHECK(PRESENTATION(true, "tired", "--json", "--type"));
+    CHECK(PRESENTATION(true, "tired", "--set", "invented=value", "--json", "/bin/true"));
+    CHECK(PRESENTATION(true, "tired", "status", "relay", "--type", "invalid", "--json"));
+    CHECK(PRESENTATION(true, "tired", "profiles", "explain", "--type", "invalid", "--json", "--",
+                       "/bin/true"));
+    CHECK(PRESENTATION(false, "tired", "--description", "--json", "/bin/true"));
+    CHECK(PRESENTATION(false, "tired", "--type", "--json", "/bin/true"));
+    CHECK(PRESENTATION(false, "tired", "--set", "description=--json", "/bin/true"));
+    CHECK(PRESENTATION(false, "tired", "plan", "--type", "invalid", "/bin/true", "--json"));
+    CHECK(PRESENTATION(false, "tired", "--unknown", "/bin/true", "--json"));
+    CHECK(PRESENTATION(false, "tired", "create", "--", "/bin/true", "--json"));
+    CHECK(PRESENTATION(false, "tired", "edit", "relay", "--", "/bin/true", "--json"));
+    CHECK(PRESENTATION(false, "tired", "profiles", "explain", "--", "/bin/true", "--json"));
+    CHECK(PRESENTATION(true, "tired", "--description", "--json", "--json", "/bin/true"));
     tired_request_destroy(&request);
     tired_request_destroy(&request);
     return 0;

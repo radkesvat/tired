@@ -199,10 +199,21 @@ bool tired_catalog_add_directory(TiredProfileCatalog *catalog, const char *path,
         for (size_t j = 0; j < catalog->count; ++j)
             if (strcmp(catalog->items[j].profile.id, item.profile.id) == 0)
             {
-                tired_error_set(error, TIRED_CONFLICT, "profile-duplicate",
-                                "Duplicate profile IDs require an explicit replacement workflow.",
-                                0);
-                goto fail;
+                const TiredProfileEntry *existing = &catalog->items[j];
+                const TiredProfile *replacement =
+                    origin > existing->origin ? &item.profile : &existing->profile;
+                struct json_object *replaces = NULL;
+                if (origin == existing->origin ||
+                    !json_object_object_get_ex(replacement->document, "replaces", &replaces) ||
+                    strcmp(json_object_get_string(replaces), item.profile.id) != 0)
+                {
+                    tired_error_set(
+                        error, TIRED_CONFLICT, "profile-duplicate",
+                        "Duplicate profile IDs require matching replaces metadata in the local "
+                        "replacement; duplicates within one origin are not allowed.",
+                        0);
+                    goto fail;
+                }
             }
         TiredText base = {.data = (char *)path, .length = strlen(path)};
         if (!tired_path_absolute(&base, names.items[i].data, names.items[i].length, &item.path,
@@ -243,6 +254,20 @@ fail:
     return false;
 }
 
+bool tired_catalog_entry_active(const TiredProfileCatalog *catalog, size_t index, bool user_scope)
+{
+    assert(catalog != NULL && index < catalog->count);
+    const TiredProfileEntry *candidate = &catalog->items[index];
+    if (!user_scope && candidate->origin == TIRED_PROFILE_USER)
+        return false;
+    for (size_t i = 0; i < catalog->count; ++i)
+        if ((user_scope || catalog->items[i].origin != TIRED_PROFILE_USER) &&
+            catalog->items[i].origin > candidate->origin &&
+            strcmp(catalog->items[i].profile.id, candidate->profile.id) == 0)
+            return false;
+    return true;
+}
+
 bool tired_catalog_select(const TiredProfileCatalog *catalog, const TiredText *executable,
                           const char *selection, bool user_scope, const TiredProfileEntry **entry,
                           size_t *match_count, TiredError *error)
@@ -261,7 +286,7 @@ bool tired_catalog_select(const TiredProfileCatalog *catalog, const TiredText *e
     for (size_t i = 0; i < catalog->count; ++i)
     {
         const TiredProfileEntry *candidate = &catalog->items[i];
-        if (!user_scope && candidate->origin == TIRED_PROFILE_USER)
+        if (!tired_catalog_entry_active(catalog, i, user_scope))
             continue;
         if (strcmp(candidate->profile.id, "generic") == 0)
             generic = candidate;

@@ -352,7 +352,8 @@ bool tired_profile_parse(const char *data, size_t length, TiredProfile *profile,
         if (field == NULL || field->id == TIRED_FIELD_NAME || field->id == TIRED_FIELD_SCOPE ||
             field->id == TIRED_FIELD_RUN_AS || field->id == TIRED_FIELD_GROUP ||
             field->id == TIRED_FIELD_SUPPLEMENTARY_GROUPS || field->id == TIRED_FIELD_EXECUTABLE ||
-            field->id == TIRED_FIELD_ARGV || field->id == TIRED_FIELD_WORKING_DIRECTORY)
+            field->id == TIRED_FIELD_ARGV || field->id == TIRED_FIELD_WORKING_DIRECTORY ||
+            field->id == TIRED_FIELD_ENABLE_LINGER)
             goto schema_fail;
         TiredRecommendation *rec = &parsed.recommendations[i];
         rec->field = field->id;

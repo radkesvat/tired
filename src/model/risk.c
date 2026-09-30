@@ -11,7 +11,9 @@ static const TiredRisk risks[TIRED_RISK_COUNT] = {
     {"sensitive-command-data",
      "Sensitive command data remains in the command and generated unit metadata."},
     {"restore-drifted-unit", "This operation replaces foreign edits with managed configuration."},
-    {"sensitive-export", "This export writes unredacted data to a new private file."}};
+    {"sensitive-export", "This export writes unredacted data to a new private file."},
+    {"leave-child-processes", "The selected KillMode can leave workload processes alive after the "
+                              "unit stops. Removal cannot prove those processes have exited."}};
 const TiredRisk *tired_risk_get(TiredRiskId id)
 {
     return (unsigned)id < TIRED_RISK_COUNT ? &risks[id] : NULL;
@@ -49,6 +51,9 @@ void tired_risk_assess(const TiredServiceSpec *spec, const TiredRiskFacts *facts
     report->present[TIRED_RISK_SENSITIVE_COMMAND] = facts->sensitive_command;
     report->present[TIRED_RISK_RESTORE_DRIFT] = facts->restoring_drift;
     report->present[TIRED_RISK_SENSITIVE_EXPORT] = facts->sensitive_export;
+    report->present[TIRED_RISK_CHILD_PROCESSES] =
+        tired_spec_choice_is(spec, TIRED_FIELD_KILL_MODE, "process") ||
+        tired_spec_choice_is(spec, TIRED_FIELD_KILL_MODE, "none");
 }
 bool tired_risk_check_acknowledgments(const TiredRiskReport *report,
                                       const TiredTextList *acknowledgments, TiredError *error)
