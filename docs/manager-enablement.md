@@ -29,4 +29,6 @@ Native broker tests verify both exact signatures, one-unit arrays, persistent/no
 flags, pinned owner, successful and empty replies, false install-info, unknown change
 types, denial, malformed replies, excessive changes, invalid paths, timeout,
 cancellation and owner invalidation. No host enablement changes are performed.
-Journal/controller integration and installed-service qualification remain pending.
+The controller journals requests and returned change evidence, then queries actual
+final state. Disposable native tests exercise installed-service enable/disable and
+package/reboot behavior; see release qualification.

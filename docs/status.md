@@ -54,8 +54,8 @@ they remain explicit in the report.
 Disk and manager observations happen at different instants. Fragment agreement is
 a lexical comparison with the recorded destination. It does not prove loaded bytes
 match disk, interpret drop-in directives, prove lingering/boot guarantees or
-authorize a mutation. Those checks and richer installation diagnostics remain
-under implementation. Status reads no cached live state and performs no automatic
+authorize a mutation. The controller separately validates mutation preconditions;
+doctor supplies installation diagnostics. Status reads no cached live state and performs no automatic
 elevation when private system records are inaccessible.
 
 Validation includes isolated user-layout command fixtures with absent manager

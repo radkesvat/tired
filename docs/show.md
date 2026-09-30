@@ -72,6 +72,6 @@ submission/acknowledgment separately from successful complete observations.
 
 The unit read is limited to 4 MiB and formatted output to 32 MiB. This is historical
 model plus current disk evidence, not a replayable installation request or proof of
-what systemd currently has loaded. Directive merging, richer field/unit diffs and
-history views remain under implementation; `status` reports fresh manager properties
-and drop-in paths separately.
+what systemd currently has loaded. Effective inspection shows file boundaries rather
+than inventing merged directive semantics. Review provides model/old/disk comparisons;
+`status` reports fresh manager properties and drop-in paths separately.

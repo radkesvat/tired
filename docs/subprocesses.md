@@ -45,5 +45,7 @@ the requested operation succeeded; consumers must evaluate the exit code.
 Native tests exercise both full pipes, binary stderr, literal argv, environment and
 descriptor isolation, closed standard descriptors, timeout/cancellation, signaled
 exit, failed launch and descendants retaining pipes. The harness reaps its orphan
-fixture descendants. Verification staging, UI event-loop integration, controlled
-parent-death policy and privileged-helper transaction coordination remain pending.
+fixture descendants. Verification staging and UI collection use this bounded
+subprocess API. Administrative IPC has its own readiness/version boundary and
+independent post-approval worker; its disconnect policy is documented in security
+and recovery.

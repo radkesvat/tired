@@ -27,8 +27,9 @@ retained after hashing.
 
 These are sequential observations and may become stale. The controller must bind
 the manifest to the journal and approved request, verify rollback/staging artifacts,
-and revalidate under the scope lock before mutation. This component does not yet
-perform those checks or enable CLI finish/rollback actions.
+and revalidate under the scope lock before mutation. The transaction controller
+performs these checks for explicit CLI finish/rollback actions; the observation
+component itself remains read-only.
 
 Native tests cover absence, after-state matches, metadata drift, unknown symlink
 state alongside a valid neighbor, missing parents and atomic scope rejection.

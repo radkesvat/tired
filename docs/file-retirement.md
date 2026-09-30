@@ -29,7 +29,8 @@ rename and post-move checks. Retrying accepts the expected restored inode with a
 absent retained name, then syncs again. A foreign active entry is never overwritten.
 The result's `moved` field describes restoration when using this inverse API.
 The controller must authorize and persist rollback intent before calling it;
-terminal cleanup and operation-level rollback decisions remain separate work.
+the controller records that intent and uses an inode-bound cleanup ledger for
+terminal retirement and interrupted rollback.
 
 Native tests cover fingerprint mismatch, retained-name collisions, sync failure and
 retry, retained content, and preservation of a recreated foreign destination.

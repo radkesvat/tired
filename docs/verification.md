@@ -47,7 +47,7 @@ fixtures, detect unknown-option diagnostics, verify cancellation/start-failure
 cleanup and confirm that a fixture workload's execution marker is absent. If the
 fixed verifier is absent, this integration test explicitly skips.
 
-The component is not yet connected to live CLI plans. Manager/version probing,
-user-path validation, effective fragments and drop-ins, attribution of pre-existing
-host diagnostics, signal integration and interrupted-stage recovery remain pending.
-Offline plans continue using in-memory validation and do not create stages.
+Live plans and controller preflight use the fixed verifier after manager, identity
+and effective-file checks. Diagnostics are presented explicitly; the controller
+does not filter English warnings into success. Offline plans use in-memory
+validation and do not create stages.

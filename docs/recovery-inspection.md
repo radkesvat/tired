@@ -33,13 +33,12 @@ rollback content/permission check. New files have no retained original to inspec
 All destination and artifact reads share a 64 MiB content budget; exhausted entries stay unknown.
 Completed inspection can still find foreign changes and never authorizes mutation.
 
-Manager and file observations are not complete recovery reconciliation. The command
-does not yet decide which artifacts are required for a particular recovery action
-or offer finish/rollback actions. A missing staged file can be expected after
-publication; a matching backup alone does not authorize overwriting a destination.
-`live_reconciliation` remains `not_performed` until controller reconciliation exists;
-`live_observations` separately reports `not_needed`, `completed`, `partial` or
-`unavailable` for the selected units.
+Manager and file observations are inspection evidence, not write authority. Explicit
+`--transaction UUID --resolution finish|rollback --yes` invokes the controller's
+independent reconciliation. A missing stage can be expected after publication;
+a matching backup alone does not authorize overwriting a destination.
+`live_reconciliation` in an ordinary inspection remains `not_performed`, while
+`resolution_actions_supported` is true. See [resolution policy](recovery.md).
 
 Rows identify stored progress, pending action, sequence and recorded uncertainty.
 Invalid entries retain diagnostics alongside valid transactions. Journal state is

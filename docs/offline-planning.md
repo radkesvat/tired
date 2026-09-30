@@ -3,8 +3,12 @@
 Run `tired plan --offline -- /absolute/program argument` to construct
 a read-only proposal. `--json` emits one structured document, while `--unit` emits
 a unit view. Installed profiles are matched automatically. `--profile none` disables
-matching; `--profile ID` selects a profile explicitly for renamed workloads. Live
-planning remains unfinished.
+matching; `--profile ID` selects a profile explicitly for renamed workloads.
+Without `--offline`, planning also inspects the selected live manager, ownership,
+collisions, effective overrides and host compatibility, and verifies a temporary
+candidate unit. It cleans up verification scratch and installs nothing. Live
+validation is an observation at planning time; the helper revalidates an approved
+mutation under the scope lock.
 
 Planning first discovers and validates administrator and invoking-user settings as
 described in [Settings](settings.md). Malformed or unsafe settings fail explicitly,
@@ -20,8 +24,8 @@ environment inputs, and derives private environment revision paths. Relative inp
 paths resolve against the invocation directory. User-scope requests cannot switch
 accounts or groups. System-scope state paths never use XDG variables.
 
-No service files, environment revisions, manager operations, or target execution
-occur. Generated names are tentative and UUIDs identify this proposal only. Output
+Offline planning creates no service files or environment revisions, changes no
+manager state and never executes the target. Generated names are tentative and UUIDs identify this proposal only. Output
 says `live_validation: not_performed`, `collision_check: not_performed`, and
 `replayable: false`; it is not privileged helper input or evidence of service health.
 
@@ -44,8 +48,7 @@ arguments, or make the eventual unit metadata private. It raises the
 `sensitive-command-data` risk. The same option works with `profiles explain`.
 Repeated classification of one index is harmless. Private authorized exports may
 reveal classified arguments; ordinary previews remain labeled non-installable when
-redacted. Classifications are currently retained in the proposal; persisted service
-records and editor handling are still pending.
+redacted. Classifications are retained in the proposal, saved review snapshot and editor.
 
 The [risk inventory](risks.md) reports identified risks and pending privileged-code
 inspection separately; it does not claim approval or installation readiness.
@@ -61,9 +64,7 @@ sensitive-export`. Nothing unredacted is sent to stdout by that option. An expor
 failure may leave a private partial file and reports this explicitly. The only
 persistent planning effect is the explicitly requested output file.
 
-The current executable also provides help/version, profiles list/show/explain/validate, and
-config show/validate. Profile installation/removal, creation, live plans,
-dashboard and management handlers remain under implementation and return
-an explicit unsupported result. Their parser recognition is not implementation
-completion. Full risk validation, host compatibility, real execution round trips,
-and release qualification remain required.
+The executable also provides live planning, creation, lifecycle, editing, dashboard,
+profile management, configuration, diagnosis and explicit recovery. Offline output
+remains a read-only proposal: it does not substitute for helper validation under
+lock. See [commands](cli.md) and [release qualification](release-validation.md).

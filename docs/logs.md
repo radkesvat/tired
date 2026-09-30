@@ -52,5 +52,5 @@ The command never changes journald storage or retention.
 Private native-directory integration tests cover empty and malformed journals,
 structured diagnostics, output failure, follow cancellation, and cancellation with
 a full output pipe. Record/selection/stream fixtures separately cover binary data,
-UID isolation, tail order, and append behavior. Populated compressed journals,
-real rotation, ARM64, and the full platform matrix still need qualification.
+UID isolation, tail order, and append behavior. The release qualification report
+records populated host journal, architecture, rotation and resource-use evidence.

@@ -26,9 +26,8 @@ collision source and, for filesystem findings, the observed path. Updates are
 atomic on failure.
 
 `NONE` is only a tentative observation. It is neither a namespace reservation nor
-permission to overwrite anything. The future naming controller must reject explicit
-collisions, try deterministic suffixes for automatic names, and repeat checks under
-the mutation lock before committing with non-overwriting filesystem operations.
+permission to overwrite anything. The naming controller rejects explicit collisions, tries deterministic suffixes
+for automatic names, and repeats checks under the scope lock before publication.
 Generic and hierarchical drop-in effects remain a separate effective-configuration
 validation concern.
 

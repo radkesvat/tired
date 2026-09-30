@@ -83,27 +83,21 @@ check the opened descriptor and its directory entry. The directory and binding
 are checked again after reading; the bounded reader also checks file metadata
 for changes. Failed reads preserve the caller's previous output.
 
-Creation uses exclusive descriptor-relative open, writes every byte, syncs the
-file, rechecks its binding, checks close, then syncs the parent directory. Existing
-entries are never overwritten or truncated. These operations do not acquire the
-scope lock themselves; the transaction controller holds it across preparation and
-publication. Private files may contain binary bytes, so callers use the returned
-length and separately validate JSON or other application formats. Each read chooses
-its limit; the maximum private-file size is 16 MiB. Individual formats retain their
-own lower bounds where required.
+Creation allocates a private unnamed inode with `O_TMPFILE`, writes every byte and
+syncs it before exclusively linking the complete file into the checked directory.
+It checks close and parent-directory sync failures. Existing entries are never
+overwritten or truncated. Failed writes leave no named partial file. A failure
+after linking can leave a complete file with uncertain durability; recovery uses
+recorded identity rather than blindly deleting a pathname.
 
-Exclusive creation is suitable for private staging and immutable revision entries.
-The name becomes visible before the write finishes, so this is not atomic
-publication of a current record. A write, sync, close or validation failure can
-leave a partial file; recovery must inspect it rather than blindly deleting the
-pathname. A later create refuses that entry. Transaction records must distinguish
-prepared content from published or committed content, and current-record updates
-require a separate atomic publication operation.
+The transaction controller holds the scope lock across preparation/publication.
+Private files can contain binary bytes, so callers retain lengths and separately
+validate formats. The maximum private-file read is 16 MiB; individual formats have
+lower limits. Current records still use a checked atomic replacement operation.
 
-Native coverage includes binary/empty reads, limits and preserved output, existing
-entry refusal, permissions, owner changes, symlinks, hard links, FIFOs, directories,
-and a child process file-size limit that forces a partial write and verifies that
-the incomplete file remains without being overwritten.
+Native coverage includes binary/empty reads, bounds, exclusive creation, ownership,
+permissions, symlinks, hardlinks and special files. A file-size limit forces an
+incomplete write and verifies that it never acquires a published name.
 
 ## File fingerprints
 
@@ -129,8 +123,7 @@ The observations do not make a concurrently writable file immutable.
 
 Native tests cover known SHA-256 vectors, absent/empty files, byte limits, mode
 changes, same-content replacement, symlinks/hard links/FIFOs and deterministic
-replacement/growth during reading. Manifest storage and recovery comparisons
-remain subsequent integration work.
+replacement/growth during reading. Manifest storage and controller recovery use these checked fingerprints.
 
 Fingerprints have a strict schema-1 JSON representation for private persistence.
 Absence is exactly `schema_version` plus `exists: false`; it carries no invented

@@ -20,8 +20,9 @@ cross-field scope and timestamp relationships.
 
 These values are descriptive historical evidence. They do not authenticate a
 caller, prove current file ownership or replace account-database/manager checks.
-The complete service record still needs typed model, environment/revision data,
-profile evidence, risk approvals and captured executable evidence. This metadata
+The enclosing [service record](service-records.md) adds the typed model,
+environment/revision data, profile evidence, risk approvals and captured executable
+evidence. This metadata
 alone must not authorize modifying a unit or advertise a complete installation.
 
 Tests cover both scopes, distinct service/group identities, exact large timestamps,

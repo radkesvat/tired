@@ -13,6 +13,14 @@ saved service UID, profile ID, unit/environment file state and pending transacti
 JSON includes each record's status evidence and diagnostics. No captured arguments,
 environment values or credentials are exposed.
 
+Running tired without operands opens the interactive dashboard when the effective
+`tui` setting is enabled, the terminal is usable and JSON output is not requested.
+Setting `tui` to `false` or using `--no-tui` selects compact listing; `--json` selects
+JSON listing. Dashboard rows show name, scope, saved account or UID, live
+active/substate, boot enablement, profile, unit/environment file states and
+transaction state. Missing, drifted and unknown files, pending or unknown
+transactions, and incomplete service/transaction inventories remain explicit.
+
 Filters combine with AND. `--active-state` and `--enabled-state` match exact current
 manager state strings, including future state names; they do not use saved start/
 enable preferences. A successfully observed absent object has active filter value

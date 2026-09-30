@@ -11,6 +11,7 @@ The shared risk registry defines these stable codes:
 | `sensitive-command-data` | Classified sensitive data retained in command metadata |
 | `restore-drifted-unit` | Explicit replacement of foreign edits |
 | `sensitive-export` | Explicit export of unredacted data |
+| `leave-child-processes` | KillMode process/none can leave workload processes alive after stopping/removal |
 
 Assessment combines a validated service model with facts supplied by the caller.
 It performs no filesystem inspection, manager access or approval. Privileged
@@ -35,7 +36,9 @@ explicit-acknowledgment checks.
 
 Command sensitivity comes from explicit `--sensitive-arg INDEX` classifications and
 the preview's flag heuristic; the heuristic can miss unknown secret forms.
-Privileged code/dependency inspection, durable classification and approval records,
-and installation-time enforcement remain to be integrated.
-Offline privileged-code checks therefore remain explicitly pending. This inventory
-does not imply that a proposal is ready to install.
+Privileged execution checks executable/resolved ancestry and the working directory;
+relative scripts/modules can depend on that directory. Saved review snapshots retain
+classifications and acknowledgments. Changed high-risk choices clear their previous
+acknowledgment. The helper independently revalidates facts under lock. This does not
+prove an entire interpreter/module/config dependency graph. Offline checks remain
+explicitly pending until native validation occurs.

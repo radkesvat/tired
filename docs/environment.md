@@ -27,9 +27,9 @@ only, never read contents, and never alter command arguments. At most 256 refere
 and 1 MiB are retained. Source permissions, application compatibility, host credential
 support, and secure rendering must be validated later.
 
-Bounded file I/O, private-file storage, CLI integration, redacted JSON, and private
-export remain under implementation. The records and in-memory codecs alone
-must not be presented as completed secret handling. The baseline
+Bounded file I/O, immutable private revisions, CLI integration, redacted JSON and
+protected export use these codecs. Persisted records omit plaintext values and
+hydrate them from checked private revisions when needed. The baseline
 [execution documentation](https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.exec.xml)
 describes environment-file ordering and credential facilities.
 
@@ -58,5 +58,5 @@ The encoder sorts names bytewise and always double-quotes values, preserving lit
 newlines and escaping quote, backslash, dollar, and backtick. It returns private
 contents including sensitive values, never a display view. The format was checked
 against the [baseline parser behavior](https://github.com/systemd/systemd/blob/v249/src/basic/env-file.c).
-Native encoder/import round trips are tested; real manager execution qualification
-remains required. Bounded file I/O and private persistence are separate pending work.
+Native encoder/import round trips and real-manager duplicate live/managed value
+precedence are exercised. See [security](security.md) for persistence and export.

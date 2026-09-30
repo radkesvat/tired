@@ -46,5 +46,5 @@ Native tests compose and round-trip the components, exercise optional profile an
 environment references, verify trusted-layout agreement, and reject mismatched
 review counts and missing environment references. Filesystem fixtures cover trusted
 loading, renamed UUID files, symlinks, unsafe permissions, layout mismatch and
-failure preservation. Transactional record publication, inventory discovery, record
-creation from a reviewed plan and ownership-aware status remain integration work.
+failure preservation. The controller creates records from reviewed proposals and
+publishes them transactionally; list/status/show use the checked inventory.

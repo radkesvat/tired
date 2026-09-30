@@ -34,7 +34,8 @@ The journal/controller must enforce sequence continuity, stable identities/diges
 allowed action order, evidence for completion, and durable intent before external
 effects. Recovery must compare records with actual filesystem and manager state
 before deciding whether an uncertain action can be finished or rolled back.
-The controller and live reconciliation remain unfinished work.
+The controller combines these records with manifests and native evidence for
+explicit reconciliation; it never treats intent as proof of no effect.
 
 The installed JSON Schema documents the structural format. Native tests cover
 round trips across action and outcome vocabularies, scope retention, malformed
@@ -141,8 +142,8 @@ scope lock and verify manifests and actual state.
 Tests cover empty inventories, unfinished-name reservations, terminal exclusion,
 scope mismatch, missing/empty neighboring journals and the refusal to treat an
 unfinished rename's single name as a complete reservation inventory. Tests also
-cover both-name reservations and manifest digest mismatch. Recovery choices and
-actual file-state reconciliation remain controller work.
+cover both-name reservations and manifest digest mismatch. Recovery choices and actual file-state reconciliation are described in
+[the recovery guide](recovery.md).
 
 The layout loader opens the configured transactions location using the scope's
 owner and private-directory checks. Only a missing path becomes a complete empty

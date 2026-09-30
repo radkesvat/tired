@@ -24,11 +24,8 @@ context later. Parsing never captures `--pass-env` values or reads import files.
 and JSON output modes conflict. Sensitive export requires an output destination,
 with sensitive-export acknowledgment enforced by the frontend.
 
-The parser currently covers creation options, common flags, reserved dispatch, and
-basic management operand counts. Command-specific management filters/actions and
-nested commands beyond the implemented handlers remain under implementation. The executable
-currently exposes help/version, offline planning with profile selection, and
-profiles list/show/explain/validate and config show/validate. Profile explanation
+The parser covers creation options, common flags, management filters/actions,
+profile/config subcommands, command replacement and explicit recovery. Profile explanation
 requires an explicit `--` before the workload and preserves all following arguments.
 `--sensitive-arg INDEX` is repeatable for creation, planning and profile explanation.
 It accepts existing workload argument indices after the executable, preserves the

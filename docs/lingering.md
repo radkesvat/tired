@@ -22,8 +22,9 @@ Lingering lets the user's manager start at boot and remain after logout. Enabled
 service files alone do not establish that account-level behavior. Even known
 lingering does not prove that a particular workload is healthy or will start
 successfully. This query never calls `SetUserLinger` or changes account state.
-User-service status displays this observation. The native enablement backend below
-is available; approved-request/controller integration remains separate work.
+User-service status displays this observation. The controller integrates explicit
+requests with separate authorization, durable intent and live verification. Past
+requests are a historical record fact; later lifecycle operations do not replay them.
 
 The CLI observation driver queries only the invoking account through the system
 bus, without depending on a user runtime-directory path. It uses one two-second
@@ -65,5 +66,5 @@ Private broker tests exercise request flags and the enable-only argument,
 interactive/noninteractive success, authorization/method/account errors, malformed
 acknowledgement, unconfirmed or unavailable verification, deadlines, cancellation
 before/after acknowledgement, and owner invalidation. These tests do not mutate
-real account state. Real authorization/reboot qualification and controller use are
-still pending.
+real account state. Separate disposable native tests exercise explicit authorization,
+controller integration and actual lingering boot without an account login.

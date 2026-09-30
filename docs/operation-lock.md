@@ -34,5 +34,10 @@ releases the lock when the last reference closes, including after process death.
 Native tests cover contention within one process and between processes, fork
 cleanup, death of a holder, reacquisition, replacement, unsafe permissions,
 symlinks, hard links, FIFOs and preservation of unexpected nonempty files.
-The transaction controller still needs to hold this lock across revalidation,
-publication, manager operations, and durable commit or recovery bookkeeping.
+The transaction controller holds this lock across revalidation, publication,
+manager operations, and durable commit or recovery bookkeeping.
+
+Headless automatic creation waits at most 30 seconds when another scope writer
+holds the lock, then revalidates and may choose the next automatic suffix. Other
+mutations retain an immediate contention conflict. The low-level lock API itself
+never waits; the approved bounded controller worker owns this policy.

@@ -94,9 +94,9 @@ and flags, malformed replies, authorization, disappearance, late responses,
 cancellation and completed-snapshot invalidation. A read-only host integration test
 discovers the system manager and observes systemd-journald; it explicitly skips if
 the system bus/manager is unavailable or inaccessible. Status/doctor/frontend
-presentation remains pending. The [collision checker](collisions.md) can combine
+presentation is provided by status, list and the dashboard. The [collision checker](collisions.md) can combine
 this query result with supplied load locations and pending reservations; discovery
-and commit-time integration remain pending.
+and commit-time integration use the native backend and transaction controller.
 
 ## Observing multiple units
 
@@ -123,4 +123,4 @@ timestamps may jump; monotonic time alone governs deadlines.
 Broker fixtures cover successful/denied batches, cancellation, a deadline shared
 across several delayed queries, empty batches and post-completion invalidation.
 Live integration reads the existing journald unit through this API without loading
-or mutating units. Recovery frontend integration remains separate work.
+or mutating units. Recovery inspection collects these observations without granting mutation authority.

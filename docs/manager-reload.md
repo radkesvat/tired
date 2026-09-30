@@ -29,5 +29,5 @@ The method signature is checked against the supported systemd source's manager
 D-Bus documentation. Native broker fixtures verify the exact method/destination,
 disabled activation/interactive authorization, successful and malformed replies,
 denial, timeout, cancellation and owner invalidation. Tests do not reload the host
-manager. Transaction-journal integration and installed-service qualification remain
-separate work.
+manager. The controller journals reload intent/results and real disposable-manager
+qualification exercises installed service changes.

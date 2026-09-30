@@ -77,11 +77,11 @@ version addressing. These do not yet qualify recovery of real in-flight manager
 operations across a systemd restart.
 
 The [unit-query layer](unit-observations.md) provides asynchronous read-only file
-state, object lookup and typed Unit/Service observations. Jobs, mutation methods
-and frontend wiring remain under implementation.
+state, object lookup and typed Unit/Service observations. The native backend also
+drives jobs, enablement, reload, scoped failure reset and controller observation.
 Native [load-path discovery](collisions.md) queries UnitPath through the same
-verified identity for upcoming collision/name-selection orchestration.
-This probe alone is not a completed live validation or service-management backend.
+verified identity for collision/name-selection orchestration.
+The probe is one component of complete controller validation, not standalone write authority.
 
 ## Login-manager identity
 

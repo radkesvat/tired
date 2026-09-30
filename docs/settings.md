@@ -73,6 +73,11 @@ effective field and its `default`, `administrator`, `user`, or `cli` origin.
 Durations are shown as exact microsecond strings. Neither format contacts systemd.
 Malformed or unsafe installed settings fail the command without partial output.
 
+Setting `tui` to `false` selects plain review and, when tired has no operands,
+compact [service listing](list.md) even on a usable terminal. `--no-tui` applies
+the same presentation choice after configured settings. `--json` selects
+structured listing for a zero-operand invocation.
+
 Offline plans consume configured retry policy and restart delay before profile
 recommendations and CLI selections. Dependent start-limit defaults are recomputed
 from the resulting policy. Explicit inheritance is preserved like other user
@@ -83,11 +88,15 @@ The `profile_directories` administrator setting adds locations after bundled and
 standard administrator profiles, before user-scope profiles. Plans with profile
 matching and `profiles list/show` use those locations. Every configured directory
 must exist and pass root ownership and writable-ancestor checks; its files retain
-administrator origin and content digests. Duplicate IDs fail explicitly, including
-duplicates caused by listing the same location twice. An empty list adds no extra
-locations; it does not disable bundled or standard discovery. User settings cannot
-add these roots. `profiles validate FILE` remains independent of settings discovery.
+administrator origin and content digests. Duplicate IDs within one origin fail,
+including duplicates caused by listing the same location twice. Authorized local
+replacements across origins follow the [profile selection rules](profiles.md#catalog-trust-and-selection):
+administrator replacements precede bundled profiles; user replacements take
+precedence in user scope. Matching `replaces` metadata is required. An empty list
+adds no extra locations; it does not disable bundled or standard discovery. User
+settings cannot add these roots. `profiles validate FILE` remains independent of
+settings discovery.
 
-Presentation, history, log-tail and observation settings still need integration into
-their respective operations. Config show reports their effective defaults without
-claiming those consumers are complete.
+Presentation, history, log-tail and observation settings are integrated into
+their respective operations. `config show` reports effective values and origins;
+the command references describe how each setting is used.

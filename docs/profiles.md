@@ -33,7 +33,8 @@ The loader owns its parsed document and typed recommendation values; metadata vi
 remain valid until profile destruction. Failed parses preserve the previous profile.
 This layer does not establish trust in profile file locations or apply advice.
 The catalog and merger provide the discovery and decision layers described below.
-Profile installation, replacement, and installed-service refresh remain unfinished.
+Explicit local installation/removal and `edit --refresh-profile` use these same
+validated documents. Installation does not modify existing service snapshots.
 
 ## Recommendation evaluation
 
@@ -54,12 +55,20 @@ recommendations for the same field retain the input value and are reported toget
 Equal recommendations can share the same applied result. Explicit user values remain
 unchanged; an incompatible required recommendation gets a distinct warning disposition.
 
+Changing a condition input during review, such as service type or arguments,
+reevaluates the retained profile snapshot. Advice whose condition no longer holds
+returns to the underlying captured or configured default, and the displayed
+disposition changes with it. Explicit values and explicitly cleared inheritance
+remain user choices. Ordinary editing retains the saved profile document; only
+`--refresh-profile` selects newly installed advice.
+
 The merger builds a separate owned model, resolves dependent retry/scope defaults,
 and performs current semantic checks before publication. Failures preserve previous
 outputs. It does not authorize capabilities, certify profile-file trust, validate
 host resource ceilings, or implement installed-service refresh by itself. Condition
-evaluation and merge feed the offline frontend's provenance views. Explicit-inherit
-UI state and full host/risk validation remain unfinished.
+evaluation and merge feed both frontend provenance views. Explicit inheritance is
+retained as a user choice. Live planning and helper validation establish applicable
+host facts and risks independently of profile claims.
 
 ## Bundled profile evidence
 
@@ -87,7 +96,7 @@ Native bundle tests load all four actual files, check matching/nonmatching names
 retain configuration argv, preserve user choices, suppress system network advice in
 user scope, and exercise unknown/insufficient/sufficient descriptor capacity. They do
 not execute the target. Offline CLI discovery/application is available after staging
-the bundled data; real-host qualification remains separate work.
+the bundled data; controller compatibility checks also run on live proposals.
 
 ## Catalog trust and selection
 
@@ -108,8 +117,19 @@ remain. Borrowed record pointers must not survive an append attempt.
 Explicit ID selection supports renamed workloads. Automatic matching returns an
 ambiguous result when multiple non-generic profiles match, with no arbitrary winner.
 Generic is used only as fallback. User-origin entries are excluded in system scope.
-Duplicate IDs currently fail closed; the explicit replacement installation workflow
-is not yet implemented. Frontend discovery uses the configured installation data
+Same-ID entries within one origin fail closed. A trusted local replacement must
+declare `"replaces":"ID"` matching its own ID and is selected ahead of the
+bundled entry; in user scope a matching user replacement takes precedence over
+administrator and bundled entries. Selection and listing retain the replacement's
+actual origin, path and digest rather than treating it as bundled data. Missing or
+mismatched replacement metadata remains a conflict.
+
+`profiles install FILE --yes` explicitly validates and publishes only the owned
+local destination. Replacing an existing profile requires matching `replaces`
+metadata. `profiles remove ID --yes` removes that local override, revealing the
+next applicable profile, including the bundled profile. It cannot delete a
+package-owned bundled file. Existing services retain their snapshots until an
+explicit refresh. Frontend discovery uses the configured installation data
 directory, administrator directory, and user configuration directory in user scope.
 Offline output lists ambiguity candidates instead of selecting a winner.
 
@@ -118,7 +138,9 @@ Offline output lists ambiguity candidates instead of selecting a winner.
 `profiles list` displays available IDs and names; JSON includes source paths, origins,
 and content digests. `profiles show ID` displays the selected document. `profiles
 validate FILE` validates an explicitly selected file without a manager or catalog
-trust claim. The current implementation does not install, remove, or refresh profiles.
+trust claim. Explicit local install/remove validates its owned destination;
+`edit --refresh-profile` reevaluates advice after review. Existing service snapshots
+remain unchanged by catalog updates.
 
 Offline planning defaults to auto matching after generic capture and explicit
 selection. `--profile none` skips discovery. A selected profile is independently
@@ -156,6 +178,6 @@ unknown. It does not establish live compatibility or installation readiness. Use
 
 Plans with matching enabled and `profiles list/show` also load additional directories
 from administrator [settings](settings.md). Those directories must exist and pass
-root ownership and permission checks; they do not weaken duplicate-ID rejection or
+root ownership and permission checks; they do not permit same-origin duplicates or
 grant user profiles system trust. Discovery preserves the prior catalog if any
 location fails. Standalone file validation does not load installed settings.

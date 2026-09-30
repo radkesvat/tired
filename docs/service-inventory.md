@@ -26,5 +26,5 @@ before mutation. No independently authoritative name index is written.
 
 Filesystem tests cover empty/valid inventories, lookup, corrupt neighbors, duplicate
 unit claims, raw malformed filenames, trust-failure output preservation and shared
-read-budget exhaustion. Publication/cleanup and CLI listing
-or status integration remain separate work.
+read-budget exhaustion. The controller handles publication/cleanup; list and status
+consume this inventory without interpreting it as current runtime state.

@@ -10,7 +10,7 @@ storage admits machine-ID subdirectories; persistent storage admits the local
 machine-ID directory. Files directly in each root are also considered. User-scope
 inventory includes system journals and journals named for the selected UID. System
 scope includes all file types because service messages can require user journals.
-Native iteration still needs exact unit/UID [selection](journal-selection.md).
+Native iteration uses exact unit/UID [selection](journal-selection.md).
 
 Each candidate is opened read-only without following its final symlink, checked
 as a regular file, and opened individually by the native journal library. The
@@ -36,5 +36,5 @@ must not silently turn these limitations into a confident “no logs” result.
 
 Private-directory tests cover missing and empty storage, user-file isolation,
 malformed journal headers, symlinks, FIFOs, local/runtime machine filtering,
-permission denial, and scan limits. They do not qualify populated compressed
-journals, real rotation, or the production logs command.
+permission denial, and scan limits. The production logs command also has native tests; populated host journal and
+rotation evidence are recorded in release qualification.

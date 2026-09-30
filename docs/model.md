@@ -38,8 +38,8 @@ assignment as a general authorization or merge operation.
 
 The registry currently covers basic identity/execution, restart controls, timeouts,
 output modes, scalar hardening, scope/network, requested activation, and the
-collections, resource types, and process controls listed below. Full provenance and the CLI/TUI
-consumers remain under implementation.
+collections, resource types, and process controls listed below. CLI/TUI consumers
+share this registry and preserve field provenance.
 
 ## Collections and retry defaults
 
@@ -49,7 +49,7 @@ copied without whitespace splitting. Argument lists allow 4096 items; other list
 allow 1024. Each list has a 1 MiB budget including terminators. Empty arguments are
 preserved; clearing a list records an explicit empty collection. Mixed-origin
 appends require the caller to resolve precedence first, so provenance is not silently
-reassigned. Per-item provenance and profile merging remain to be implemented.
+reassigned. Collection provenance is recorded at field level; profile merging preserves explicit choices.
 
 Environment/mount/write paths must be absolute. Runtime/state directories use
 relative ASCII components and reject empty, dot, and parent components. Dependency
@@ -60,8 +60,7 @@ and directory creation modifiers are not currently accepted by this parser.
 After input assignment, retry-default resolution chooses zero start-limit interval
 for persistent mode, or five minutes and ten starts for limited mode. It updates
 only inherited/default fields. Conflicting explicit/profile intervals fail without
-changing the model. Persistent retries reject a zero delay. A subsecond-delay risk
-acknowledgment belongs to the pending risk-validation layer.
+changing the model. Persistent retries reject a zero delay. A subsecond persistent delay requires its specific risk acknowledgment.
 
 ## Resource values
 
@@ -122,4 +121,4 @@ an entire model to defaults is a separate operation that intentionally discards 
 
 The CLI exposes `--unset FIELD`. Assigning and unsetting the same field in one
 request is an error, including collection and external-environment-file options.
-The future editor uses the same model operation when the user chooses inheritance.
+The editor uses the same model operation when the user chooses inheritance.

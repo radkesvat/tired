@@ -31,4 +31,6 @@ Native broker fixtures verify subscription ordering, pinned destination, flags,
 literal unit/mode arguments, early and late signals, failed outcomes, denied calls,
 timeouts, cancellation before and after submission, unrelated events, bounded
 early-event overflow and later owner invalidation. They submit no host jobs.
-Controller/journal integration and installed-service qualification remain pending.
+The controller persists intent/completion and observes installed native fixtures.
+Submitted uncertainty is reconciled explicitly; the release report records the
+actual system/user and reboot environments.

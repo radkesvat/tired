@@ -39,5 +39,5 @@ This component neither opens production journals nor expands filesystem permissi
 Tests cover same-name user isolation, nonroot system-service records, trusted manager
 origins, forged UNIT/USER_UNIT payloads, boot restrictions and malformed selectors.
 A real sd-journal handle over an empty private fixture verifies native match setup
-without writing to or iterating the host journal. Access diagnostics, bounded entry
-decoding, tail/follow polling and the `logs` CLI remain integration work.
+without writing to or iterating the host journal. The logs frontend combines this
+selection with access diagnostics, bounded entry decoding and tail/follow polling.

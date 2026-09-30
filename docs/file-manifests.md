@@ -58,7 +58,8 @@ Parsing does not prove approval, artifact existence or current file identity. Be
 any mutation the controller must load from trusted private storage, bind the anchor
 to the journal and approved request, verify staging/rollback bytes and fingerprints,
 resolve targets through the trusted scope layout and revalidate under the scope
-lock. Artifact comparison and application remain pending.
+lock. The transaction controller compares artifacts and applies these manifests
+through journaled publication/rollback phases.
 
 Tests cover create/edit/remove/rename round trips, restore validation, lifecycle-only plans, arbitrary-path
 rejection, service mismatch, duplicate targets, immutable revisions, missing

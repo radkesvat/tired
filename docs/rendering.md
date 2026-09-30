@@ -25,7 +25,7 @@ its allocation. Encoders publish output only after the complete encoding succeed
 
 Native tests exercise expansion characters, controls, empty strings, semicolons,
 special-prefix arguments, invalid text, and buffer boundaries. The completed unit
-renderer still needs real systemd execution round-trip evidence. Syntax details
+renderer is also exercised by the disposable native argv/environment round trip. Syntax details
 follow the [baseline systemd syntax documentation](https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.syntax.xml).
 
 ## Unit serialization
@@ -50,5 +50,5 @@ path accessibility, ownership, and post-install runtime state still require vali
 
 The generated native fixture passed systemd 249.11 `systemd-analyze verify --man=no`
 on the development host. The verifier also warned about an existing host snapd
-unit's unsupported RestartMode key. This is syntax evidence only; actual workload
-argument/environment round trips remain part of isolated integration qualification.
+unit's unsupported RestartMode key. This verifier observation is syntax evidence only. The isolated native fixture
+separately checks actual workload argument/environment round trips.
