@@ -7,8 +7,9 @@ no shared-library fallback in direct mode.
 
 Ubuntu 22.04's libsystemd development package supplies headers and a shared library,
 but no static archive. The explicit preparation script builds only `libsystemd.a`
-from the Ubuntu `249.11-0ubuntu3.22` source package, including its distribution
-patches. It does not install systemd, replace host libraries or build a custom daemon.
+from Debian `252.39-1~deb12u2`, including its distribution patches. This client
+reads compact journals used by Debian 12 and Ubuntu 24.04; the manager API
+baseline remains 249. It builds against Ubuntu 22.04/glibc 2.35 for direct delivery. It does not install systemd, replace host libraries or build a custom daemon.
 Sources and build products remain in an external cache.
 
 Install preparation tools and development libraries:
@@ -25,24 +26,24 @@ Normal project configure/build never downloads dependencies. For offline prepara
 place the three pinned source-package files in the cache and omit that flag. The
 script checks every SHA-256 before extraction and disables Meson wrap downloads.
 The source package's `.dsc` signature is not separately verified; integrity is pinned
-by these hashes, recorded from the Ubuntu archive:
+by these hashes, recorded from the Debian archive:
 
 | File | SHA-256 |
 | --- | --- |
-| `systemd_249.11-0ubuntu3.22.dsc` | `722f7ef054c6696d19dd0eb3228668a1807011a7ba04e5cdd22e6c93a82b17d0` |
-| `systemd_249.11.orig.tar.gz` | `305ba81cc33593bc2e8e9d6dc7f964b1c0a9303155fced5e6b1d236577441bf2` |
-| `systemd_249.11-0ubuntu3.22.debian.tar.xz` | `4ce334b6483e938692c7fa1a29c6c69a518053a62b2b67752d57fcadf24bce57` |
+| `systemd_252.39-1~deb12u2.dsc` | `f2f952ae61fd40f1ef3ee48c8721e23eaaec5396ef5f1b0c2e138d78fade9c6e` |
+| `systemd_252.39.orig.tar.gz` | `08a54a6c4d4cf969fc025eaa8922a55d6bc458100c242510b56c96e7d72af1c5` |
+| `systemd_252.39-1~deb12u2.debian.tar.xz` | `27c548c678593cbe82e1701fc480bfe56e99b8f8750cbc09e720b6aa4fcbffaf` |
 
 The source is retrieved from the
-[Ubuntu source archive](https://archive.ubuntu.com/ubuntu/pool/main/s/systemd/).
+[Debian source archive](https://deb.debian.org/debian/pool/main/s/systemd/).
 Keep the extracted source and its license files with the cache. Public libsystemd
 code is LGPL-2.1-or-later; the source package records additional component licenses.
-Release source/notice/relinking artifacts and security-update review remain packaging
-work. A pinned archive must be rebuilt and the pin reviewed when dependency fixes
+Direct delivery includes corresponding-source, full-notice and relinking assets.
+Security-update review remains a maintainer responsibility. A pinned archive must be rebuilt and the pin reviewed when dependency fixes
 are adopted; the pin is not a claim that future security updates are unnecessary.
 
-Default cache location is `$XDG_CACHE_HOME/tired/systemd-249.11-0ubuntu3.22`, falling
-back to `$HOME/.cache/tired/systemd-249.11-0ubuntu3.22`. Override it with the same
+Default cache location is `$XDG_CACHE_HOME/tired/systemd-252.39-1~deb12u2`, falling
+back to `$HOME/.cache/tired/systemd-252.39-1~deb12u2`. Override it with the same
 absolute `TIRED_SYSTEMD_CACHE` value for preparation and project configuration.
 The archive lives in `build-x86_64/libsystemd.a` or `build-aarch64/libsystemd.a`.
 Preparation is native only. Use separate architecture directories and trusted
@@ -58,5 +59,9 @@ feature description. No manager daemon or security policy is replaced.
 The native library test creates an sd-bus object and links the journal reader without
 contacting a manager or opening the host journal. Its post-link check enforces the
 direct glibc-only shared-library allowlist, including the transitive dependencies.
-Live sd-bus/journal behavior and compressed-journal interoperability still need their
-backend tests. Distribution builds bypass the source cache and preparation script.
+Native backend and journal tests exercise live APIs separately; the release
+qualification report records the actual hosts and limitations. Distribution builds bypass the source cache and preparation script.
+
+Old direct caches that lack compact-journal support are rejected. Select the current
+cache explicitly with `-DTIRED_SYSTEMD_CACHE=...` when reconfiguring an existing
+build. Distribution builds continue using their installed shared client.
