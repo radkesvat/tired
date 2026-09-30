@@ -1,0 +1,20 @@
+#!/usr/bin/make -f
+
+export CC = clang
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all reproducible=+all
+export DEB_CFLAGS_MAINT_APPEND = -ffile-prefix-map=$(CURDIR)=. -gdwarf-4
+
+%:
+	dh $@ --buildsystem=cmake --builddirectory=build/debian
+
+override_dh_auto_configure:
+	dh_auto_configure -- -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Release -DTIRED_DEPENDENCY_MODE=DISTRIBUTION -DCMAKE_INSTALL_PREFIX=/usr -DTIRED_WARNINGS_AS_ERRORS=ON
+
+override_dh_auto_build:
+	dh_auto_build -- -j2
+
+override_dh_auto_test:
+	dh_auto_test -- ARGS="--output-on-failure"
+
+override_dh_compress:
+	dh_compress -X.md -X.json

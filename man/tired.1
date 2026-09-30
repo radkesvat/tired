@@ -1,0 +1,142 @@
+.TH TIRED 1 "September 2026" "tired 0.1.0" "User Commands"
+.SH NAME
+tired \- turn a foreground command into a persistent systemd service
+.SH SYNOPSIS
+.B tired
+[creation options] COMMAND [ARG...]
+.br
+.B tired create
+[options] -- COMMAND [ARG...]
+.br
+.B tired
+list | status NAME | show NAME | logs NAME | doctor [NAME]
+.br
+.B tired
+start | stop | restart | enable | disable | edit | remove NAME
+.br
+.B tired rename
+NAME NEW_NAME
+.SH DESCRIPTION
+tired captures a command vector and working directory, proposes a typed service,
+and installs it after review and administrator authorization when necessary.
+Commands after the first workload token or -- belong to the workload.
+The target is never executed during discovery.
+Created services are ordinary systemd units and do not depend on tired remaining installed.
+.SH SCOPE
+System scope is the default; installation authority is separate from execution identity.
+.B --user
+selects the calling user's manager. Machine boot activation requires account lingering
+and accessible workload files.
+.SH OPTIONS
+.TP
+.B --yes, --no-tui, --json
+Approve ordinary headless changes, avoid curses, or select structured output.
+Specific risks require repeatable --allow-risk CODE even with --yes.
+.TP
+.B --name NAME, --profile auto|none|ID
+Select an exact service name or declarative profile. Names are never used to infer privilege.
+.TP
+.B --run-as USER, --group GROUP, --working-directory PATH
+Select service identity and working directory. User scope cannot switch accounts.
+.TP
+.B --set FIELD=VALUE, --unset FIELD
+Assign a typed advanced setting or explicitly inherit an optional setting.
+.TP
+.B --start, --no-start, --enable, --no-enable
+Select immediate execution and future activation independently.
+.TP
+.B --restart POLICY, --restart-sec DURATION, --retry-policy persistent|limited
+Select restart behavior. Persistent retries use a nonzero delay and no finite rate budget.
+.TP
+.B --nofile SOFT:HARD, --network none|network|online
+Select descriptor limits or network ordering without modifying host limits or wait services.
+.TP
+.B --env KEY=VALUE, --pass-env KEY, --import-env-file PATH, --env-file PATH
+Explicitly assign, capture, snapshot, or reference environment inputs.
+No shell evaluation or blanket environment capture occurs.
+.TP
+.B --credential NAME=PATH
+Add an application-compatible LoadCredential reference.
+.TP
+.B --hardening baseline
+Explicitly select NoNewPrivileges=true, PrivateTmp=true and ProtectSystem=full.
+The preset blocks privilege gains, isolates temporary files and makes /usr, /boot and /etc read-only.
+Review application write requirements. Mount namespaces are required; nonroot user services cannot use this preset on the supported baseline.
+Ordinary defaults are unchanged. Assigning a preset field again with --set or --unset is a duplicate scalar error.
+.TP
+.B --enable-linger
+Explicitly request an account-level user-manager persistence change.
+.TP
+.B --now
+With enable/disable, also change current runtime state.
+.TP
+.B --apply-mode restart|defer, --refresh-profile
+Choose edit application or explicitly reevaluate profile recommendations.
+.TP
+.B --restore-managed
+Explicit drift restoration; requires restore-drifted-unit acknowledgment and a private backup.
+.TP
+.B --keep-history
+Retain private history when removing a service.
+.TP
+.B --output NEW_FILE, --include-sensitive
+Export plan/show to a new private file. Sensitive exports require sensitive-export acknowledgment.
+.TP
+.B --offline, --unit
+For plan, skip host validation or display proposed unit text.
+.TP
+.B --follow, --lines N, --since TIMESTAMP, --boot current|BOOT_ID
+Journal selection; --json emits bounded NDJSON events.
+.TP
+.B --description TEXT, --type TYPE
+Select description and process model: exec, simple, notify, forking or oneshot.
+.TP
+.B --start-limit-interval TIME, --start-limit-burst INTEGER
+Select an explicit finite retry budget with limited retry policy.
+.TP
+.B --system, --quiet, --verbose, --color auto|always|never
+Select system scope, human-output verbosity and presentation.
+.TP
+.B --allow-risk CODE, --sensitive-arg INDEX
+Acknowledge a specific displayed risk or classify a command argument.
+.TP
+.B --dry-run
+With create, produce a read-only plan.
+.TP
+.B --effective, --check-active
+Inspect show fragment/drop-ins or return 7 from status when not running.
+.TP
+.B --active-state STATE, --enabled-state STATE, --profile ID, --search TEXT
+Filter list observations and case-insensitive names.
+.TP
+.B --help, --version, --build-info
+Display usage, version or compiler/linkage/baseline metadata.
+.SH PROFILE AND SETTINGS COMMANDS
+profiles list, show ID, explain -- COMMAND, validate FILE, install FILE --yes,
+and remove ID --yes operate on declarative profiles.
+config show and validate FILE inspect effective settings or validate one file.
+Profile changes preserve service snapshots until edit --refresh-profile.
+.SH REVIEW CONTROLS
+H previews baseline hardening; Space selects it and Escape returns.
+The question-mark key displays the selected field's origin, rationale and cited evidence.
+P previews the unit; D shows typed differences and unified saved/disk/proposed comparisons.
+S shows operation effects; E edits environment and K credentials; R reviews risks; C applies.
+Editors block hidden edits while a resize message is shown and preserve pending input until the terminal is usable again.
+.SH RECOVERY
+.B tired recover
+inspects durable transaction journals.
+Resolve one transaction explicitly with --transaction UUID --resolution finish|rollback --yes.
+An uncertain restart is observed rather than blindly repeated.
+.SH EXIT STATUS
+0 completed; 1 internal failure; 2 invalid input; 3 unsupported environment;
+4 authorization; 5 conflict; 6 rolled back; 7 installed/runtime failure;
+8 recovery required; 9 not found; 10 cancelled; 130 interrupted before commit.
+.SH FILES
+/etc/systemd/system/*.service, /etc/tired/services/, /var/lib/tired/, /run/tired/.
+User scope uses XDG configuration/state/runtime locations.
+.SH SECURITY
+The helper is neither setuid nor resident. It validates typed requests and derived destinations.
+Classified secrets are redacted in normal output; arbitrary application logs can still contain secrets.
+Stopping a networking service may interrupt the operator's connection.
+.SH SEE ALSO
+systemd.service(5), systemd.exec(5), systemctl(1), journalctl(1)

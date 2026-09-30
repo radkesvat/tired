@@ -1,0 +1,22 @@
+Source: tired
+Section: admin
+Priority: optional
+Maintainer: radkesvat <asedmosa66@gmail.com>
+Build-Depends: debhelper-compat (= 13), cmake (>= 3.22), ninja-build, clang, llvm, lld, pkg-config,
+ libsystemd-dev (>= 249), libncurses-dev (>= 6.2), libjson-c-dev (>= 0.15), libssl-dev (>= 3.0)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/radkesvat/tired
+Vcs-Git: https://github.com/radkesvat/tired.git
+Vcs-Browser: https://github.com/radkesvat/tired
+
+Package: tired
+Architecture: amd64 arm64
+Depends: ${shlibs:Depends}, ${misc:Depends}, systemd (>= 249), sudo
+Recommends: dbus-user-session, libpam-systemd
+Description: persistent systemd service creation and management
+ Turns an existing foreground command into an understandable persistent systemd
+ service. Provides an interactive review, declarative application profiles,
+ headless operation, journal inspection and checked transaction recovery.
+ Generated services operate independently of this package and survive
+ its removal.

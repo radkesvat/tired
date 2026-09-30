@@ -1,0 +1,6 @@
+format=1
+version=@PROJECT_VERSION@
+architecture=@_package_arch@
+dependency_mode=@TIRED_DEPENDENCY_MODE@
+glibc_baseline=2.35
+systemd_baseline=249

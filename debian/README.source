@@ -1,0 +1,6 @@
+Build with dpkg-buildpackage -us -uc in a clean distribution environment.
+The upstream orig archive contains source only, excluding .git, build, install,
+local instructions and local implementation plans. Distribution mode resolves
+shared development libraries locally and never loads CPM or downloads sources.
+The maintainer supplies a real contact address and signing identity before upload.
+Package installation/removal has no service-management maintainer scripts.

@@ -225,6 +225,11 @@ if(TIRED_FUZZING)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(tired_installer_test tests/integration/installer_test.c)
+    target_link_libraries(tired_installer_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.installer COMMAND tired_installer_test "${PROJECT_SOURCE_DIR}/install.sh"
+        "${CMAKE_CPACK_COMMAND}" "${PROJECT_BINARY_DIR}" "${TIRED_DEPENDENCY_MODE}" "${PROJECT_VERSION}")
+    set_tests_properties(tired.installer PROPERTIES LABELS "integration;installer" TIMEOUT 900 SKIP_RETURN_CODE 77)
     add_executable(tired_protocol_test tests/unit/protocol_test.c)
     target_link_libraries(tired_protocol_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.protocol COMMAND tired_protocol_test)
@@ -632,6 +637,9 @@ install(TARGETS tired-helper RUNTIME DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}/ti
 install(FILES defaults.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired")
 install(FILES schemas/helper-request.schema.json schemas/operation-result.schema.json
     schemas/machine-output.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
+install(FILES man/tired.1 DESTINATION "${CMAKE_INSTALL_MANDIR}/man1")
+install(FILES README.md LICENSE DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+install(DIRECTORY docs/ DESTINATION "${CMAKE_INSTALL_DOCDIR}/docs" FILES_MATCHING PATTERN "*.md")
 install(FILES tests/public_output/fixtures.json
     DESTINATION "${CMAKE_INSTALL_DOCDIR}/tests/public_output")
 install(FILES schemas/model-snapshot.schema.json DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/schemas")
@@ -645,7 +653,4 @@ install(FILES schemas/profile.schema.json schemas/settings.schema.json schemas/t
 install(DIRECTORY profiles/ DESTINATION "${CMAKE_INSTALL_DATADIR}/tired/profiles.d"
     FILES_MATCHING PATTERN "*.json")
 
-# Development archive only; product/deb packaging belongs to later implementation.
-set(CPACK_GENERATOR TGZ)
-set(CPACK_PACKAGE_FILE_NAME "tired-${PROJECT_VERSION}-linux-clang-${_tired_arch}-${CMAKE_BUILD_TYPE}")
-include(CPack)
+include(cmake/Packaging.cmake)

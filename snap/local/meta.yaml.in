@@ -1,0 +1,14 @@
+name: tired
+version: '@PROJECT_VERSION@'
+summary: Review and create persistent host systemd services
+description: |
+  Creates and manages ordinary host systemd services after review and explicit
+  authorization. Generated services remain independent of the package.
+base: core22
+grade: stable
+confinement: classic
+license: MIT
+architectures: [@_package_arch@]
+apps:
+  tired:
+    command: usr/local/bin/tired

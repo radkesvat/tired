@@ -1,0 +1,22 @@
+cmake_minimum_required(VERSION 3.22)
+project(tired_relink LANGUAGES C)
+if(NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "Use the matching Clang/LLD toolchain described in build-info.txt.")
+endif()
+get_filename_component(_compiler "${CMAKE_C_COMPILER}" REALPATH)
+get_filename_component(_compiler_directory "${_compiler}" DIRECTORY)
+find_program(RELINK_LLD ld.lld HINTS "${_compiler_directory}" REQUIRED)
+set(_libraries @TIRED_RELINK_LIBRARIES@)
+foreach(_library IN LISTS _libraries)
+    list(APPEND _archives "${CMAKE_CURRENT_SOURCE_DIR}/libraries/${_library}")
+endforeach()
+foreach(_program IN ITEMS tired tired-helper)
+    set(_object "${CMAKE_CURRENT_SOURCE_DIR}/objects/${_program}.o")
+    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${_program}"
+        COMMAND "${CMAKE_C_COMPILER}" "-fuse-ld=${RELINK_LLD}" -flto -static-libgcc -pie
+            "${_object}" "${CMAKE_CURRENT_SOURCE_DIR}/libraries/libtired_core.a"
+            ${_archives} -pthread -ldl -lrt -lm -o "${CMAKE_CURRENT_BINARY_DIR}/${_program}"
+        DEPENDS "${_object}" "${CMAKE_CURRENT_SOURCE_DIR}/libraries/libtired_core.a" ${_archives}
+        VERBATIM)
+    add_custom_target("${_program}-relink" ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/${_program}")
+endforeach()

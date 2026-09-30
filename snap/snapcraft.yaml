@@ -1,0 +1,61 @@
+name: tired
+version: '0.1.0'
+summary: Review and create persistent host systemd services
+description: |
+  Turns an existing foreground command into an understandable persistent host
+  systemd service. Includes review, declarative profiles, native lifecycle and
+  journal inspection, checked transactions and explicit recovery. Generated
+  services remain independent of this package.
+base: core22
+grade: stable
+confinement: classic
+license: MIT
+architectures:
+  - build-on: amd64
+    build-for: amd64
+  - build-on: arm64
+    build-for: arm64
+apps:
+  tired:
+    command: usr/local/bin/tired
+parts:
+  tired:
+    plugin: nil
+    source: .
+    build-attributes:
+      - enable-patchelf
+    build-packages:
+      - clang
+      - llvm
+      - lld
+      - cmake
+      - ninja-build
+      - pkg-config
+      - binutils
+      - libsystemd-dev
+      - libncurses-dev
+      - libjson-c-dev
+      - libssl-dev
+      - libcap-dev
+      - libgcrypt20-dev
+      - libgpg-error-dev
+      - liblzma-dev
+      - liblz4-dev
+      - libzstd-dev
+      - libmount-dev
+      - libaudit-dev
+      - meson
+      - python3-jinja2
+      - gperf
+      - curl
+      - dpkg-dev
+      - openssl
+    override-build: |
+      cmake -DTIRED_ALLOW_DOWNLOAD=ON -P "$CRAFT_PART_SRC/cmake/PrepareSystemd.cmake"
+      cmake -S "$CRAFT_PART_SRC" -B "$CRAFT_PART_BUILD/tired-cmake" -G Ninja \
+        -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local -DTIRED_DEPENDENCY_MODE=DIRECT \
+        -DTIRED_WARNINGS_AS_ERRORS=ON -DBUILD_TESTING=ON
+      cmake --build "$CRAFT_PART_BUILD/tired-cmake" --parallel "$CRAFT_PARALLEL_BUILD_COUNT"
+      ctest --test-dir "$CRAFT_PART_BUILD/tired-cmake" --output-on-failure
+      DESTDIR="$CRAFT_PART_INSTALL" cmake --install "$CRAFT_PART_BUILD/tired-cmake"

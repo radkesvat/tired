@@ -1,0 +1,120 @@
+name: Tagged release
+
+on:
+  push:
+    tags: ['v[0-9]*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.arch }}-${{ matrix.mode }}
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, preset: x64, runner: ubuntu-22.04, image: 'ubuntu:22.04', mode: DIRECT }
+          - { arch: arm64, preset: arm64, runner: ubuntu-24.04-arm, image: 'ubuntu:22.04', mode: DIRECT }
+          - { arch: amd64, preset: x64, runner: ubuntu-22.04, image: 'debian:12', mode: DISTRIBUTION }
+          - { arch: arm64, preset: arm64, runner: ubuntu-24.04-arm, image: 'debian:12', mode: DISTRIBUTION }
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      TIRED_SYSTEMD_CACHE: /tmp/tired-dependencies/systemd-252.39-1~deb12u2
+    steps:
+      - name: Install native build and packaging dependencies
+        run: |
+          apt-get update
+          apt-get install -y git ca-certificates curl clang llvm lld cmake ninja-build binutils pkg-config libncurses-dev libjson-c-dev libssl-dev libsystemd-dev meson python3-jinja2 gperf libcap-dev libgcrypt20-dev libgpg-error-dev liblzma-dev liblz4-dev libzstd-dev libmount-dev libaudit-dev dpkg-dev debhelper dwz lintian squashfs-tools snapd patchelf
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check tag and set reproducible inputs
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(sed -n 's/^project(tired VERSION \([^ ]*\).*/\1/p' CMakeLists.txt)"
+          printf 'SOURCE_DATE_EPOCH=%s\n' "$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+      - name: Prepare pinned static libsystemd
+        if: matrix.mode == 'DIRECT'
+        run: cmake -DTIRED_ALLOW_DOWNLOAD=ON -DTIRED_SYSTEMD_CACHE="$TIRED_SYSTEMD_CACHE" -P cmake/PrepareSystemd.cmake
+      - name: Build and test complete product
+        run: |
+          cmake --preset linux-clang-${{ matrix.preset }}-release -DTIRED_DEPENDENCY_MODE=${{ matrix.mode }} -DTIRED_SYSTEMD_CACHE="$TIRED_SYSTEMD_CACHE" -DCMAKE_INSTALL_PREFIX=${{ matrix.mode == 'DIRECT' && '/usr/local' || '/usr' }}
+          cmake --build --preset linux-clang-${{ matrix.preset }}-release --parallel 2
+          ctest --preset linux-clang-${{ matrix.preset }}-release --output-on-failure
+          mkdir -p build/assets
+          cpack --config build/linux-clang-${{ matrix.preset }}-release/CPackSourceConfig.cmake -B build/package-stage
+          version=${GITHUB_REF_NAME#v}
+          tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -czf "build/assets/tired-$version.tar.gz" -C build/package-stage/_CPack_Packages/Linux-Source/TGZ "tired-$version"
+      - name: Produce direct archive, relinking material and Snap
+        if: matrix.mode == 'DIRECT'
+        run: |
+          cpack --config build/linux-clang-${{ matrix.preset }}-release/CPackConfig.cmake -G TGZ -B build/package-stage
+          cp build/package-stage/tired-*-linux-${{ matrix.arch }}.tar.gz build/assets/
+          cmake --build --preset linux-clang-${{ matrix.preset }}-release --target relink-bundle snap-package
+          cp build/linux-clang-${{ matrix.preset }}-release/*-relink-*.tar.gz build/assets/
+          cp build/linux-clang-${{ matrix.preset }}-release/tired_*.snap build/assets/
+          cp build/linux-clang-${{ matrix.preset }}-release/dependency-inventory.txt build/assets/dependencies-${{ matrix.arch }}.txt
+      - name: Collect exact corresponding sources
+        if: matrix.mode == 'DIRECT'
+        run: |
+          sed 's/^deb /deb-src /' /etc/apt/sources.list > /etc/apt/sources.list.d/tired-source.list
+          apt-get update
+          mkdir -p build/dependency-sources
+          cd build/dependency-sources
+          for package in libgcrypt20 libgpg-error0 libcap2 libjson-c5 libncursesw6 libssl3 liblzma5 liblz4-1 libzstd1; do
+            source=$(dpkg-query -W -f='${source:Package}=${source:Version}' "$package:${{ matrix.arch }}")
+            apt-get source --download-only "$source"
+          done
+          cp "$TIRED_SYSTEMD_CACHE"/*.dsc "$TIRED_SYSTEMD_CACHE"/*.tar.* .
+          mkdir -p cmake
+          cp ../../cmake/PrepareSystemd.cmake cmake/
+          cp ../../docs/dependency-source-build.md BUILD.md
+          cd ../..
+          cmake -DSOURCE_PACKAGES="$PWD/build/dependency-sources" -DOUTPUT_DIRECTORY="$PWD/build/assets" -DVERSION="${GITHUB_REF_NAME#v}" -P cmake/SourceBundle.cmake
+          mv build/assets/tired-*-dependency-sources.tar.gz "build/assets/tired-${GITHUB_REF_NAME#v}-dependency-sources-${{ matrix.arch }}.tar.gz"
+      - name: Build unsigned Debian binary and source artifacts
+        if: matrix.mode == 'DISTRIBUTION'
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          mkdir -p build/debian-upload
+          cp "build/assets/tired-$version.tar.gz" "build/debian-upload/tired_$version.orig.tar.gz"
+          tar -xf "build/assets/tired-$version.tar.gz" -C build/debian-upload
+          (cd "build/debian-upload/tired-$version" && dpkg-buildpackage -us -uc -sa)
+          lintian --pedantic build/debian-upload/tired_*.changes > build/assets/lintian-${{ matrix.arch }}.txt || status=$?
+          test "${status:-0}" -le 1
+          cp build/debian-upload/tired_*.deb build/debian-upload/tired-dbgsym_*.deb build/debian-upload/tired_*.dsc build/debian-upload/tired_*.tar.* build/debian-upload/tired_*.changes build/debian-upload/tired_*.buildinfo build/assets/
+      - name: Prepare unsigned Ubuntu source uploads
+        if: matrix.mode == 'DISTRIBUTION' && matrix.arch == 'amd64'
+        run: |
+          cmake -DUPSTREAM_SOURCE_ARCHIVE="$PWD/build/assets/tired-${GITHUB_REF_NAME#v}.tar.gz" -DOUTPUT_DIRECTORY="$PWD/build/ubuntu-source" -DVERSION="${GITHUB_REF_NAME#v}" -P cmake/UbuntuSourcePackages.cmake
+          cp build/ubuntu-source/jammy/tired_*.dsc build/ubuntu-source/jammy/tired_*.tar.* build/ubuntu-source/jammy/tired_*.changes build/ubuntu-source/jammy/tired_*.buildinfo build/assets/
+          cp build/ubuntu-source/noble/tired_*.dsc build/ubuntu-source/noble/tired_*.tar.* build/ubuntu-source/noble/tired_*.changes build/ubuntu-source/noble/tired_*.buildinfo build/assets/
+      - name: Collect test evidence
+        run: cp build/linux-clang-${{ matrix.preset }}-release/Testing/Temporary/LastTest.log build/assets/tests-${{ matrix.arch }}-${{ matrix.mode }}.log
+      - name: Upload prepared assets and test evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ matrix.arch }}-${{ matrix.mode }}
+          path: build/assets/*
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          path: build/release
+          merge-multiple: true
+      - name: Create checksums and draft tagged release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp install.sh build/release/
+          cd build/release
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' | sort -z | xargs -0 sha256sum > ../release-SHA256SUMS
+          mv ../release-SHA256SUMS SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "tired $GITHUB_REF_NAME" --notes-file ../../CHANGELOG.md ./*
