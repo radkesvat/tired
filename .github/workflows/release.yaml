@@ -118,4 +118,4 @@ jobs:
           cd build/release
           find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' | sort -z | xargs -0 sha256sum > ../release-SHA256SUMS
           mv ../release-SHA256SUMS SHA256SUMS
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "tired $GITHUB_REF_NAME" --notes-file ../../CHANGELOG.md ./*
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "tired $GITHUB_REF_NAME" --generate-notes ./*

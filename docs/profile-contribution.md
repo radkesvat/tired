@@ -21,7 +21,7 @@ setup scripts. Follow [the schema and merge rules](profiles.md).
 - **Fixtures:** generic/explicit/ambiguous matching, overrides, unsupported features,
   negative schema cases and expected generated directives.
 - **Update policy:** existing services preserve their saved snapshot until explicit
-  refresh and review. Include the advice change in the changelog.
+  refresh and review. Describe the advice change in the release notes.
 
 Do not copy large upstream service scripts or documentation into a profile.
 Summarize with citations and retain uncertainty when evidence does not establish a
