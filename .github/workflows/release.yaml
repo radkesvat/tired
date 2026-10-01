@@ -23,16 +23,25 @@ jobs:
     env:
       DEBIAN_FRONTEND: noninteractive
       TIRED_SYSTEMD_CACHE: /tmp/tired-dependencies/systemd-252.39-1~deb12u2
+    defaults:
+      run:
+        working-directory: /opt/tired-release
     steps:
       - name: Install native build and packaging dependencies
+        working-directory: /
         run: |
           apt-get update
           apt-get install -y openssl systemd-journal-remote git ca-certificates curl clang llvm lld cmake ninja-build binutils pkg-config libncurses-dev libjson-c-dev nettle-dev libsystemd-dev meson python3-jinja2 gperf libcap-dev liblzma-dev liblz4-dev libzstd-dev libmount-dev libaudit-dev dpkg-dev debhelper dwz lintian squashfs-tools snapd patchelf
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Check tag and set reproducible inputs
+        working-directory: ${{ github.workspace }}
         run: |
           test "$GITHUB_REF_NAME" = "v$(sed -n 's/^project(tired VERSION \([^ ]*\).*/\1/p' CMakeLists.txt)"
           printf 'SOURCE_DATE_EPOCH=%s\n' "$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+          # The mounted workspace belongs to the host runner, not container root.
+          # Keep filesystem trust tests under an entirely root-owned ancestry.
+          mkdir -p /opt/tired-release
+          git archive --format=tar "$GITHUB_SHA" | tar -x --no-same-owner -C /opt/tired-release
       - name: Prepare pinned static libsystemd
         if: matrix.mode == 'DIRECT'
         run: cmake -DTIRED_ALLOW_DOWNLOAD=ON -DTIRED_SYSTEMD_CACHE="$TIRED_SYSTEMD_CACHE" -P cmake/PrepareSystemd.cmake
@@ -96,7 +105,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-${{ matrix.arch }}-${{ matrix.mode }}
-          path: build/assets/*
+          path: /opt/tired-release/build/assets/*
           if-no-files-found: error
   publish:
     needs: build
