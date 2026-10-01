@@ -36,7 +36,7 @@ jobs:
         working-directory: /
         run: |
           apt-get update
-          apt-get install -y openssl systemd-journal-remote git ca-certificates curl clang llvm lld cmake ninja-build binutils pkg-config libncurses-dev libjson-c-dev nettle-dev libsystemd-dev meson python3-jinja2 gperf libcap-dev liblzma-dev liblz4-dev libzstd-dev libmount-dev libaudit-dev dpkg-dev debhelper dwz lintian squashfs-tools snapd patchelf
+          apt-get install -y acl openssl systemd-journal-remote git ca-certificates curl clang llvm lld cmake ninja-build binutils pkg-config libncurses-dev libjson-c-dev nettle-dev libsystemd-dev meson python3-jinja2 gperf libcap-dev liblzma-dev liblz4-dev libzstd-dev libmount-dev libaudit-dev dpkg-dev debhelper dwz lintian squashfs-tools snapd patchelf
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Check tag and set reproducible inputs
         working-directory: ${{ github.workspace }}
@@ -46,7 +46,9 @@ jobs:
           printf 'SOURCE_DATE_EPOCH=%s\n' "$commit_time" >> "$GITHUB_ENV"
           # The mounted workspace belongs to the host runner, not container root.
           # Keep filesystem trust tests under an entirely root-owned ancestry.
-          mkdir -p /opt/tired-release
+          install -d -o 0 -g 0 -m 0755 /opt/tired-release
+          # Host /opt ACLs otherwise make newly created build directories writable.
+          setfacl --remove-all --remove-default /opt/tired-release
           git -c safe.directory="$GITHUB_WORKSPACE" -c tar.umask=0022 archive --format=tar "$GITHUB_SHA" | tar -x --no-same-owner -C /opt/tired-release
       - name: Prepare pinned static libsystemd
         if: matrix.mode == 'DIRECT'
