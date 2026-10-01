@@ -105,8 +105,13 @@ jobs:
         if: matrix.mode == 'DISTRIBUTION' && matrix.arch == 'amd64'
         run: |
           cmake -DUPSTREAM_SOURCE_ARCHIVE="$PWD/build/assets/tired-${GITHUB_REF_NAME#v}.tar.gz" -DOUTPUT_DIRECTORY="$PWD/build/ubuntu-source" -DVERSION="${GITHUB_REF_NAME#v}" -P cmake/UbuntuSourcePackages.cmake
-          cp build/ubuntu-source/jammy/tired_*.dsc build/ubuntu-source/jammy/tired_*.tar.* build/ubuntu-source/jammy/tired_*.changes build/ubuntu-source/jammy/tired_*.buildinfo build/assets/
-          cp build/ubuntu-source/noble/tired_*.dsc build/ubuntu-source/noble/tired_*.tar.* build/ubuntu-source/noble/tired_*.changes build/ubuntu-source/noble/tired_*.buildinfo build/assets/
+          # GitHub renames '~' in asset names; archives preserve source-package references.
+          for series in jammy noble; do
+            (cd "build/ubuntu-source/$series" &&
+              tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
+                -czf "../../assets/tired-${GITHUB_REF_NAME#v}-ubuntu-$series-source.tar.gz" \
+                tired_*.dsc tired_*.tar.* tired_*.changes tired_*.buildinfo)
+          done
       - name: Collect test evidence
         run: cp build/linux-clang-${{ matrix.preset }}-release/Testing/Temporary/LastTest.log build/assets/tests-${{ matrix.arch }}-${{ matrix.mode }}.log
       - name: Upload prepared assets and test evidence
