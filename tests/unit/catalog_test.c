@@ -88,7 +88,16 @@ int main(int argc, char **argv)
     CHECK(
         tired_catalog_add_directory(&local, path.data, TIRED_PROFILE_USER, getuid(), true, &error));
     CHECK(error.status == TIRED_OK && local.count == 0);
-    CHECK(!tired_catalog_add_directory(&local, path.data, TIRED_PROFILE_ADMIN, 0, false, &error));
+    if (getuid() != 0)
+    {
+        CHECK(
+            !tired_catalog_add_directory(&local, path.data, TIRED_PROFILE_ADMIN, 0, false, &error));
+        CHECK(error.status == TIRED_CONFLICT && strcmp(error.code, "profile-trust") == 0);
+    }
+    /* Trust the fixture's actual owner so traversal reaches the missing child.
+     * A root-only trust policy rejects a nonroot fixture before that point. */
+    CHECK(!tired_catalog_add_directory(&local, path.data, TIRED_PROFILE_ADMIN, getuid(), false,
+                                       &error));
     CHECK(error.status == TIRED_INVALID && error.system_errno == ENOENT &&
           strcmp(error.code, "profile-directory-missing") == 0);
     CHECK(!tired_profiles_discover(path.data, false, &catalog, &error));
