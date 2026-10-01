@@ -84,6 +84,10 @@ explicit actions and need no additional ordinary confirmation.
 | `--hardening baseline` | Explicit `NoNewPrivileges=true`, `PrivateTmp=true`, `ProtectSystem=full` |
 | `--set FIELD=VALUE`, `--unset FIELD` | Typed advanced field or explicit inheritance |
 
+In the interactive review, **Network startup wait** is on page **7 — dependencies**.
+It controls startup ordering. Choosing `none` adds no network wait and does not
+disable network access. Press `?` on the field for an explanation of each choice.
+
 Duplicate scalar assignments, including a named flag plus `--set`, fail. Collection
 flags append/merge according to their typed rules. Environment precedence within a
 proposal is snapshot import, named pass-through, then explicit assignment. Managed

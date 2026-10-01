@@ -127,6 +127,10 @@ bool tired_ui_ready(int minimum_rows, int minimum_columns)
     refresh();
     return false;
 }
+static const char *field_label(TiredFieldId id)
+{
+    return id == TIRED_FIELD_NETWORK ? "Network startup wait" : tired_field_get(id)->name;
+}
 static bool field_text(const TiredServiceSpec *spec, TiredFieldId id, const bool *classified,
                        TiredText *output, TiredError *error)
 {
@@ -255,7 +259,7 @@ bool tired_ui_field_evidence(const TiredMutation *mutation, TiredFieldId id, Tir
     bool ok =
         field_text(&mutation->proposed.spec, id, mutation->proposed.review.sensitive_arguments,
                    &value, error) &&
-        evidence_line(&report, "Field: ", field->name, error) &&
+        evidence_line(&report, "Field: ", field_label(id), error) &&
         evidence_line(&report, "Effective value: ", value.data, error) &&
         evidence_line(&report, "Origin: ", origin(effective->origin), error) &&
         evidence_line(&report, "Rationale: ", rationale, error) &&
@@ -264,6 +268,14 @@ bool tired_ui_field_evidence(const TiredMutation *mutation, TiredFieldId id, Tir
         evidence_line(&report, "Registry default: ",
                       field->default_value == NULL ? "inherited/captured" : field->default_value,
                       error);
+    if (ok && id == TIRED_FIELD_NETWORK)
+        ok = evidence_line(&report, "\nMeaning: ",
+                           "Controls startup ordering; it does not disable network access.\n"
+                           "none: No added network startup wait.\n"
+                           "network: Start after network management starts.\n"
+                           "online: Wait for the system's configured network-readiness checks.\n"
+                           "online does not guarantee Internet or remote-server access.",
+                           error);
     struct json_object *recommendations = NULL, *sources = NULL;
     if (ok && mutation->proposed.has_profile)
     {
@@ -460,7 +472,7 @@ void tired_ui_edit_list(TiredMutation *mutation, TiredFieldId id, TiredError *er
         bool mask[TIRED_ARGUMENT_LIMIT] = {0};
         if (id == TIRED_FIELD_ARGV)
             (void)tired_argv_classify(list, mutation->proposed.review.sensitive_arguments, mask);
-        safe_print(1, 2, tired_field_get(id)->name, COLS - 4);
+        safe_print(1, 2, field_label(id), COLS - 4);
         size_t first = selected > (size_t)(LINES - 7) ? selected - (size_t)(LINES - 7) : 0;
         for (size_t i = first; i < list->count && i - first < (size_t)(LINES - 6); ++i)
         {
@@ -578,8 +590,8 @@ static bool plain(TiredMutation *mutation, const TiredLayout *layout, const Tire
                                mutation->proposed.review.sensitive_arguments, &value, error) &&
                     tired_encode_display(value.data, value.length, &escaped, error);
         if (read)
-            fprintf(stdout, "  %-25s %s [%s]\n", tired_field_get((TiredFieldId)i)->name,
-                    escaped.data, origin(mutation->proposed.spec.fields[i].origin));
+            fprintf(stdout, "  %-25s %s [%s]\n", field_label((TiredFieldId)i), escaped.data,
+                    origin(mutation->proposed.spec.fields[i].origin));
         tired_text_destroy(&value);
         tired_text_destroy(&escaped);
         if (!read)
@@ -796,8 +808,7 @@ bool tired_ui_review(TiredMutation *mutation, const TiredLayout *layout,
                                            TIRED_FIELD_START,         TIRED_FIELD_ENABLE,
                                            TIRED_FIELD_ENABLE_LINGER, TIRED_FIELD_RESTART,
                                            TIRED_FIELD_RESTART_SEC,   TIRED_FIELD_RETRY_POLICY,
-                                           TIRED_FIELD_NOFILE_SOFT,   TIRED_FIELD_NOFILE_HARD,
-                                           TIRED_FIELD_NETWORK};
+                                           TIRED_FIELD_NOFILE_SOFT,   TIRED_FIELD_NOFILE_HARD};
     bool validate = true, recompute = false;
     while (!interrupted)
     {
@@ -918,7 +929,7 @@ bool tired_ui_review(TiredMutation *mutation, const TiredLayout *layout,
             int row = (int)(index - scroll) + 6;
             if (index == selected)
                 attron(A_REVERSE);
-            safe_print(row, 2, tired_field_get(id)->name, 22);
+            safe_print(row, 2, field_label(id), 22);
             safe_print(row, 25, value.data == NULL ? "unknown" : value.data, COLS - 41);
             safe_print(row, COLS - 13, origin(mutation->proposed.spec.fields[id].origin), 11);
             if (index == selected)
@@ -1194,7 +1205,7 @@ bool tired_ui_review(TiredMutation *mutation, const TiredLayout *layout,
                 TiredText initial = {0}, value = {0};
                 (void)field_text(&mutation->proposed.spec, id,
                                  mutation->proposed.review.sensitive_arguments, &initial, error);
-                if (prompt(field->name, initial.data, &value, error))
+                if (prompt(field_label(id), initial.data, &value, error))
                     (void)tired_spec_set(&mutation->proposed.spec, id, value.data, value.length,
                                          TIRED_ORIGIN_USER, true, error);
                 tired_text_destroy(&initial);
