@@ -6,10 +6,21 @@ tired helps you run a program in the background, start it when your computer boo
 and restart it if it fails. It is useful for servers, proxies, network tunnels, and
 other programs you want to keep running.
 
-Give tired the command you already use, such as `tired ./program`. Review the
-settings and approve them. tired writes the service file for you, and **systemd**,
-the service manager used by many Linux systems, runs your program. tired does not
-need to stay open.
+Normally, you run your program like this:
+
+```sh
+./program
+```
+
+With tired, add `tired` before the same command:
+
+```sh
+tired ./program
+# After you review and approve, the 'program' service is created and running!
+```
+
+tired writes the service file for you, and **systemd**, the service manager used by
+many Linux systems, runs your program. tired does not need to stay open.
 
 ## Install
 
@@ -132,9 +143,8 @@ By default, tired creates a system service. Creating it needs administrator
 permission, but the program normally runs as the user who called tired. Check the
 account shown in the review.
 
-The **Backhaul profile proposes root**, the administrator account, for new system
-services. Use `--run-as USER` to choose a different account, replacing `USER` with
-an existing username.
+Use `--run-as USER` to choose a different account, replacing `USER` with an
+existing username.
 
 To create a service for your own user account instead:
 
