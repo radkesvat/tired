@@ -233,7 +233,7 @@ have one link, and pass the same owner/write checks. Trusted-root selection is t
 caller's responsibility; a bundled label alone is not proof of root ownership.
 
 Files are opened relative to the retained directory descriptor, read within the
-profile limit, validated, and hashed with OpenSSL EVP SHA-256. The digest identifies
+profile limit, validated, and hashed with Nettle SHA-256. The digest identifies
 content, not publisher authenticity. Catalog records retain path, origin, and trusted
 owner. Directory order is deterministic; scans stop at 4096 entries and catalogs at
 256 profiles. On failure newly appended entries are removed and previous entries

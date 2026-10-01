@@ -4,6 +4,65 @@ This report records local qualification of 0.1.0 on 30 September 2026. Packages
 and source uploads are unsigned. GitHub, PPA, Debian archive and Snap Store
 publication remain the maintainer's responsibility; none has been submitted.
 
+## Crypto dependency reduction — 1 October 2026
+
+The direct build now uses Nettle for SHA-256 and glibc `explicit_bzero` for memory
+clearing. Its pinned libsystemd reader disables OpenSSL, gcrypt and GnuTLS while
+retaining XZ, LZ4 and Zstandard. Distribution builds use shared Nettle and the
+distribution's shared libsystemd; transitive distribution dependencies remain
+package-managed.
+
+A small C comparison program performed streaming SHA-256, printed the digest and
+cleared its state. Both candidates used the same Clang `-O3`, ThinLTO and stripping
+options on each architecture; libsodium included its documented initialization.
+The measurements below are probe executables, not the full application:
+
+| Architecture | Nettle 3.7.3 | libsodium 1.0.18 |
+| --- | ---: | ---: |
+| x86-64 | 24,440 bytes | 209,552 bytes |
+| ARM64 under QEMU | 11,040 bytes | 120,912 bytes |
+
+Both produced the same SHA-256 result. Nettle also avoids process-wide library
+initialization for this use. Application tests cover standard SHA-256 vectors,
+all two-part splits of short vectors, empty input, a million-byte message, state
+clearing and bounded buffer clearing. Existing profile, fingerprint, review,
+transaction and recovery tests continue to use unchanged digest formats.
+
+With the same native x86-64 Clang 19 toolchain and Release settings, the unstripped
+frontend decreased from 9,348,688 to 3,521,104 bytes (8.92 to 3.36 MiB). The helper
+decreased from 5,933,520 to 1,626,152 bytes. Stripping a measurement copy of the new
+frontend produced 3,228,472 bytes; release stripping policy was not changed.
+
+Native DIRECT Debug passed its 88-test suite and the subsequently added journal
+format test. DIRECT Release passed 89/89 tests. DISTRIBUTION Release passed its
+88 applicable tests; the direct installer test was skipped by design. Five focused
+ASan/UBSan tests passed for hashing, fingerprints, catalogues, redaction and journal
+reading. The format test was rerun after its export timestamp was updated to allow
+validation of newly sealed fixtures.
+
+A disposable ARM64 guest produced a sealed Zstandard journal, which the system's
+`journalctl --verify --verify-key` successfully authenticated. The new x86-64
+DIRECT Debug/Release and DISTRIBUTION readers recovered its complete 16 KiB message.
+This validates reading sealed journal data; tired does not authenticate seals.
+
+The x86-64 direct archive, CPack Debian binary, Snap and static relinking bundle
+were rebuilt. Both relinked executables passed ELF linkage inspection. A fresh
+archive extraction listed the installed profiles. Debian metadata declares
+`libnettle8` and no direct OpenSSL/gcrypt dependency. Unsigned Debian and Jammy/Noble
+source packages were prepared; the source-only build used `-d` because the host's
+versioned Clang/LLVM tools and Snap CMake do not satisfy Debian metapackage checks.
+This is not a clean Debian binary rebuild or an archive/store submission.
+
+The corresponding-source bundle now includes Nettle and the same pinned systemd
+source, with checksum verification and updated LGPL notices. Workflow syntax was
+checked with actionlint. No new Snap installation/confinement qualification is
+implied here.
+
+ARM64 application validation was stopped at the maintainer's request because of
+the emulation time. The SHA-256 comparison probes and static libsystemd reader
+build completed, but the application build and tests remain unverified for this
+change. The older ARM64 results below apply to the earlier code only.
+
 ## Profile catalogue follow-up — 1 October 2026
 
 The initial expanded catalogue contained 36 profiles, including 34 networking

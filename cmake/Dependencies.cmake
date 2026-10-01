@@ -9,9 +9,9 @@ else()
 endif()
 set(_tired_saved_suffixes ${CMAKE_FIND_LIBRARY_SUFFIXES})
 set(CMAKE_FIND_LIBRARY_SUFFIXES ${_tired_json_suffixes})
-pkg_check_modules(CRYPTO REQUIRED libcrypto>=3.0)
-find_library(TIRED_CRYPTO_${TIRED_DEPENDENCY_MODE}_LIBRARY NAMES crypto
-    HINTS ${CRYPTO_LIBRARY_DIRS} REQUIRED)
+pkg_check_modules(NETTLE REQUIRED nettle>=3.7)
+find_library(TIRED_NETTLE_${TIRED_DEPENDENCY_MODE}_LIBRARY NAMES nettle
+    HINTS ${NETTLE_LIBRARY_DIRS} REQUIRED)
 find_library(TIRED_JSON_C_${TIRED_DEPENDENCY_MODE}_LIBRARY NAMES json-c
     HINTS ${JSON_C_LIBRARY_DIRS} REQUIRED)
 set(CMAKE_FIND_LIBRARY_SUFFIXES ${_tired_saved_suffixes})
@@ -21,11 +21,11 @@ set_target_properties(tired_json_c PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${JSON_C_INCLUDE_DIRS}"
     INTERFACE_COMPILE_OPTIONS "${JSON_C_CFLAGS_OTHER}")
 find_package(Threads REQUIRED)
-add_library(tired_crypto UNKNOWN IMPORTED)
-set_target_properties(tired_crypto PROPERTIES
-    IMPORTED_LOCATION "${TIRED_CRYPTO_${TIRED_DEPENDENCY_MODE}_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${CRYPTO_INCLUDE_DIRS}"
-    INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS};Threads::Threads")
+add_library(tired_nettle UNKNOWN IMPORTED)
+set_target_properties(tired_nettle PROPERTIES
+    IMPORTED_LOCATION "${TIRED_NETTLE_${TIRED_DEPENDENCY_MODE}_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${NETTLE_INCLUDE_DIRS}"
+    INTERFACE_COMPILE_OPTIONS "${NETTLE_CFLAGS_OTHER}")
 
 pkg_check_modules(SYSTEMD REQUIRED libsystemd>=249)
 pkg_check_modules(NCURSESW REQUIRED ncursesw>=6.2)
@@ -56,15 +56,25 @@ if(TIRED_DEPENDENCY_MODE STREQUAL "DIRECT")
     if(NOT _journal_format MATCHES "HEADER_INCOMPATIBLE_COMPACT")
         message(FATAL_ERROR "This old static client cannot read compact journals. Prepare the current pin and select its TIRED_SYSTEMD_CACHE; manager API baseline remains 249.")
     endif()
+    set(_reader_build "${TIRED_SYSTEMD_CACHE}/build-${CMAKE_SYSTEM_PROCESSOR}-reader")
+    if(NOT EXISTS "${_reader_build}/config.h")
+        message(FATAL_ERROR "Prepare the journal reader without optional cryptographic backends first: cmake -P cmake/PrepareSystemd.cmake.")
+    endif()
+    file(READ "${_reader_build}/config.h" _reader_config)
+    foreach(_feature IN ITEMS GCRYPT OPENSSL GNUTLS)
+        if(NOT _reader_config MATCHES "#define HAVE_${_feature} 0([\r\n]|$)")
+            message(FATAL_ERROR "The direct journal reader must disable ${_feature}; rerun cmake/PrepareSystemd.cmake.")
+        endif()
+    endforeach()
     unset(_tired_prepared_systemd CACHE)
     find_library(_tired_prepared_systemd NAMES systemd
-        PATHS "${TIRED_SYSTEMD_CACHE}/build-${CMAKE_SYSTEM_PROCESSOR}" NO_DEFAULT_PATH)
+        PATHS "${_reader_build}" NO_DEFAULT_PATH)
     set(TIRED_SYSTEMD_DIRECT_LIBRARY "${_tired_prepared_systemd}")
     if(NOT TIRED_SYSTEMD_DIRECT_LIBRARY)
         message(FATAL_ERROR "Static libsystemd is missing. Run cmake -P cmake/PrepareSystemd.cmake with a populated external cache; see docs/systemd-dependency.md. No shared fallback is permitted.")
     endif()
     set(_systemd_static_deps)
-    foreach(_dependency IN ITEMS cap gcrypt gpg-error lzma lz4 zstd)
+    foreach(_dependency IN ITEMS cap lzma lz4 zstd)
         string(MAKE_C_IDENTIFIER "${_dependency}" _id)
         find_library(TIRED_SYSTEMD_${_id}_ARCHIVE NAMES "${_dependency}" REQUIRED)
         list(APPEND _systemd_static_deps "${TIRED_SYSTEMD_${_id}_ARCHIVE}")

@@ -16,7 +16,7 @@ fully static portability. `tired --build-info --json` and release metadata descr
 the mode and declared baseline; [qualification](release-validation.md) records
 actual tool/library versions and systems exercised.
 
-The API minima are libsystemd 249, ncursesw 6.2, json-c 0.15 and OpenSSL 3.0. A
+The API minima are libsystemd 249, ncursesw 6.2, json-c 0.15 and Nettle 3.7. A
 baseline build demonstrates the actual installed versions, not every hypothetical
 combination at those minima. The declared qualification set is Ubuntu 22.04,
 Ubuntu 24.04 and Debian 12 on both supported architectures.

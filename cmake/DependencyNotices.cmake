@@ -1,6 +1,7 @@
 set(_notice_directory "${PROJECT_BINARY_DIR}/dependency-notices")
+file(REMOVE_RECURSE "${_notice_directory}")
 file(MAKE_DIRECTORY "${_notice_directory}")
-set(_inventory "tired=${PROJECT_VERSION}\narchitecture=${_package_arch}\nlinkage=${TIRED_DEPENDENCY_MODE}\ncompiler=${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}\ncmake=${CMAKE_VERSION}\njson-c=${JSON_C_VERSION}\nlibcrypto=${CRYPTO_VERSION}\nlibsystemd-api=${SYSTEMD_VERSION}\nncursesw=${NCURSESW_VERSION}\nglibc=dynamic\n")
+set(_inventory "tired=${PROJECT_VERSION}\narchitecture=${_package_arch}\nlinkage=${TIRED_DEPENDENCY_MODE}\ncompiler=${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}\ncmake=${CMAKE_VERSION}\njson-c=${JSON_C_VERSION}\nnettle=${NETTLE_VERSION}\nlibsystemd-api=${SYSTEMD_VERSION}\nncursesw=${NCURSESW_VERSION}\nglibc=dynamic\n")
 if(TIRED_DEPENDENCY_MODE STREQUAL "DIRECT")
     string(APPEND _inventory "libsystemd-direct-source=systemd 252.39-1~deb12u2\n")
 endif()
@@ -10,8 +11,8 @@ if(_dpkg)
     execute_process(COMMAND "${_dpkg}" --print-architecture OUTPUT_VARIABLE _native_arch
         OUTPUT_STRIP_TRAILING_WHITESPACE)
 endif()
-foreach(_package IN ITEMS libsystemd0 libncursesw6 libtinfo6 libjson-c5 libssl3
-    libcap2 libgcrypt20 libgpg-error0 liblzma5 liblz4-1 libzstd1 libgcc-s1)
+foreach(_package IN ITEMS libsystemd0 libncursesw6 libtinfo6 libjson-c5 nettle-dev
+    libcap2 liblzma5 liblz4-1 libzstd1 libgcc-s1)
     if(_dpkg_query)
         execute_process(COMMAND "${_dpkg_query}" -W
             "-f=\${binary:Package} \${Version} source=\${source:Package} \${source:Version}\n"
@@ -52,7 +53,7 @@ if(_support_known EQUAL 0 AND EXISTS "${_support_archive}")
         endif()
     endif()
 endif()
-foreach(_license IN ITEMS LGPL-2.1 GPL-2 GPL-3 Apache-2.0)
+foreach(_license IN ITEMS LGPL-2.1 LGPL-3 GPL-2 GPL-3)
     if(EXISTS "/usr/share/common-licenses/${_license}")
         configure_file("/usr/share/common-licenses/${_license}"
             "${_notice_directory}/${_license}.txt" COPYONLY)

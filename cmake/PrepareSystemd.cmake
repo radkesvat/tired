@@ -56,7 +56,7 @@ if(NOT EXISTS "${_source}")
         "${TIRED_SYSTEMD_CACHE}/systemd_252.39-1~deb12u2.dsc" "${_source}"
         COMMAND_ERROR_IS_FATAL ANY)
 endif()
-set(_build "${TIRED_SYSTEMD_CACHE}/build-${_arch}")
+set(_build "${TIRED_SYSTEMD_CACHE}/build-${_arch}-reader")
 set(_reconfigure)
 if(EXISTS "${_build}/build.ninja")
     set(_reconfigure --reconfigure)
@@ -65,7 +65,8 @@ execute_process(COMMAND "${CMAKE_COMMAND}" -E env "CC=${_clang}" "CXX=${_false}"
     "${_meson}" setup ${_reconfigure} "${_build}" "${_source}"
     --wrap-mode=nodownload --buildtype=release -Dc_link_args=-fuse-ld=lld
     -Dstatic-libsystemd=true -Dtests=false -Dinstall-tests=false -Dman=false -Dhtml=false
-    -Dtranslations=false -Dmode=release -Dgnu-efi=false -Dgcrypt=true -Dcryptolib=gcrypt -Dxz=true
+    -Dtranslations=false -Dmode=release -Dgnu-efi=false
+    -Dgcrypt=false -Dopenssl=false -Dgnutls=false -Dcryptolib=auto -Dxz=true
     -Dlz4=true -Dzstd=true -Dselinux=false -Dapparmor=false -Daudit=true -Dseccomp=false
     -Dtime-epoch=0 -Dversion-tag=252.39-1~deb12u2
     COMMAND_ERROR_IS_FATAL ANY)

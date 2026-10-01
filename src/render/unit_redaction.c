@@ -1,9 +1,9 @@
 #include "tired/unit_redaction.h"
 #include "tired/encode.h"
+#include "tired/memory.h"
 #include "tired/unit_document.h"
 #include "tired/unit_words.h"
 #include <assert.h>
-#include <openssl/crypto.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -159,7 +159,7 @@ bool tired_unit_redact(const char *data, size_t length, const TiredTextList *sav
                     value->data[from + 1] == '%')
                     ++from;
             }
-            OPENSSL_cleanse(value->data + to, value->length - to);
+            tired_memory_clear(value->data + to, value->length - to);
             value->length = to;
             value->data[to] = '\0';
             arguments[j] = *value;
@@ -203,9 +203,9 @@ bool tired_unit_redact(const char *data, size_t length, const TiredTextList *sav
 done:
     free(secrets);
     if (buffer.data != NULL)
-        OPENSSL_cleanse(buffer.data, buffer.length);
+        tired_memory_clear(buffer.data, buffer.length);
     if (labeled.data != NULL)
-        OPENSSL_cleanse(labeled.data, labeled.length);
+        tired_memory_clear(labeled.data, labeled.length);
     tired_buffer_destroy(&buffer);
     tired_buffer_destroy(&labeled);
     tired_unit_words_destroy(&words);

@@ -1,14 +1,14 @@
 #include "tired/journal_record.h"
+#include "tired/memory.h"
 #include <assert.h>
 #include <errno.h>
-#include <openssl/crypto.h>
 #include <stdlib.h>
 #include <string.h>
 
 static void bytes_destroy(TiredJournalBytes *bytes)
 {
     if (bytes->data != NULL)
-        OPENSSL_cleanse(bytes->data, bytes->length);
+        tired_memory_clear(bytes->data, bytes->length);
     free(bytes->data);
     *bytes = (TiredJournalBytes){0};
 }

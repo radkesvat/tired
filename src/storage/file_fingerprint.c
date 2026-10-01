@@ -1,12 +1,12 @@
 #include "tired/file_fingerprint.h"
 #include "tired/capture.h"
 #include "tired/encode.h"
+#include "tired/memory.h"
 #include "tired/private_file.h"
+#include "tired/sha256.h"
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <openssl/crypto.h>
-#include <openssl/evp.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -65,7 +65,7 @@ static bool inspect(TiredDirectory *directory, const char *name, size_t limit,
     int fd = openat(parent, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC | O_NOCTTY);
     if (fd < 0)
         return io_error(error);
-    EVP_MD_CTX *context = NULL;
+    TiredSha256 context = {0};
     TiredBuffer contents;
     tired_buffer_init(&contents, limit);
     TiredFileFingerprint result = {0};
@@ -80,9 +80,7 @@ static bool inspect(TiredDirectory *directory, const char *name, size_t limit,
         changed(error);
         goto done;
     }
-    context = EVP_MD_CTX_new();
-    if (context == NULL || EVP_DigestInit_ex(context, EVP_sha256(), NULL) != 1)
-        goto digest_error;
+    tired_sha256_init(&context);
     unsigned char buffer[65536];
     size_t consumed = 0;
     for (;;)
@@ -108,8 +106,7 @@ static bool inspect(TiredDirectory *directory, const char *name, size_t limit,
         if (bytes != NULL &&
             !tired_buffer_append(&contents, (const char *)buffer, (size_t)count, error))
             goto done;
-        if (EVP_DigestUpdate(context, buffer, (size_t)count) != 1)
-            goto digest_error;
+        tired_sha256_update(&context, buffer, (size_t)count);
     }
     if (fstat(fd, &after) != 0 || fstatat(parent, name, &entry, AT_SYMLINK_NOFOLLOW) != 0)
     {
@@ -123,10 +120,6 @@ static bool inspect(TiredDirectory *directory, const char *name, size_t limit,
     }
     if (!tired_directory_check(directory, error))
         goto done;
-    unsigned char digest[EVP_MAX_MD_SIZE];
-    unsigned digest_length = 0;
-    if (EVP_DigestFinal_ex(context, digest, &digest_length) != 1 || digest_length != 32)
-        goto digest_error;
     result = (TiredFileFingerprint){.exists = true,
                                     .device = after.st_dev,
                                     .inode = after.st_ino,
@@ -134,25 +127,16 @@ static bool inspect(TiredDirectory *directory, const char *name, size_t limit,
                                     .gid = after.st_gid,
                                     .mode = after.st_mode & 07777,
                                     .size = (uint64_t)consumed};
-    static const char hex[] = "0123456789abcdef";
-    for (size_t i = 0; i < digest_length; ++i)
-    {
-        result.sha256[2 * i] = hex[digest[i] >> 4];
-        result.sha256[2 * i + 1] = hex[digest[i] & 15];
-    }
+    tired_sha256_final(&context, result.sha256);
     ok = true;
-    goto done;
-digest_error:
-    tired_error_set(error, TIRED_INTERNAL, "fingerprint-digest",
-                    "Cannot compute file SHA-256 fingerprint.", 0);
 done:
-    EVP_MD_CTX_free(context);
+    tired_memory_clear(&context, sizeof(context));
     if (close(fd) != 0 && ok)
         ok = io_error(error);
     if (ok && bytes != NULL)
         ok = tired_buffer_take(&contents, bytes, error);
     if (contents.data != NULL)
-        OPENSSL_cleanse(contents.data, contents.length);
+        tired_memory_clear(contents.data, contents.length);
     tired_buffer_destroy(&contents);
     if (ok)
     {

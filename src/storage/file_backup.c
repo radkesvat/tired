@@ -1,7 +1,7 @@
 #include "tired/file_backup.h"
 #include "tired/io.h"
+#include "tired/memory.h"
 #include <assert.h>
-#include <openssl/crypto.h>
 #include <string.h>
 
 static bool matches(const TiredFileFingerprint *expected, const TiredFileFingerprint *actual,
@@ -34,7 +34,7 @@ bool tired_file_backup(TiredDirectory *source, const char *name,
               matches(expected, &actual, error) &&
               tired_publication_commit(*publication, lock, error);
     if (bytes.data != NULL)
-        OPENSSL_cleanse(bytes.data, bytes.length);
+        tired_memory_clear(bytes.data, bytes.length);
     tired_text_destroy(&bytes);
     tired_text_destroy(&encoded);
     return ok;

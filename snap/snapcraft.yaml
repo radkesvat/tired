@@ -35,10 +35,8 @@ parts:
       - libsystemd-dev
       - libncurses-dev
       - libjson-c-dev
-      - libssl-dev
+      - nettle-dev
       - libcap-dev
-      - libgcrypt20-dev
-      - libgpg-error-dev
       - liblzma-dev
       - liblz4-dev
       - libzstd-dev

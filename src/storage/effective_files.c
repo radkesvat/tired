@@ -1,9 +1,9 @@
 #include "tired/effective_files.h"
 #include "tired/capture.h"
 #include "tired/encode.h"
+#include "tired/memory.h"
 #include "tired/unit_redaction.h"
 #include <assert.h>
-#include <openssl/crypto.h>
 #include <stdlib.h>
 #include <string.h>
 void tired_effective_files_destroy(TiredEffectiveFiles *files)
@@ -15,7 +15,7 @@ void tired_effective_files_destroy(TiredEffectiveFiles *files)
         tired_text_destroy(&files->files[i].reported_path);
         tired_observed_file_destroy(&files->files[i].source);
         if (files->files[i].display.data != NULL)
-            OPENSSL_cleanse(files->files[i].display.data, files->files[i].display.length);
+            tired_memory_clear(files->files[i].display.data, files->files[i].display.length);
         tired_text_destroy(&files->files[i].display);
     }
     free(files->files);

@@ -10,8 +10,10 @@ production build.
 ## Build and test
 
 On Ubuntu 22.04+/Debian 12+, install Clang/LLVM/LLD, CMake 3.22+, Ninja, pkg-config,
-wide ncurses development headers, json-c, OpenSSL and libsystemd development files.
-Direct builds also need static libcap, libgcrypt, libgpg-error, liblzma, lz4 and zstd.
+wide ncurses development headers, json-c, Nettle and libsystemd development files.
+Direct builds also need static libcap, liblzma, lz4 and zstd. The installer tests
+use the `openssl` command; journal format tests use `systemd-journal-remote` when
+installed. These test utilities are not linked into tired.
 See [dependency preparation](docs/systemd-dependency.md).
 
 ```sh

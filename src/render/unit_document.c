@@ -1,8 +1,8 @@
 #include "tired/unit_document.h"
 #include "tired/capture.h"
 #include "tired/encode.h"
+#include "tired/memory.h"
 #include <assert.h>
-#include <openssl/crypto.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,7 +11,7 @@ static void assignment_destroy(TiredUnitAssignment *assignment)
     tired_text_destroy(&assignment->section);
     tired_text_destroy(&assignment->key);
     if (assignment->value.data != NULL)
-        OPENSSL_cleanse(assignment->value.data, assignment->value.length);
+        tired_memory_clear(assignment->value.data, assignment->value.length);
     tired_text_destroy(&assignment->value);
     free(assignment->value_offsets);
     *assignment = (TiredUnitAssignment){0};
@@ -152,7 +152,7 @@ bool tired_unit_document_parse(const char *data, size_t length, TiredUnitDocumen
         if (!parse_line(&line, offsets, &section, &document, &capacity, error))
             goto done;
         if (line.data != NULL)
-            OPENSSL_cleanse(line.data, line.length);
+            tired_memory_clear(line.data, line.length);
         line.length = 0;
     }
     if (continued && !parse_line(&line, offsets, &section, &document, &capacity, error))
@@ -164,7 +164,7 @@ bool tired_unit_document_parse(const char *data, size_t length, TiredUnitDocumen
     ok = true;
 done:
     if (line.data != NULL)
-        OPENSSL_cleanse(line.data, line.length);
+        tired_memory_clear(line.data, line.length);
     tired_buffer_destroy(&line);
     free(offsets);
     tired_text_destroy(&section);

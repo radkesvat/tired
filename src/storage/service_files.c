@@ -1,9 +1,9 @@
 #include "tired/service_files.h"
 #include "tired/encode.h"
 #include "tired/file_target.h"
+#include "tired/memory.h"
 #include "tired/private_file.h"
 #include <assert.h>
-#include <openssl/crypto.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -67,7 +67,7 @@ static void inspect(const TiredLayout *layout, const TiredFileTarget *target, co
                       : TIRED_SERVICE_FILE_DRIFTED;
 done:
     if (bytes.data != NULL)
-        OPENSSL_cleanse(bytes.data, bytes.length);
+        tired_memory_clear(bytes.data, bytes.length);
     tired_text_destroy(&bytes);
     tired_directory_destroy(directory);
     tired_resolved_file_destroy(&resolved);

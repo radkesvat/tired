@@ -27,7 +27,7 @@ jobs:
       - name: Install native build and packaging dependencies
         run: |
           apt-get update
-          apt-get install -y git ca-certificates curl clang llvm lld cmake ninja-build binutils pkg-config libncurses-dev libjson-c-dev libssl-dev libsystemd-dev meson python3-jinja2 gperf libcap-dev libgcrypt20-dev libgpg-error-dev liblzma-dev liblz4-dev libzstd-dev libmount-dev libaudit-dev dpkg-dev debhelper dwz lintian squashfs-tools snapd patchelf
+          apt-get install -y openssl systemd-journal-remote git ca-certificates curl clang llvm lld cmake ninja-build binutils pkg-config libncurses-dev libjson-c-dev nettle-dev libsystemd-dev meson python3-jinja2 gperf libcap-dev liblzma-dev liblz4-dev libzstd-dev libmount-dev libaudit-dev dpkg-dev debhelper dwz lintian squashfs-tools snapd patchelf
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Check tag and set reproducible inputs
         run: |
@@ -61,7 +61,7 @@ jobs:
           apt-get update
           mkdir -p build/dependency-sources
           cd build/dependency-sources
-          for package in libgcrypt20 libgpg-error0 libcap2 libjson-c5 libncursesw6 libssl3 liblzma5 liblz4-1 libzstd1; do
+          for package in libcap2 libjson-c5 libncursesw6 libnettle8 liblzma5 liblz4-1 libzstd1; do
             source=$(dpkg-query -W -f='${source:Package}=${source:Version}' "$package:${{ matrix.arch }}")
             apt-get source --download-only "$source"
           done

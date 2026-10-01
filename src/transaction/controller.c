@@ -7,6 +7,7 @@
 #include "tired/io.h"
 #include "tired/json.h"
 #include "tired/manifest_storage.h"
+#include "tired/memory.h"
 #include "tired/mutation.h"
 #include "tired/private_file.h"
 #include "tired/render.h"
@@ -16,7 +17,6 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <openssl/crypto.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -260,7 +260,7 @@ static bool prepare_backup(Controller *controller, TiredDirectory *source, const
          tired_file_fingerprint(source, name, TIRED_PRIVATE_FILE_LIMIT, &snapshot, error) &&
          tired_file_fingerprint_equal(&snapshot, &file->before);
     if (bytes.data != NULL)
-        OPENSSL_cleanse(bytes.data, bytes.length);
+        tired_memory_clear(bytes.data, bytes.length);
     tired_text_destroy(&bytes);
     tired_text_destroy(&encoded);
     json_object_put(before);

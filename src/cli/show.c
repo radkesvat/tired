@@ -6,12 +6,12 @@
 #include "tired/file_fingerprint.h"
 #include "tired/file_target.h"
 #include "tired/io.h"
+#include "tired/memory.h"
 #include "tired/name.h"
 #include "tired/service_inventory.h"
 #include "tired/show_frontend.h"
 #include "tired/unit_redaction.h"
 #include <assert.h>
-#include <openssl/crypto.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -28,7 +28,7 @@ static bool add(struct json_object *object, const char *key, struct json_object 
 static void clear(TiredText *text)
 {
     if (text->data != NULL)
-        OPENSSL_cleanse(text->data, text->length);
+        tired_memory_clear(text->data, text->length);
     tired_text_destroy(text);
 }
 static bool text(TiredBuffer *buffer, const char *value, TiredError *error)
@@ -424,7 +424,7 @@ bool tired_show_command(const TiredRequest *request, TiredText *output, TiredSta
     {
         if (!tired_write_private_new(request->output.data, buffer.data, buffer.length, error))
             goto done;
-        OPENSSL_cleanse(buffer.data, buffer.length);
+        tired_memory_clear(buffer.data, buffer.length);
         buffer.length = 0;
         if (request->json)
         {
@@ -455,7 +455,7 @@ done:
     json_object_put(model);
     json_object_put(file);
     if (buffer.data != NULL)
-        OPENSSL_cleanse(buffer.data, buffer.length);
+        tired_memory_clear(buffer.data, buffer.length);
     tired_buffer_destroy(&buffer);
     clear(&encoded);
     clear(&unit);

@@ -4,7 +4,7 @@
 #include "tired/json.h"
 #include "tired/mutation.h"
 #include "tired/render.h"
-#include <openssl/evp.h>
+#include "tired/sha256.h"
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -48,17 +48,8 @@ void tired_mutation_change(TiredMutation *mutation, TiredFieldId field)
 }
 bool tired_digest_bytes(const char *bytes, size_t length, char digest[65], TiredError *error)
 {
-    unsigned char hash[EVP_MAX_MD_SIZE];
-    unsigned size = 0;
-    if (EVP_Digest(bytes, length, hash, &size, EVP_sha256(), NULL) != 1 || size != 32)
-        return tired_error_set(error, TIRED_INTERNAL, "digest", "Cannot hash approved data.", 0);
-    static const char hex[] = "0123456789abcdef";
-    for (size_t i = 0; i < 32; ++i)
-    {
-        digest[2 * i] = hex[hash[i] >> 4];
-        digest[2 * i + 1] = hex[hash[i] & 15];
-    }
-    digest[64] = '\0';
+    tired_sha256(bytes, length, digest);
+    tired_error_clear(error);
     return true;
 }
 static bool put(struct json_object *object, const char *key, struct json_object *value)

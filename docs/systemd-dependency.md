@@ -2,7 +2,7 @@
 
 Both dependency modes use the native libsystemd API (249 or newer). Distribution
 builds resolve the installed shared library. Direct builds require a static archive
-and static capability, cryptographic and journal-compression dependencies. There is
+and static capability and journal-compression dependencies. There is
 no shared-library fallback in direct mode.
 
 Ubuntu 22.04's libsystemd development package supplies headers and a shared library,
@@ -16,8 +16,8 @@ Install preparation tools and development libraries:
 
 ```sh
 sudo apt-get install meson ninja-build clang lld dpkg-dev python3-jinja2 gperf \
-  libsystemd-dev libcap-dev libgcrypt20-dev liblzma-dev liblz4-dev libzstd-dev \
-  libmount-dev libaudit-dev libssl-dev
+  libsystemd-dev libcap-dev liblzma-dev liblz4-dev libzstd-dev \
+  libmount-dev libaudit-dev
 cmake -DTIRED_ALLOW_DOWNLOAD=ON -P cmake/PrepareSystemd.cmake
 ```
 
@@ -45,13 +45,19 @@ are adopted; the pin is not a claim that future security updates are unnecessary
 Default cache location is `$XDG_CACHE_HOME/tired/systemd-252.39-1~deb12u2`, falling
 back to `$HOME/.cache/tired/systemd-252.39-1~deb12u2`. Override it with the same
 absolute `TIRED_SYSTEMD_CACHE` value for preparation and project configuration.
-The archive lives in `build-x86_64/libsystemd.a` or `build-aarch64/libsystemd.a`.
+The archive lives in `build-x86_64-reader/libsystemd.a` or
+`build-aarch64-reader/libsystemd.a`. These directories are separate from older
+archives built with cryptographic backends. Configuration checks the reader's
+generated feature header and rejects archives prepared with OpenSSL or gcrypt.
 Preparation is native only. Use separate architecture directories and trusted
 source caches; the script does not reset local edits in an existing extracted tree.
 
 Clang builds the archive. The upstream optional C++ probe is disabled; no C++
 compiler is required. Upstream generators use their own documented build tools.
-Journal XZ, LZ4, Zstandard, gcrypt and audit type-name support are enabled. Optional daemon-focused
+Journal XZ, LZ4, Zstandard and audit type-name support are enabled. OpenSSL, gcrypt
+and GnuTLS are disabled. tired reads journal data through the public reader API;
+it neither creates journal seals nor verifies their authenticity. The reader can
+read sealed journals without the sealing implementation. Optional daemon-focused
 SELinux, AppArmor and seccomp configuration is disabled for this archive;
 the selected libsystemd/basic sources reference these switches only in their build
 feature description. No manager daemon or security policy is replaced.

@@ -1,11 +1,11 @@
 #include "tired/observed_file.h"
 #include "tired/capture.h"
 #include "tired/encode.h"
+#include "tired/memory.h"
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/magic.h>
-#include <openssl/crypto.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/vfs.h>
@@ -16,7 +16,7 @@ void tired_observed_file_destroy(TiredObservedFile *file)
     if (file == NULL)
         return;
     if (file->bytes.data != NULL)
-        OPENSSL_cleanse(file->bytes.data, file->bytes.length);
+        tired_memory_clear(file->bytes.data, file->bytes.length);
     tired_text_destroy(&file->bytes);
     tired_text_destroy(&file->resolved_path);
     *file = (TiredObservedFile){0};

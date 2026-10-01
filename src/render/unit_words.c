@@ -1,7 +1,7 @@
 #include "tired/unit_words.h"
 #include "tired/encode.h"
+#include "tired/memory.h"
 #include <assert.h>
-#include <openssl/crypto.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,7 +11,7 @@ void tired_unit_words_destroy(TiredUnitWords *words)
         return;
     for (size_t i = 0; i < words->count; ++i)
     {
-        OPENSSL_cleanse(words->words[i].value.data, words->words[i].value.length);
+        tired_memory_clear(words->words[i].value.data, words->words[i].value.length);
         tired_text_destroy(&words->words[i].value);
     }
     free(words->words);
@@ -173,7 +173,7 @@ bool tired_unit_words_parse(const char *data, size_t length, TiredUnitWords *out
     ok = true;
 done:
     if (value.data != NULL)
-        OPENSSL_cleanse(value.data, value.length);
+        tired_memory_clear(value.data, value.length);
     tired_buffer_destroy(&value);
     tired_unit_words_destroy(&result);
     return ok;

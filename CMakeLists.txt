@@ -46,6 +46,14 @@ string(APPEND CMAKE_EXE_LINKER_FLAGS " -fuse-ld=${TIRED_LLD} -static-libgcc")
 
 include(CheckCSourceCompiles)
 check_c_source_compiles("
+    #define _DEFAULT_SOURCE
+    #include <string.h>
+    int main(void) { char bytes[1] = {0}; explicit_bzero(bytes, sizeof(bytes)); return 0; }
+" TIRED_HAS_EXPLICIT_BZERO)
+if(NOT TIRED_HAS_EXPLICIT_BZERO)
+    message(FATAL_ERROR "tired requires glibc explicit_bzero for clearing sensitive memory.")
+endif()
+check_c_source_compiles("
     #define _GNU_SOURCE
     #include <spawn.h>
     int main(void) {
@@ -105,6 +113,7 @@ target_compile_options(tired_build_options INTERFACE
 )
 add_library(tired_core STATIC src/util/value.c src/model/name.c src/model/model.c src/model/limit.c src/model/process_value.c src/model/environment.c src/model/environment_file.c src/model/proposal.c src/capture/capture.c src/capture/identity.c src/render/encode.c src/render/unit.c src/cli/parse.c)
 target_sources(tired_core PRIVATE src/util/json.c src/util/payload.c)
+target_sources(tired_core PRIVATE src/util/sha256.c src/util/memory.c)
 target_sources(tired_core PRIVATE src/storage/io.c)
 target_sources(tired_core PRIVATE src/cli/plan.c src/cli/plan_output.c)
 target_sources(tired_core PRIVATE src/model/redaction.c)
@@ -198,7 +207,7 @@ target_compile_definitions(tired_core PRIVATE
     TIRED_HELPER_RELATIVE="${_helper_relative}" TIRED_PROFILES_RELATIVE="${_profiles_relative}")
 target_compile_definitions(tired_core PRIVATE _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 target_include_directories(tired_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c tired_crypto tired_systemd tired_curses)
+target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c tired_nettle tired_systemd tired_curses)
 target_link_libraries(tired PRIVATE tired_core tired_build_options)
 add_executable(tired-helper src/helper_main.c)
 target_link_libraries(tired-helper PRIVATE tired_core tired_build_options)
@@ -225,6 +234,17 @@ if(TIRED_FUZZING)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(tired_sha256_test tests/unit/sha256_test.c)
+    target_link_libraries(tired_sha256_test PRIVATE tired_core tired_build_options)
+    add_test(NAME tired.sha256 COMMAND tired_sha256_test)
+    set_tests_properties(tired.sha256 PROPERTIES LABELS "unit;security")
+    add_executable(tired_journal_file_test tests/integration/journal_file_test.c)
+    target_link_libraries(tired_journal_file_test PRIVATE tired_core tired_build_options)
+    find_program(TIRED_JOURNAL_REMOTE NAMES systemd-journal-remote PATHS /usr/lib/systemd /lib/systemd)
+    if(TIRED_JOURNAL_REMOTE)
+        add_test(NAME tired.journal_file COMMAND tired_journal_file_test "${TIRED_JOURNAL_REMOTE}")
+        set_tests_properties(tired.journal_file PROPERTIES LABELS integration TIMEOUT 60)
+    endif()
     add_executable(tired_installer_test tests/integration/installer_test.c)
     target_link_libraries(tired_installer_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.installer COMMAND tired_installer_test "${PROJECT_SOURCE_DIR}/install.sh"

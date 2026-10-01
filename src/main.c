@@ -262,7 +262,7 @@ int main(int argc, char **argv)
             goto done;
         }
         printf("tired %s\nC17; Linux x86-64/ARM64; systemd >=249; glibc >=2.35\n"
-               "Libraries: libsystemd >=249, ncursesw >=6.2, json-c >=0.15, OpenSSL >=3.0\n"
+               "Libraries: libsystemd >=249, ncursesw >=6.2, json-c >=0.15, Nettle >=3.7\n"
                "Schemas: profile=1 settings=1 service-record=1 transaction=1 protocol=1 output=1\n",
                TIRED_VERSION);
         goto done;

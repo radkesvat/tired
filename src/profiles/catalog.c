@@ -1,10 +1,10 @@
 #include "tired/catalog.h"
 #include "tired/io.h"
+#include "tired/sha256.h"
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <openssl/evp.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -115,19 +115,8 @@ static int compare(const void *a, const void *b)
 }
 static bool digest(const TiredText *contents, char output[65], TiredError *error)
 {
-    unsigned char bytes[EVP_MAX_MD_SIZE];
-    unsigned length = 0;
-    if (EVP_Digest(contents->data, contents->length, bytes, &length, EVP_sha256(), NULL) != 1 ||
-        length != 32)
-        return tired_error_set(error, TIRED_INTERNAL, "profile-digest",
-                               "Cannot compute profile content digest.", 0);
-    static const char hex[] = "0123456789abcdef";
-    for (size_t i = 0; i < 32; ++i)
-    {
-        output[i * 2] = hex[bytes[i] >> 4];
-        output[i * 2 + 1] = hex[bytes[i] & 15];
-    }
-    output[64] = '\0';
+    tired_sha256(contents->data, contents->length, output);
+    tired_error_clear(error);
     return true;
 }
 

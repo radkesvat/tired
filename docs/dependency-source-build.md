@@ -28,10 +28,12 @@ declared build dependencies are documented in the upstream source and tired's
 Build replacement libraries from the extracted source using their upstream build
 instructions and the same architecture/toolchain. Typical static-library choices
 are `--enable-static --disable-shared` for Autoconf libraries, `-DBUILD_SHARED_LIBS=OFF`
-for json-c/CMake, `no-shared` for OpenSSL's configuration, and static library targets
+for json-c/CMake, and static library targets
 for libcap, LZ4 and Zstandard. ncurses must select wide-character support and the
-separate tinfo library. Keep libgcrypt and libgpg-error together and use a private
-prefix/pkg-config directory for modified dependencies. No library needs to be
+separate tinfo library. Nettle's SHA-256 needs `libnettle`, without the separate
+public-key `libhogweed` library or GMP. Preserve the direct libsystemd reader's
+disabled cryptographic backends. Use a private prefix/pkg-config directory for
+modified dependencies. No library needs to be
 installed over the host's runtime files.
 
 The full source package includes its own authoritative build documentation and
