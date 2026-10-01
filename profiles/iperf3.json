@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "iperf3",
+  "name": "iperf3",
+  "revision": 1,
+  "summary": "Foreground service guidance for iperf3, with reviewed descriptor suggestions.",
+  "match": {"executable_basenames": ["iperf3"], "case_sensitive": true},
+  "compatibility": {"systemd_min": 249, "application_version": null, "version_policy": "version-independent-advice"},
+  "recommendations": [
+    {"field": "nofile.soft", "value": 65536, "scope": ["system", "user"], "apply": "suggestion", "strength": "recommended", "risk": "resource-change", "reason": "Optional capacity policy: verify the installed implementation and workload before selecting this limit.", "source_ids": ["descriptor-policy"], "conditions": {"nofile_at_least": 65536}},
+    {"field": "nofile.hard", "value": 65536, "scope": ["system", "user"], "apply": "suggestion", "strength": "recommended", "risk": "resource-change", "reason": "Optional capacity policy: verify the installed implementation and workload before selecting this limit.", "source_ids": ["descriptor-policy"], "conditions": {"nofile_at_least": 65536}}
+  ],
+  "advisories": [
+    {"code": "foreground-workflow", "message": "Use foreground -s/--server for a persistent benchmark listener. Omit -D/--daemon. Client tests and -1/--one-off are finite; use --restart no for those tasks."},
+    {"code": "deployment-requirements", "message": "iperf3 is a benchmark, not a general relay. Parallel streams, server admission, CPU and socket buffers govern load; a million-descriptor soft limit is not assumed safe or necessary."},
+    {"code": "descriptor-capacity", "message": "The 65536 descriptor pair is a suggestion only. Accept it only after verifying the build supports high descriptors; otherwise retain inherited limits."},
+    {"code": "restart-and-health", "message": "The existing on-failure restart policy and delay remain in effect unless explicitly changed. Finite commands need --restart no; long-running modes still need application health and capacity monitoring."},
+    {"code": "profile-match-hint", "message": "Basename matching does not authenticate the executable, version or build. Preserve the original arguments, working directory and explicit user choices."}
+  ],
+  "sources": [
+    {"id": "upstream-usage", "url": "https://software.es.net/iperf/invoking.html", "checked_at": "2026-10-01", "source_kind": "upstream-documentation"},
+    {"id": "descriptor-policy", "url": "https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.exec.xml", "checked_at": "2026-10-01", "source_kind": "tired-policy"}
+  ]
+}

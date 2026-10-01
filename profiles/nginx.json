@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "nginx",
+  "name": "nginx",
+  "revision": 1,
+  "summary": "Foreground service guidance for nginx, with host-checked networking capacity limits.",
+  "match": {"executable_basenames": ["nginx"], "case_sensitive": true},
+  "compatibility": {"systemd_min": 249, "application_version": null, "version_policy": "version-independent-advice"},
+  "recommendations": [
+    {"field": "nofile.soft", "value": 1048576, "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "resource-change", "reason": "tired capacity policy for Linux networking workloads; apply only within the observed usable ceiling.", "source_ids": ["descriptor-policy"], "conditions": {"nofile_at_least": 1048576}},
+    {"field": "nofile.hard", "value": 1048576, "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "resource-change", "reason": "tired capacity policy for Linux networking workloads; apply only within the observed usable ceiling.", "source_ids": ["descriptor-policy"], "conditions": {"nofile_at_least": 1048576}},
+    {"field": "kill_signal", "value": "SIGQUIT", "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "behavior-change", "reason": "Ask the nginx master and workers to shut down gracefully within the configured stop timeout.", "source_ids": ["upstream-shutdown"]}
+  ],
+  "advisories": [
+    {"code": "foreground-workflow", "message": "For direct supervision use nginx -g 'daemon off;' with the existing config/prefix, or disable daemonization in that config. Keep master_process enabled. Do not wrap -s control or -t/-T validation commands."},
+    {"code": "deployment-requirements", "message": "Review worker_connections, worker_rlimit_nofile, event backend and worker_processes together. This advice targets Linux epoll builds, not select builds. Low ports, worker identities and pid/log paths need explicit permission review."},
+    {"code": "descriptor-capacity", "message": "The 1048576 descriptor pair is a capacity policy, not a measured connection guarantee. Unknown or lower host/manager ceilings suppress it. Review an explicit lower --nofile SOFT:HARD value if needed; global limits are never raised."},
+    {"code": "restart-and-health", "message": "The existing on-failure restart policy and delay remain in effect unless explicitly changed. Finite commands need --restart no; long-running modes still need application health and capacity monitoring."},
+    {"code": "profile-match-hint", "message": "Basename matching does not authenticate the executable, version or build. Preserve the original arguments, working directory and explicit user choices."},
+    {"code": "graceful-stop", "message": "SIGQUIT requests graceful shutdown. Review timeout_stop for long-lived connections; the manager can terminate remaining workers when that deadline expires."}
+  ],
+  "sources": [
+    {"id": "upstream-usage", "url": "https://nginx.org/en/docs/ngx_core_module.html", "checked_at": "2026-10-01", "source_kind": "upstream-documentation"},
+    {"id": "descriptor-policy", "url": "https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.exec.xml", "checked_at": "2026-10-01", "source_kind": "tired-policy"},
+    {"id": "upstream-shutdown", "url": "https://nginx.org/en/docs/control.html", "checked_at": "2026-10-01", "source_kind": "upstream-documentation"},
+    {"id": "linux-events", "url": "https://nginx.org/en/docs/events.html", "checked_at": "2026-10-01", "source_kind": "upstream-documentation"}
+  ]
+}

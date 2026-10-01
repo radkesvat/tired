@@ -254,7 +254,7 @@ bool tired_profile_parse(const char *data, size_t length, TiredProfile *profile,
     struct json_object *root = parsed.document;
     const char *top[] = {"schema_version", "id",      "name",          "revision",
                          "summary",        "match",   "compatibility", "recommendations",
-                         "advisories",     "sources", "replaces"};
+                         "advisories",     "sources", "replaces",      "default_run_as"};
     uint64_t schema;
     if (!keys(root, top, sizeof(top) / sizeof(top[0]), error) ||
         !tired_json_u64(get(root, "schema_version"), 1, 1, &schema, error) ||
@@ -266,6 +266,15 @@ bool tired_profile_parse(const char *data, size_t length, TiredProfile *profile,
     if (!identifier(parsed.id) || strcmp(parsed.id, "auto") == 0 ||
         strcmp(parsed.id, "none") == 0 || parsed.name == NULL || parsed.summary == NULL)
         goto schema_fail;
+    struct json_object *account_default = NULL;
+    if (json_object_object_get_ex(root, "default_run_as", &account_default))
+    {
+        if (!json_object_is_type(account_default, json_type_string) ||
+            json_object_get_string_len(account_default) != 4 ||
+            strcmp(json_object_get_string(account_default), "root") != 0)
+            goto schema_fail;
+        parsed.default_root = true;
+    }
     struct json_object *replacement = NULL;
     if (json_object_object_get_ex(root, "replaces", &replacement) &&
         (!json_object_is_type(replacement, json_type_string) ||

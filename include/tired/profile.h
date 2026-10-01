@@ -19,6 +19,7 @@ typedef struct
     const char *id, *name, *summary;
     uint64_t revision, systemd_min;
     bool case_sensitive, version_restricted;
+    bool default_root; /* Creation-time system-scope account default; not authorization. */
     TiredTextList basenames;
     TiredRecommendation *recommendations;
     size_t count;

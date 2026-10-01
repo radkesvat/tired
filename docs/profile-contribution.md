@@ -13,7 +13,9 @@ setup scripts. Follow [the schema and merge rules](profiles.md).
 - **Changes:** recommendation field, value, rationale, strength and expected unit
   diff. Keep explicit user choices and describe required conflicts.
 - **Privilege:** account/capability implications and which choices require explicit
-  review. A filename does not justify root or a privileged capability.
+  review. Explain any creation-time `default_run_as` policy explicitly; it must
+  preserve account overrides, user scope and existing-service identities. A filename
+  does not authorize root or a privileged capability.
 - **External inputs:** existing config syntax and passive path references; no reads
   of secret content, executable hooks, command rewriting or app downloads.
 - **Fixtures:** generic/explicit/ambiguous matching, overrides, unsupported features,

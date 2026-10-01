@@ -119,7 +119,7 @@ bool tired_plan_prepare_settings(const TiredRequest *request, const TiredSetting
                                  TiredPlan *output, TiredError *error)
 {
     assert(request != NULL && output != NULL);
-    TiredPlan plan = {0};
+    TiredPlan plan = {.account_defaults_allowed = true};
     memcpy(plan.sensitive_arguments, request->sensitive_arguments,
            sizeof(plan.sensitive_arguments));
     TiredText path = {0}, contents = {0};
@@ -287,6 +287,34 @@ fail:
     return false;
 }
 
+static bool profile_account_default(const TiredPlan *plan, const TiredProfile *profile,
+                                    const TiredProfileContext *context, TiredServiceSpec *spec,
+                                    TiredAccount *account, TiredGroup *group, TiredError *error)
+{
+    if (!plan->account_defaults_allowed || !profile->default_root ||
+        context->systemd_version < profile->systemd_min ||
+        tired_spec_choice_is(spec, TIRED_FIELD_SCOPE, "user") ||
+        spec->fields[TIRED_FIELD_RUN_AS].origin == TIRED_ORIGIN_USER)
+        return true;
+    if (profile->version_restricted)
+    {
+        struct json_object *compatibility = NULL, *version = NULL;
+        (void)json_object_object_get_ex(profile->document, "compatibility", &compatibility);
+        (void)json_object_object_get_ex(compatibility, "application_version", &version);
+        if (context->application_version == NULL ||
+            strcmp(context->application_version, json_object_get_string(version)) != 0)
+            return true;
+    }
+    if (!tired_account_by_uid(0, account, error) ||
+        !set_text(spec, TIRED_FIELD_RUN_AS, &account->name, TIRED_ORIGIN_DEFAULT, error))
+        return false;
+    if (spec->fields[TIRED_FIELD_GROUP].origin != TIRED_ORIGIN_USER &&
+        (!tired_group_by_gid(account->primary_group.gid, group, error) ||
+         !set_text(spec, TIRED_FIELD_GROUP, &group->name, TIRED_ORIGIN_CAPTURE, error)))
+        return false;
+    return true;
+}
+
 bool tired_plan_apply_profiles(TiredPlan *plan, const TiredProfileCatalog *catalog,
                                const char *selection, const TiredProfileContext *context,
                                TiredError *error)
@@ -303,6 +331,8 @@ bool tired_plan_apply_profiles(TiredPlan *plan, const TiredProfileCatalog *catal
     if (!tired_catalog_select(catalog, &plan->invocation.executable, selection, user, &selected,
                               &count, error))
         return false;
+    TiredAccount account = {0};
+    TiredGroup group = {0};
     TiredProfile snapshot = {0};
     TiredProfileMerge merge = {0};
     TiredText path = {0};
@@ -334,8 +364,22 @@ bool tired_plan_apply_profiles(TiredPlan *plan, const TiredProfileCatalog *catal
         if (!tired_profile_parse(json, strlen(json), &snapshot, error) ||
             !tired_text_set(&path, selected->path.data, selected->path.length, TIRED_INPUT_LIMIT,
                             error) ||
-            !tired_profile_merge(&snapshot, &plan->spec, context, &merge, error))
+            !tired_profile_merge(&snapshot, &plan->spec, context, &merge, error) ||
+            !profile_account_default(plan, &snapshot, context, &merge.spec, &account, &group,
+                                     error))
             goto fail;
+    }
+    if (account.name.data != NULL)
+    {
+        tired_account_destroy(&plan->service);
+        plan->service = account;
+        account = (TiredAccount){0};
+    }
+    if (group.name.data != NULL)
+    {
+        tired_group_destroy(&plan->group);
+        plan->group = group;
+        group = (TiredGroup){0};
     }
     tired_profile_destroy(&plan->profile);
     plan->profile = snapshot;
@@ -360,6 +404,8 @@ bool tired_plan_apply_profiles(TiredPlan *plan, const TiredProfileCatalog *catal
     tired_error_clear(error);
     return true;
 fail:
+    tired_account_destroy(&account);
+    tired_group_destroy(&group);
     tired_profile_destroy(&snapshot);
     tired_profile_merge_destroy(&merge);
     tired_text_destroy(&path);

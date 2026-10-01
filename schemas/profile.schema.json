@@ -7,6 +7,7 @@
   "properties": {
     "schema_version": {"const": 1},
     "id": {"allOf": [{"$ref": "#/$defs/id"}, {"not": {"enum": ["auto", "none"]}}]},
+    "default_run_as": {"enum": ["root"], "description": "Default to UID 0 for a newly captured system service unless the user selected an account; ordinary risk review and authorization still apply."},
     "replaces": {"$ref": "#/$defs/id"},
     "name": {"type": "string", "minLength": 1, "maxLength": 256},
     "summary": {"type": "string", "minLength": 1, "maxLength": 4096},

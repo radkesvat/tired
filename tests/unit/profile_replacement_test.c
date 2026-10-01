@@ -114,6 +114,7 @@ int main(int argc, char **argv)
     CHECK(backhaul_count == 1);
     CHECK(tired_catalog_add_directory(&layered, argv[1], TIRED_PROFILE_BUNDLED, getuid(), false,
                                       &error));
+    size_t bundled_count = layered.count;
     CHECK(tired_catalog_add_directory(&layered, directory.data, TIRED_PROFILE_ADMIN, getuid(),
                                       false, &error));
     CHECK(tired_catalog_add_directory(&layered, directory.data, TIRED_PROFILE_USER, getuid(), false,
@@ -124,7 +125,7 @@ int main(int argc, char **argv)
     CHECK(count == 1 && selected->origin == TIRED_PROFILE_USER);
     CHECK(!tired_catalog_add_directory(&layered, directory.data, TIRED_PROFILE_USER, getuid(),
                                        false, &error));
-    CHECK(layered.count == 6);
+    CHECK(layered.count == bundled_count + 2);
     tired_text_list_destroy(&request.arguments);
     CHECK(tired_text_list_append(&request.arguments, "remove", 6, 2, 4096, &error));
     CHECK(tired_text_list_append(&request.arguments, "backhaul", 8, 2, 4096, &error));

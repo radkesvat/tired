@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "autossh",
+  "name": "autossh",
+  "revision": 1,
+  "summary": "Foreground service guidance for autossh, with reviewed descriptor suggestions.",
+  "match": {"executable_basenames": ["autossh"], "case_sensitive": true},
+  "compatibility": {"systemd_min": 249, "application_version": null, "version_policy": "version-independent-advice"},
+  "recommendations": [
+    {"field": "nofile.soft", "value": 65536, "scope": ["system", "user"], "apply": "suggestion", "strength": "recommended", "risk": "resource-change", "reason": "Optional capacity policy: verify the installed implementation and workload before selecting this limit.", "source_ids": ["descriptor-policy"], "conditions": {"nofile_at_least": 65536}},
+    {"field": "nofile.hard", "value": 65536, "scope": ["system", "user"], "apply": "suggestion", "strength": "recommended", "risk": "resource-change", "reason": "Optional capacity policy: verify the installed implementation and workload before selecting this limit.", "source_ids": ["descriptor-policy"], "conditions": {"nofile_at_least": 65536}}
+  ],
+  "advisories": [
+    {"code": "foreground-workflow", "message": "Keep autossh in the foreground without -f. For a tunnel use SSH -N with noninteractive authentication, verified host keys and explicit liveness settings; autossh already monitors its SSH child."},
+    {"code": "deployment-requirements", "message": "Preserve access to keys and known_hosts for the selected account. Inspect both autossh and SSH descriptor compatibility before raising limits; do not disable host-key verification."},
+    {"code": "descriptor-capacity", "message": "The 65536 descriptor pair is a suggestion only. Accept it only after verifying the build supports high descriptors; otherwise retain inherited limits."},
+    {"code": "restart-and-health", "message": "The existing on-failure restart policy and delay remain in effect unless explicitly changed. Finite commands need --restart no; long-running modes still need application health and capacity monitoring."},
+    {"code": "profile-match-hint", "message": "Basename matching does not authenticate the executable, version or build. Preserve the original arguments, working directory and explicit user choices."}
+  ],
+  "sources": [
+    {"id": "upstream-usage", "url": "https://www.harding.motd.ca/autossh/", "checked_at": "2026-10-01", "source_kind": "upstream-documentation"},
+    {"id": "descriptor-policy", "url": "https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.exec.xml", "checked_at": "2026-10-01", "source_kind": "tired-policy"}
+  ]
+}

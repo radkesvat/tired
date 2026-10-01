@@ -1,7 +1,11 @@
 # Security and ownership
 
 Installing a system unit requires administrator authority; executing its workload
-as root is a separate decision. System scope defaults to the captured account.
+as root is a separate decision. System scope ordinarily defaults to the captured
+account. A profile may propose root for a new system service through its explicit
+`default_run_as` metadata; Backhaul does so. Explicit account choices win, and
+root-risk acknowledgment and helper authorization still apply. Saved services
+and user-scope identities are not changed by this default.
 Validated sudo metadata may identify the original account, but cannot authorize an
 operation. User scope always uses the current UID/GID and its verified existing
 manager. Discovery does not execute a binary, interpreter, config hook or profile.

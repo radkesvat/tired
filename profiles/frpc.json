@@ -2,20 +2,25 @@
   "schema_version": 1,
   "id": "frpc",
   "name": "FRP client",
-  "revision": 1,
+  "revision": 2,
   "summary": "Advice for a continuously running FRP client with an existing configuration.",
   "match": {"executable_basenames": ["frpc"], "case_sensitive": true},
   "compatibility": {"systemd_min": 249, "application_version": null, "version_policy": "version-independent-advice"},
   "recommendations": [
-    {"field": "restart", "value": "always", "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "behavior-change", "reason": "tired policy for an explicitly long-running client: retry even after a clean exit. This is not an upstream FRP restart requirement.", "source_ids": ["restart-policy"]}
+    {"field": "restart", "value": "always", "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "behavior-change", "reason": "tired policy for an explicitly long-running client: retry even after a clean exit. This is not an upstream FRP restart requirement.", "source_ids": ["restart-policy"]},
+    {"field": "nofile.soft", "value": 1048576, "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "resource-change", "reason": "tired capacity policy for Linux networking workloads; apply only within the observed usable ceiling.", "source_ids": ["descriptor-policy"], "conditions": {"nofile_at_least": 1048576}},
+    {"field": "nofile.hard", "value": 1048576, "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "resource-change", "reason": "tired capacity policy for Linux networking workloads; apply only within the observed usable ceiling.", "source_ids": ["descriptor-policy"], "conditions": {"nofile_at_least": 1048576}}
   ],
   "advisories": [
     {"code": "preserve-config-context", "message": "The documented client invocation uses frpc -c with a configuration path. Preserve supplied arguments and their working-directory context."},
-    {"code": "review-privileges", "message": "Do not infer root, capabilities, high descriptor limits, or network-online requirements from the executable name."},
-    {"code": "profile-match-hint", "message": "An executable-name match is not verification of the binary or its application version."}
+    {"code": "review-privileges", "message": "Root and capabilities depend on the actual configuration and remain explicit choices. The descriptor pair is tired capacity policy, not an upstream FRP requirement."},
+    {"code": "profile-match-hint", "message": "An executable-name match is not verification of the binary or its application version."},
+    {"code": "descriptor-capacity", "message": "Use the 1048576 soft/hard pair only when the observed usable ceiling permits it. Unknown or lower ceilings suppress it; explicit limits and saved service snapshots remain unchanged."}
   ],
   "sources": [
     {"id": "upstream-invocation", "url": "https://gofrp.org/en/docs/setup/", "checked_at": "2026-09-28", "source_kind": "upstream-documentation"},
-    {"id": "restart-policy", "url": "https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.service.xml", "checked_at": "2026-09-28", "source_kind": "tired-policy"}
+    {"id": "restart-policy", "url": "https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.service.xml", "checked_at": "2026-09-28", "source_kind": "tired-policy"},
+    {"id": "descriptor-policy", "url": "https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.exec.xml", "checked_at": "2026-10-01", "source_kind": "tired-policy"},
+    {"id": "linux-runtime", "url": "https://raw.githubusercontent.com/golang/go/go1.22.0/src/runtime/netpoll_epoll.go", "checked_at": "2026-10-01", "source_kind": "source-audit"}
   ]
 }

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "dnscrypt-proxy",
+  "name": "dnscrypt-proxy",
+  "revision": 1,
+  "summary": "Foreground service guidance for dnscrypt-proxy, with host-checked networking capacity limits.",
+  "match": {"executable_basenames": ["dnscrypt-proxy"], "case_sensitive": true},
+  "compatibility": {"systemd_min": 249, "application_version": null, "version_policy": "version-independent-advice"},
+  "recommendations": [
+    {"field": "nofile.soft", "value": 1048576, "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "resource-change", "reason": "tired capacity policy for Linux networking workloads; apply only within the observed usable ceiling.", "source_ids": ["descriptor-policy"], "conditions": {"nofile_at_least": 1048576}},
+    {"field": "nofile.hard", "value": 1048576, "scope": ["system", "user"], "apply": "automatic", "strength": "recommended", "risk": "resource-change", "reason": "tired capacity policy for Linux networking workloads; apply only within the observed usable ceiling.", "source_ids": ["descriptor-policy"], "conditions": {"nofile_at_least": 1048576}}
+  ],
+  "advisories": [
+    {"code": "foreground-workflow", "message": "Run the existing foreground binary/configuration invocation. Do not wrap -service install/start or finite check/resolve operations; those do not represent the serving process."},
+    {"code": "deployment-requirements", "message": "Review port 53 conflicts and configured user_name privilege dropping. Cache and log paths must remain writable; this profile does not change the host resolver."},
+    {"code": "descriptor-capacity", "message": "The 1048576 descriptor pair is a capacity policy, not a measured connection guarantee. Unknown or lower host/manager ceilings suppress it. Review an explicit lower --nofile SOFT:HARD value if needed; global limits are never raised."},
+    {"code": "restart-and-health", "message": "The existing on-failure restart policy and delay remain in effect unless explicitly changed. Finite commands need --restart no; long-running modes still need application health and capacity monitoring."},
+    {"code": "profile-match-hint", "message": "Basename matching does not authenticate the executable, version or build. Preserve the original arguments, working directory and explicit user choices."}
+  ],
+  "sources": [
+    {"id": "upstream-usage", "url": "https://github.com/DNSCrypt/dnscrypt-proxy/wiki/Installation-linux", "checked_at": "2026-10-01", "source_kind": "upstream-documentation"},
+    {"id": "descriptor-policy", "url": "https://raw.githubusercontent.com/systemd/systemd/v249/man/systemd.exec.xml", "checked_at": "2026-10-01", "source_kind": "tired-policy"},
+    {"id": "linux-runtime", "url": "https://raw.githubusercontent.com/golang/go/go1.22.0/src/runtime/netpoll_epoll.go", "checked_at": "2026-10-01", "source_kind": "source-audit"}
+  ]
+}

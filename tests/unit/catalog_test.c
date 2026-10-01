@@ -27,14 +27,16 @@ int main(int argc, char **argv)
     TiredText executable = {0}, directory = {0}, path = {0}, source = {0};
     struct json_object *doc = NULL;
     const TiredProfileEntry *selected = NULL;
-    size_t matches = 0;
+    size_t matches = 0, bundled_count = 0;
     CHECK(argc == 2);
     CHECK(tired_catalog_add_directory(&catalog, argv[1], TIRED_PROFILE_BUNDLED, getuid(), false,
                                       &error));
-    CHECK(catalog.count == 4 && strlen(catalog.items[0].digest) == 64);
+    bundled_count = catalog.count;
+    CHECK(bundled_count >= 4 && strlen(catalog.items[0].digest) == 64);
     CHECK(tired_text_set(&executable, "/opt/backhaul", 13, 256, &error));
     CHECK(tired_catalog_select(&catalog, &executable, "auto", false, &selected, &matches, &error));
     CHECK(matches == 1 && selected != NULL && strcmp(selected->profile.id, "backhaul") == 0);
+    CHECK(tired_read_file(selected->path.data, TIRED_PROFILE_LIMIT, &source, &error));
     CHECK(tired_catalog_select(&catalog, &executable, "frpc", false, &selected, &matches, &error));
     CHECK(matches == 1 && strcmp(selected->profile.id, "frpc") == 0);
     CHECK(!tired_catalog_select(&catalog, &executable, "missing", false, &selected, &matches,
@@ -46,7 +48,7 @@ int main(int argc, char **argv)
     tired_catalog_destroy(&local);
     CHECK(!tired_catalog_add_directory(&catalog, argv[1], TIRED_PROFILE_BUNDLED, getuid(), false,
                                        &error));
-    CHECK(catalog.count == 4);
+    CHECK(catalog.count == bundled_count);
     original = open(".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     CHECK(original >= 0);
     cwd = getcwd(NULL, 0);
@@ -66,7 +68,6 @@ int main(int argc, char **argv)
     CHECK(!tired_catalog_add_directory(&local, directory.data, TIRED_PROFILE_USER, getuid(), false,
                                        &error));
     CHECK(unlink("linked.json") == 0);
-    CHECK(tired_read_file(catalog.items[0].path.data, TIRED_PROFILE_LIMIT, &source, &error));
     CHECK(tired_write_private_new("first.json", source.data, source.length, &error));
     CHECK(link("first.json", "second.json") == 0);
     CHECK(!tired_catalog_add_directory(&local, directory.data, TIRED_PROFILE_USER, getuid(), false,
@@ -94,19 +95,19 @@ int main(int argc, char **argv)
     if (getuid() == 0)
     {
         CHECK(tired_profiles_discover_settings(argv[1], false, &settings, &local, &error));
-        CHECK(local.count == 5);
+        CHECK(local.count == bundled_count + 1);
         CHECK(tired_catalog_select(&local, &executable, "alternate", false, &selected, &matches,
                                    &error));
         CHECK(selected != NULL && selected->origin == TIRED_PROFILE_ADMIN);
         CHECK(strcmp(selected->profile.id, "alternate") == 0);
         CHECK(chmod("alternate.json", 0666) == 0);
         CHECK(!tired_profiles_discover_settings(argv[1], false, &settings, &local, &error));
-        CHECK(local.count == 5);
+        CHECK(local.count == bundled_count + 1);
         CHECK(chmod("alternate.json", 0600) == 0);
         CHECK(tired_text_list_append(&settings.profile_directories, path.data, path.length, 16,
                                      65536, &error));
         CHECK(!tired_profiles_discover_settings(argv[1], false, &settings, &local, &error));
-        CHECK(local.count == 5);
+        CHECK(local.count == bundled_count + 1);
     }
     else
         CHECK(!tired_profiles_discover_settings(argv[1], false, &settings, &local, &error));

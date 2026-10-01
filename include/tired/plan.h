@@ -24,6 +24,7 @@ typedef struct
     TiredProfileOrigin profile_origin;
     TiredTextList profile_candidates;
     TiredRecommendationDisposition *profile_decisions;
+    bool account_defaults_allowed; /* Fresh capture only; false for edits/refreshes. */
     bool profile_matching;
     bool profile_explicit;
     bool live_validated, linger_known, linger_enabled;

@@ -4,6 +4,34 @@ This report records local qualification of 0.1.0 on 30 September 2026. Packages
 and source uploads are unsigned. GitHub, PPA, Debian archive and Snap Store
 publication remain the maintainer's responsibility; none has been submitted.
 
+## Profile catalogue follow-up — 1 October 2026
+
+The initial expanded catalogue contained 36 profiles, including 34 networking
+application names. Native x86-64 DIRECT Debug and Release each passed 86/86 CTests.
+Six targeted profile/catalogue tests passed in the x86-64 DISTRIBUTION Release
+build. The final system-scope restriction for the root-run deployment passed the
+bundle test in all three configurations. A staged Release installation listed all
+36 profiles, and offline explanation retained the privilege advisory while
+suppressing descriptor limits whose host ceiling was unknown.
+
+This follow-up validates matching, profile semantics, overrides, rendered limits
+and installed discovery. It does not execute or benchmark the upstream networking
+applications. ARM64 builds/tests and QEMU qualification were not rerun for these
+profile changes; the earlier architecture evidence below remains a separate record.
+
+The subsequent Backhaul account-default change passed 87/87 CTests in each native
+x86-64 DIRECT Debug and Release build, plus the account, bundle and plan tests in
+DISTRIBUTION Release. Tests cover nonroot risk acknowledgment, explicit account and
+group overrides, user scope, saved-service refresh, compatibility suppression and
+review recomputation. Staged CLI plans rendered `User=root` by default and
+`User=nobody` with an explicit account override. No ARM64 or QEMU work was run.
+
+The catalogue was then reduced to 33 profiles by removing the `nc`, `netcat` and
+`ncat` profiles. All eight targeted profile, catalogue and planning tests passed in
+each x86-64 DIRECT Debug, DIRECT Release and DISTRIBUTION Release build. A fresh
+DIRECT Release installation also passed the bundle test against its 33 installed
+profiles. ARM64 builds/tests and QEMU qualification were not rerun for this removal.
+
 ## Build and test lanes
 
 The direct baseline is Ubuntu 22.04, glibc 2.35, Clang/LLVM LLD, C17 and Release

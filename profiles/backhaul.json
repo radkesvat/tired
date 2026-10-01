@@ -2,8 +2,9 @@
   "schema_version": 1,
   "id": "backhaul",
   "name": "Backhaul",
-  "revision": 1,
-  "summary": "Service advice for the Backhaul executable, with host-dependent descriptor limits.",
+  "revision": 2,
+  "default_run_as": "root",
+  "summary": "Root-by-default advice for new Backhaul system services, with host-dependent descriptor limits.",
   "match": {"executable_basenames": ["backhaul"], "case_sensitive": true},
   "compatibility": {"systemd_min": 249, "application_version": null, "version_policy": "version-independent-advice"},
   "recommendations": [
@@ -15,7 +16,7 @@
   ],
   "advisories": [
     {"code": "preserve-config-context", "message": "Keep the existing -c argument and working directory. No missing configuration argument is inserted."},
-    {"code": "review-privileges", "message": "Required privileges depend on the actual configuration. The executable name and upstream example paths do not establish a root requirement."},
+    {"code": "review-privileges", "message": "New system-service proposals default to root as deployment policy. Review the selected account and root risks before approval. Explicit --run-as choices and user-scope identity are preserved; existing services keep their saved account."},
     {"code": "network-ordering", "message": "Boot ordering is not continuous connectivity or application-health monitoring."}
   ],
   "sources": [
