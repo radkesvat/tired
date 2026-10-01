@@ -409,7 +409,9 @@ int main(int argc, char **argv)
     }
     goto done;
 failed:
-    result = error.status == TIRED_OK ? TIRED_INTERNAL : error.status;
+    if (error.status == TIRED_OK)
+        tired_error_set(&error, TIRED_INTERNAL, "internal", "Operation failed.", 0);
+    result = error.status;
     report_error(&error, json, &request);
 done:
     tired_text_destroy(&profile_path);

@@ -132,8 +132,10 @@ bool tired_edit_inputs(const TiredRequest *request, TiredMutation *mutation,
         {
             if (!tired_spec_encode(&record->spec, &bytes, error) ||
                 !tired_spec_parse(bytes.data, bytes.length, &plan.spec, error) ||
-                !tired_text_set(&plan.invocation.executable, record->executable.lexical_path.data,
-                                record->executable.lexical_path.length, TIRED_INPUT_LIMIT, error) ||
+                !tired_text_set(&plan.invocation.executable,
+                                record->spec.fields[TIRED_FIELD_EXECUTABLE].value.text.data,
+                                record->spec.fields[TIRED_FIELD_EXECUTABLE].value.text.length,
+                                TIRED_INPUT_LIMIT, error) ||
                 !tired_profiles_discover_settings(bundled_directory, record->metadata.user_scope,
                                                   settings, &catalog, error))
                 goto done;

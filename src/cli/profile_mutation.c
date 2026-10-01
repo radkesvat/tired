@@ -10,6 +10,30 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+static bool discard_retained(TiredDirectory *directory, const char *name,
+                             const TiredFileFingerprint *expected, TiredError *error)
+{
+    TiredFileFingerprint actual = {0};
+    if (!tired_file_fingerprint(directory, name, TIRED_PROFILE_LIMIT, &actual, error))
+        return false;
+    if (!tired_file_fingerprint_equal(&actual, expected))
+        return tired_error_set(error, TIRED_CONFLICT, "profile-cleanup-changed",
+                               "Profile database changed, but the retained file differs from its "
+                               "expected state. Inspect it before cleanup.",
+                               0);
+    if (!tired_directory_check(directory, error))
+        return false;
+    if (unlinkat(tired_directory_fd(directory), name, 0) != 0)
+        return tired_error_set(
+            error, TIRED_RUNTIME_FAILED, "profile-cleanup-remove",
+            "Profile database changed, but its retained file could not be removed.", errno);
+    if (fsync(tired_directory_fd(directory)) != 0)
+        return tired_error_set(
+            error, TIRED_RUNTIME_FAILED, "profile-cleanup-sync",
+            "Profile database changed, but cleanup durability could not be confirmed.", errno);
+    return true;
+}
+
 bool tired_profiles_mutate(const TiredRequest *request, const char *bundled_directory,
                            TiredText *output, TiredError *error)
 {
@@ -67,8 +91,13 @@ bool tired_profiles_mutate(const TiredRequest *request, const char *bundled_dire
     const TiredText *lock_path =
         user ? &layout.paths[TIRED_PATH_CONFIG] : &layout.paths[TIRED_PATH_OPERATION_LOCK];
     const char *slash = strrchr(lock_path->data, '/');
-    if (slash == NULL ||
-        !tired_text_set(&runtime, lock_path->data, (size_t)(slash - lock_path->data), 4096,
+    if (slash == NULL)
+    {
+        tired_error_set(error, TIRED_INVALID, "profile-lock-path",
+                        "Profile lock directory must be absolute.", 0);
+        goto done;
+    }
+    if (!tired_text_set(&runtime, lock_path->data, (size_t)(slash - lock_path->data), 4096,
                         error) ||
         !tired_directory_ensure(runtime.data, true, &lock_directory, error) ||
         !tired_operation_lock_acquire(lock_directory, &lock, error) ||
@@ -78,9 +107,19 @@ bool tired_profiles_mutate(const TiredRequest *request, const char *bundled_dire
     (void)snprintf(filename, sizeof(filename), "%s.json", id);
     if (!tired_file_snapshot(directory, filename, TIRED_PROFILE_LIMIT, &fingerprint, &old, error))
         goto done;
-    if (fingerprint.exists && (fingerprint.uid != geteuid() || (fingerprint.mode & 0022) != 0 ||
-                               !tired_profile_parse(old.data, old.length, &previous, error)))
-        goto done;
+    if (fingerprint.exists)
+    {
+        if (fingerprint.uid != geteuid() || (fingerprint.mode & 0022) != 0)
+        {
+            tired_error_set(error, TIRED_AUTHORIZATION, "profile-trust",
+                            "Local profile must be owned by the invoking user and must not be "
+                            "group- or other-writable.",
+                            0);
+            goto done;
+        }
+        if (!tired_profile_parse(old.data, old.length, &previous, error))
+            goto done;
+    }
     if (installing)
     {
         if (!tired_profiles_discover(bundled_directory, user, &catalog, error))
@@ -108,12 +147,7 @@ bool tired_profiles_mutate(const TiredRequest *request, const char *bundled_dire
         if (ok && fingerprint.exists)
         {
             const char *retained = tired_publication_temporary_name(publication);
-            TiredFileFingerprint actual = {0};
-            ok = tired_file_fingerprint(directory, retained, TIRED_PROFILE_LIMIT, &actual, error) &&
-                 tired_file_fingerprint_equal(&actual, &fingerprint) &&
-                 tired_directory_check(directory, error) &&
-                 unlinkat(tired_directory_fd(directory), retained, 0) == 0 &&
-                 fsync(tired_directory_fd(directory)) == 0;
+            ok = discard_retained(directory, retained, &fingerprint, error);
         }
     }
     else
@@ -134,12 +168,7 @@ bool tired_profiles_mutate(const TiredRequest *request, const char *bundled_dire
         {
             char retained[64];
             (void)snprintf(retained, sizeof(retained), ".tired-%s.removed", uuid);
-            TiredFileFingerprint actual = {0};
-            ok = tired_file_fingerprint(directory, retained, TIRED_PROFILE_LIMIT, &actual, error) &&
-                 tired_file_fingerprint_equal(&actual, &fingerprint) &&
-                 tired_directory_check(directory, error) &&
-                 unlinkat(tired_directory_fd(directory), retained, 0) == 0 &&
-                 fsync(tired_directory_fd(directory)) == 0;
+            ok = discard_retained(directory, retained, &fingerprint, error);
         }
     }
     if (ok)

@@ -1,11 +1,15 @@
 #include "tired/io.h"
 #include "tired/mutation.h"
+#include "tired/process.h"
 #include "tired/profile_frontend.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
+extern char **environ;
 #define CHECK(expression)                                                                          \
     do                                                                                             \
     {                                                                                              \
@@ -24,6 +28,9 @@ int main(int argc, char **argv)
     const char *old_xdg = getenv("XDG_CONFIG_HOME");
     char *saved_xdg = old_xdg == NULL ? NULL : strdup(old_xdg);
     TiredText directory = {0}, path = {0}, source = {0}, output = {0}, executable = {0};
+    TiredProcess *process = NULL;
+    TiredText installed = {0};
+    struct json_object *failure = NULL, *status = NULL;
     TiredProfileCatalog catalog = {0}, layered = {0};
     TiredPlan plan = {0};
     TiredProfileContext context = {.systemd_version = 249};
@@ -33,7 +40,7 @@ int main(int argc, char **argv)
     const TiredProfileEntry *selected = NULL;
     size_t count = 0;
     char bundled_digest[65], replacement_digest[65];
-    CHECK(argc == 2 && (old_xdg == NULL || saved_xdg != NULL));
+    CHECK(argc == 3 && (old_xdg == NULL || saved_xdg != NULL));
     CHECK(tired_catalog_add_directory(&catalog, argv[1], TIRED_PROFILE_BUNDLED, getuid(), false,
                                       &error));
     CHECK(tired_text_set(&executable, "/opt/backhaul", 13, 256, &error));
@@ -121,6 +128,30 @@ int main(int argc, char **argv)
     tired_text_list_destroy(&request.arguments);
     CHECK(tired_text_list_append(&request.arguments, "remove", 6, 2, 4096, &error));
     CHECK(tired_text_list_append(&request.arguments, "backhaul", 8, 2, 4096, &error));
+    CHECK(tired_path_absolute(&directory, "tired/profiles.d/backhaul.json",
+                              strlen("tired/profiles.d/backhaul.json"), &installed, &error));
+    CHECK(chmod(installed.data, 0666) == 0);
+    tired_error_clear(&error);
+    CHECK(!tired_profiles_mutate(&request, argv[1], &output, &error));
+    CHECK(error.status == TIRED_AUTHORIZATION && strcmp(error.code, "profile-trust") == 0);
+    char *remove_args[] = {argv[2],  "profiles", "remove", "backhaul",
+                           "--user", "--yes",    "--json", NULL};
+    CHECK(tired_process_start(argv[2], remove_args, environ, 5000, 65536, &process, &error));
+    while (!tired_process_step(process))
+    {
+        const struct timespec delay = {.tv_nsec = 10000000};
+        (void)nanosleep(&delay, NULL);
+    }
+    TiredProcessResult removed = tired_process_result(process);
+    CHECK(removed.outcome == TIRED_PROCESS_EXITED && removed.exit_code == TIRED_AUTHORIZATION);
+    CHECK(tired_json_parse(removed.standard_output, removed.output_length, TIRED_INPUT_LIMIT,
+                           &failure, &error));
+    CHECK(json_object_object_get_ex(failure, "exit_code", &status));
+    CHECK(json_object_get_int(status) == removed.exit_code);
+    CHECK(json_object_object_get_ex(failure, "error", &status));
+    CHECK(strcmp(json_object_get_string(status), "profile-trust") == 0);
+    CHECK(access(installed.data, F_OK) == 0);
+    CHECK(chmod(installed.data, 0600) == 0);
     CHECK(tired_profiles_mutate(&request, argv[1], &output, &error));
     CHECK(tired_profiles_discover(argv[1], true, &catalog, &error));
     CHECK(tired_catalog_select(&catalog, &executable, "auto", true, &selected, &count, &error));
@@ -149,6 +180,9 @@ cleanup:
         (void)unsetenv("XDG_CONFIG_HOME");
     free(saved_xdg);
     free(cwd);
+    tired_process_destroy(process);
+    tired_text_destroy(&installed);
+    json_object_put(failure);
     tired_text_destroy(&directory);
     tired_text_destroy(&path);
     tired_text_destroy(&source);
