@@ -12,8 +12,8 @@ Systemd supervises the service afterward; tired does not stay running.
 
 ## Quick install
 
-This checkout prepares release **0.1.0**. The maintainer has not published the
-repository or release assets yet. After publication, the direct installer is:
+This checkout prepares release **0.1.0**. Release binaries are not yet available.
+Once the `v0.1.0` release assets are published, install with:
 
 ```sh
 sh -c 'f=$(mktemp) || exit; curl -fsSL --proto "=https" https://raw.githubusercontent.com/radkesvat/tired/v0.1.0/install.sh -o "$f" && sh "$f"; s=$?; rm -f "$f"; exit "$s"'
