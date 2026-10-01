@@ -25,6 +25,7 @@ jobs:
       TIRED_SYSTEMD_CACHE: /tmp/tired-dependencies/systemd-252.39-1~deb12u2
     defaults:
       run:
+        shell: bash
         working-directory: /opt/tired-release
     steps:
       - name: Install native build and packaging dependencies
@@ -37,11 +38,12 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           test "$GITHUB_REF_NAME" = "v$(sed -n 's/^project(tired VERSION \([^ ]*\).*/\1/p' CMakeLists.txt)"
-          printf 'SOURCE_DATE_EPOCH=%s\n' "$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+          commit_time=$(git -c safe.directory="$GITHUB_WORKSPACE" log -1 --format=%ct)
+          printf 'SOURCE_DATE_EPOCH=%s\n' "$commit_time" >> "$GITHUB_ENV"
           # The mounted workspace belongs to the host runner, not container root.
           # Keep filesystem trust tests under an entirely root-owned ancestry.
           mkdir -p /opt/tired-release
-          git -c tar.umask=0022 archive --format=tar "$GITHUB_SHA" | tar -x --no-same-owner -C /opt/tired-release
+          git -c safe.directory="$GITHUB_WORKSPACE" -c tar.umask=0022 archive --format=tar "$GITHUB_SHA" | tar -x --no-same-owner -C /opt/tired-release
       - name: Prepare pinned static libsystemd
         if: matrix.mode == 'DIRECT'
         run: cmake -DTIRED_ALLOW_DOWNLOAD=ON -DTIRED_SYSTEMD_CACHE="$TIRED_SYSTEMD_CACHE" -P cmake/PrepareSystemd.cmake
