@@ -1,123 +1,169 @@
 # tired
 
-Turn an existing foreground command into a persistent, understandable systemd
-service. Run it from the directory the program should use:
+**Turn a Linux command into a service that keeps running after you close the terminal.**
+
+tired helps you run a program in the background, start it when your computer boots,
+and restart it if it fails. It is useful for servers, proxies, network tunnels, and
+other programs you want to keep running.
+
+Start with the command you already use:
 
 ```sh
 tired ./program
 ```
 
-Review the command, account, working directory and restart policy, then approve.
-Systemd supervises the service afterward; tired does not stay running.
+tired shows the settings for you to review and approve, then writes the service
+file for you. **systemd**, the service manager used by many Linux systems, runs
+your program after setup. tired does not need to stay open.
 
-## Quick install
+## Install
 
-This checkout prepares release **0.1.0**. Release binaries are not yet available.
-Once the `v0.1.0` release assets are published, install with:
+**Version 0.1.0 is being prepared. Release downloads are not yet available.**
+For now, follow the [build from source instructions](CONTRIBUTING.md#build-and-test).
+Once the `v0.1.0` release is published, you can install it with this command:
 
 ```sh
 sh -c 'f=$(mktemp) || exit; curl -fsSL --proto "=https" https://raw.githubusercontent.com/radkesvat/tired/v0.1.0/install.sh -o "$f" && sh "$f"; s=$?; rm -f "$f"; exit "$s"'
 ```
 
-[Inspect the installer](https://github.com/radkesvat/tired/blob/v0.1.0/install.sh)
+[Read the installer](install.sh)
 · [Manual installation and uninstall](docs/packaging.md#direct-archives)
-· [Build from source](CONTRIBUTING.md)
 
-The installer verifies HTTPS downloads and checksums, installs the frontend,
-helper, profiles and documentation into `/usr/local`, and changes no services.
-Linux x86-64 and ARM64 with glibc 2.35+ are the direct-release targets. Local Debian
-packages, source packages and Snap preparation are described in
-[packaging](docs/packaging.md); a PPA, Debian archive package and Snap Store listing
-are separate maintainer-controlled publication steps.
+The installer downloads tired over HTTPS, checks the downloads against their
+checksums, and installs it in `/usr/local`. It does not change existing services.
 
-## Review before installation
+tired supports **Linux on x86-64 and ARM64**, with systemd 249+ and glibc 2.35+.
+See [system requirements](docs/compatibility.md) for details and the
+[packaging guide](docs/packaging.md) for Debian, Ubuntu PPA, and Snap preparation.
+These packages are not yet published.
 
-The actual review screen presents populated values and their origins:
+## Create your first service
 
-```text
-tired / review service
-sleep.service | system scope | runs as alice
-Generic; application requirements unknown
+Use a program that you have already installed and configured. It should run in the
+foreground: it stays running in the terminal until you stop it. If the program has
+a background or daemon option, leave that option off.
 
-name               sleep                         captured
-argv               ["/usr/bin/sleep","60"]        captured
-working_directory  /home/alice                   captured
-run_as             alice                         captured
-scope              system                        default
-start              true                          default
-enable             true                          default
-restart            on-failure                    default
-restart_sec        5000000us                     default
-retry_policy       persistent                    default
-
-C apply   1-8 pages   P preview   E env   K credentials
-W evidence   R risks   H hardening   ? field/origin help
-```
-
-There is one ordinary review and approval. Advanced pages expose every supported
-field, including resources, hardening, dependencies and process controls. Preview,
-profile evidence and three-way configuration comparisons use the same saved model
-as headless commands. A plain review is available with `--no-tui`. Running tired
-without operands opens the [managed-service dashboard](docs/list.md) when TUI is
-enabled and the terminal is usable. Setting `tui` to `false` or using `--no-tui`
-selects a compact list; `--json` selects JSON listing.
+Open a terminal in the folder your program should run from. For example:
 
 ```sh
-tired plan --offline --profile none -- ./unknown-program --port 8080
-tired --profile auto -- ./backhaul -c server.toml
-tired --profile frpc -- ./frpc -c client.toml
-tired --profile frps -- ./frps -c server.toml
-tired --name worker -- python3 worker.py
-tired create --yes --json --profile none -- ./program --help
-tired status worker
-tired logs worker --follow
-tired edit worker --apply-mode defer --restart-sec 10s
-tired rename worker worker-main
-tired remove worker
+cd /path/to/myapp
+tired --name myapp -- ./myapp
 ```
 
-Discovery never executes the target. Profiles are declarative recommendations with
-sources and uncertainty, not proof of a binary's identity. Unknown applications
-use generic defaults. Command arguments are literal; flags after the workload or
-its `--` boundary belong to the workload.
+Replace `/path/to/myapp` with your program's folder and `./myapp` with its command.
+`--name myapp` names the service. The `--` separates tired's options from your
+program's command. Put your program's own options after its command as usual.
 
-## Accounts, boot and failure
+Before approving, check:
 
-System scope is the default. Administrator permission to install a unit does not
-turn a nonroot workload into root. An explicit account change is visible and may
-require its own [risk acknowledgment](docs/risks.md). Validated sudo invocation
-metadata preserves the original user as a default. User scope controls only the
-calling user's existing manager:
+- The command and the folder it will run from.
+- The user account that will run the program.
+- Whether it should start now and when the computer boots.
+- When it should restart after stopping or failing.
+
+The default settings start the service now, enable it at boot, and restart it after
+a failure. Application profiles can suggest different settings. You can change
+these during review. Add `--no-tui` after `tired` for a plain text review.
+
+To preview the settings before creating a service, use `plan`. It does not create
+the service or run the program:
+
+```sh
+tired plan --name myapp -- ./myapp
+```
+
+## Manage your services
+
+Use the name you chose when creating the service. These examples use `myapp`.
+
+| What you want to do | Command |
+|---|---|
+| List services created with tired | `tired list` |
+| Check whether a service is running | `tired status myapp` |
+| Watch its log messages | `tired logs myapp --follow` |
+| Start it | `tired start myapp` |
+| Stop it | `tired stop myapp` |
+| Restart it | `tired restart myapp` |
+| Start it automatically at boot | `tired enable myapp` |
+| Stop it from starting at boot | `tired disable myapp` |
+| Review and change its settings | `tired edit myapp` |
+| Remove the service | `tired remove myapp` |
+
+Stopping a service does not disable startup at boot. Disabling it does not stop a
+running service. Editing a running service normally restarts it to apply changes.
+
+Run `tired` with no command to open the service dashboard in a supported terminal.
+Use `tired --no-tui` for a simple list.
+
+## Suggested settings for common programs
+
+tired includes **application profiles**: suggested service settings for known
+programs. They cover proxies, network relays, DNS and web servers, and other
+networking tools. See the [full profile list](docs/profiles.md#bundled-application-profiles).
+
+tired can suggest a profile from the program's filename, without running it.
+A matching name does not guarantee that the settings suit your setup; review them
+before approving.
+
+Unknown programs use general defaults. Add `--profile none` after `tired` to use
+those defaults without an application profile.
+
+## User accounts and permissions
+
+By default, tired creates a system service. Creating it needs administrator
+permission, but the program normally runs as the user who called tired. Check the
+account shown in the review.
+
+The **Backhaul profile proposes root**, the administrator account, for new system
+services. Use `--run-as USER` to choose a different account, replacing `USER` with
+an existing username.
+
+To create a service for your own user account instead:
 
 ```sh
 tired --user ./program
-tired --user --enable-linger ./program
 ```
 
-Enabling a user unit does not ensure startup before login. `--enable-linger` is an
-explicit account-level change, authorized separately. Removing or stopping a
-service never disables lingering or silently re-enables a past request.
+Add `--user` when managing that service too, for example `tired list --user`.
+Starting a user service before login requires a setting called *lingering*. See
+the [user service requirements and setup](docs/walkthroughs.md#user-service-and-lingering).
 
-Start and boot enablement are independent. Persistent retry mode uses delayed
-retries without a finite start budget; limited mode has an explicit interval and
-burst. Initial process observation is not an end-to-end application health check.
-A newly installed service that fails startup remains installed and returns code
-7. A failed edit attempts to restore the previous control-plane revision. Inspect
-`tired doctor NAME`, status and logs before changing privileges or limits.
+## If something goes wrong
 
-## Ownership and removal
+Start by checking the service and its logs:
 
-Generated units are ordinary systemd services. Upgrading or uninstalling tired
-preserves their units, private environment revisions and administrative state.
-`tired remove NAME` stops/disables and removes only that managed service's owned
-resources. It preserves the program, application data, external config, credentials
-and journal. Stopping a networking service may disconnect the SSH route used to
-operate it. Interrupted changes remain inspectable with `tired recover` and require
-an explicit [recovery decision](docs/recovery.md).
+```sh
+tired status myapp
+tired logs myapp --lines 100
+tired doctor myapp
+```
 
-[Command reference](docs/cli.md) · [Walkthroughs](docs/walkthroughs.md)
-· [Security](docs/security.md) · [Compatibility](docs/compatibility.md)
-· [Architecture](docs/architecture.md) · [Project wiki](wiki/Home.md)
+If a new service fails to start, it stays installed so you can inspect and fix it.
+A running process does not always mean the application is working correctly; check
+the application itself too.
 
-MIT licensed; third-party notices and static-library relinking requirements are
-listed in [dependencies](docs/dependencies.md).
+If a tired operation was interrupted, `tired recover` shows what needs attention.
+Follow the [recovery guide](docs/recovery.md) before choosing how to continue.
+
+## Remove a service or uninstall tired
+
+`tired remove myapp` stops the service, disables startup at boot, and removes the
+files tired created for that service. It keeps your program, application data,
+external configuration files, credentials, and logs. Stopping or removing a network
+tunnel you use for SSH access may disconnect you.
+
+Upgrading or uninstalling tired preserves the services it created. They remain
+available to systemd. See the [uninstall instructions](docs/packaging.md).
+
+## Learn more
+
+- [Walkthroughs](docs/walkthroughs.md) — examples with scripts, configuration files,
+  and user services.
+- [Command reference](docs/cli.md) — all options, including JSON output for scripts.
+- [Project wiki](wiki/Home.md) — installation and service guides.
+- [Security](docs/security.md) — permissions, secrets, and file ownership.
+- [Contributing](CONTRIBUTING.md) and [architecture](docs/architecture.md) — building
+  tired and understanding its code.
+
+tired uses the [MIT license](LICENSE). See [dependencies](docs/dependencies.md) for
+third-party licenses and requirements when distributing static builds.
