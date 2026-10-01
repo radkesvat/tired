@@ -49,7 +49,7 @@ crash artifacts or dependency caches into source history.
 
 ## Profiles
 
-Use the [profile contribution template](packaging/profile-contribution.md). Include
+Use the [profile contribution template](docs/profile-contribution.md). Include
 primary evidence, exact conditions, expected generated changes, privilege impact,
 unknowns and fixtures. Match names passively and describe the weak identity basis.
 Keep explicit user choices. New advice must be discoverable in release notes and

@@ -74,7 +74,6 @@ review/sponsorship under the [official maintainer workflow](https://www.debian.o
 An initial local package has no Debian intention-to-package issue to close;
 `initial-upload-closes-no-bugs` remains an expected Lintian finding until the
 maintainer opens and supplies that issue. No issue number or submission is invented.
-See [submission notes](../packaging/submission.md).
 
 ## Ubuntu PPA preparation
 
@@ -107,13 +106,19 @@ remain outside snap-owned revision storage. Snap refresh/removal must not invali
 those services. The helper remains an ordinary authorized root executable.
 
 Classic confinement needs external review. The
-[confinement assessment](../packaging/snap-classic.md) describes exact host access,
+[confinement assessment](snap-classic.md) describes exact host access,
 strict-interface limitations, validation and maintainer review materials. Local
 `--dangerous --classic` installation of a prepared package in a disposable VM is
 qualification, not store eligibility or approval. No development-confinement
 fallback is presented as production functionality.
 
 ## Release contents and validation
+
+Before publishing a version, review the source, tests, licenses and qualification
+report. Verify both architecture builds and their checksums, helper/data payload,
+dependency metadata and relinking materials. Publish the reviewed source and
+matching version tag, then verify the README installer and manual-download links
+against the published release assets.
 
 Keep native direct archives, Debian binaries/source artifacts, Snap artifacts,
 checksums, dependency/license notices, static relinking objects and corresponding

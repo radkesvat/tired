@@ -227,7 +227,7 @@ Classic Snap checks exercise actual root/user host operations, helper
 authorization, two local revisions, removal and boot independent of the package.
 A separately repacked strict test with observation interfaces fails host creation
 and creates no unit. That test package is excluded from release assets. The
-[classic rationale](../packaging/snap-classic.md) records the required host access
+[classic rationale](snap-classic.md) records the required host access
 and external review requirement.
 
 A loaded ARM64 Snap features run reached the backend's fixed five-second query

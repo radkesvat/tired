@@ -2,7 +2,7 @@
 
 Copy a small existing profile, validate it with `tired profiles validate FILE`,
 and supply the following review information. Profiles are data, not executable
-setup scripts. Follow [the schema and merge rules](../docs/profiles.md).
+setup scripts. Follow [the schema and merge rules](profiles.md).
 
 - **Identity:** stable ID, descriptive name, profile revision and supported modes.
 - **Passive match:** exact basename/patterns and their limits; no target probes.

@@ -43,8 +43,6 @@ endif()
 install(FILES "${PROJECT_SOURCE_DIR}/CONTRIBUTING.md" "${PROJECT_SOURCE_DIR}/SECURITY.md"
     "${PROJECT_SOURCE_DIR}/CHANGELOG.md" DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/wiki/" DESTINATION "${CMAKE_INSTALL_DOCDIR}/wiki")
-install(DIRECTORY "${PROJECT_SOURCE_DIR}/packaging/" DESTINATION "${CMAKE_INSTALL_DOCDIR}/packaging"
-    FILES_MATCHING PATTERN "*.md")
 if(TIRED_DEPENDENCY_MODE STREQUAL "DISTRIBUTION")
     set(CPACK_GENERATOR "DEB;TGZ")
     set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "${_package_arch}")
@@ -63,7 +61,7 @@ set(CPACK_SOURCE_PACKAGE_FILE_NAME "tired-${PROJECT_VERSION}")
 set(CPACK_SOURCE_IGNORE_FILES
     "/build/;/install/;/[.]git/;/[.]aws/;/[.]git/info/;"
     "/AGENTS[.]md$;/[^/]*[pP][lL][aA][nN][.]md$;/implementation-(progress|questions)[.]md$;"
-    "/review_[0-9]+[.]md$;"
+    "/review_[0-9]+[.]md$;/packaging/;"
     "~$;[.]swp$;/controller-test-[^/]+/;"
 )
 include(CPack)
