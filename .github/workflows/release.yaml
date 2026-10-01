@@ -11,7 +11,11 @@ jobs:
   build:
     name: ${{ matrix.arch }}-${{ matrix.mode }}
     runs-on: ${{ matrix.runner }}
-    container: ${{ matrix.image }}
+    container:
+      image: ${{ matrix.image }}
+      volumes:
+        # Use the host filesystem for the O_TMPFILE tests and build outputs.
+        - /opt/tired-release:/opt/tired-release
     strategy:
       fail-fast: false
       matrix:
