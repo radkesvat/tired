@@ -285,6 +285,12 @@ Development binaries use their configured install prefix for bundled data. Run
 or current-directory fallback is compiled into production. `profiles validate FILE`
 and `plan --profile none` work without installed bundled data.
 
+A missing required directory reports `profile-directory-missing`. When the missing
+directory belongs to the bundled profiles, discovery reports `profile-bundle-missing`
+with instructions to install the complete package. Optional administrator/user
+directories may be absent. Permission and trust failures remain errors; they do
+not fall back to generic settings or discard the existing catalogue.
+
 `tired profiles explain [options] -- COMMAND [ARG...]` evaluates a captured invocation
 without executing it or writing files. The explicit `--` is required; everything
 after it belongs to the workload, including strings that resemble frontend flags.

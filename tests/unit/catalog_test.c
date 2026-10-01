@@ -1,6 +1,7 @@
 #include "tired/catalog.h"
 #include "tired/io.h"
 #include "tired/profile_frontend.h"
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,6 +63,8 @@ int main(int argc, char **argv)
     CHECK(chmod(created, 0777) == 0);
     CHECK(!tired_catalog_add_directory(&local, directory.data, TIRED_PROFILE_USER, getuid(), false,
                                        &error));
+    CHECK(!tired_profiles_discover(directory.data, false, &local, &error));
+    CHECK(error.status == TIRED_CONFLICT && strcmp(error.code, "profile-trust") == 0);
     CHECK(chmod(created, 0700) == 0);
     CHECK(chdir(created) == 0);
     CHECK(symlink(catalog.items[0].path.data, "linked.json") == 0);
@@ -84,6 +87,17 @@ int main(int argc, char **argv)
     CHECK(tired_path_absolute(&directory, "missing", 7, &path, &error));
     CHECK(
         tired_catalog_add_directory(&local, path.data, TIRED_PROFILE_USER, getuid(), true, &error));
+    CHECK(error.status == TIRED_OK && local.count == 0);
+    CHECK(!tired_catalog_add_directory(&local, path.data, TIRED_PROFILE_ADMIN, 0, false, &error));
+    CHECK(error.status == TIRED_INVALID && error.system_errno == ENOENT &&
+          strcmp(error.code, "profile-directory-missing") == 0);
+    CHECK(!tired_profiles_discover(path.data, false, &catalog, &error));
+    CHECK(error.status == TIRED_INVALID && error.system_errno == ENOENT &&
+          strcmp(error.code, "profile-bundle-missing") == 0);
+    CHECK(strstr(error.message, "complete tired package") != NULL);
+    CHECK(catalog.count == bundled_count + 1);
+    CHECK(!tired_profiles_discover(path.data, false, &catalog, NULL));
+    CHECK(catalog.count == bundled_count + 1);
     tired_settings_defaults(&settings);
     CHECK(tired_text_list_append(&settings.profile_directories, directory.data, directory.length,
                                  16, 65536, &error));
@@ -102,11 +116,14 @@ int main(int argc, char **argv)
         CHECK(strcmp(selected->profile.id, "alternate") == 0);
         CHECK(chmod("alternate.json", 0666) == 0);
         CHECK(!tired_profiles_discover_settings(argv[1], false, &settings, &local, &error));
+        CHECK(error.status == TIRED_CONFLICT && strcmp(error.code, "profile-trust") == 0);
         CHECK(local.count == bundled_count + 1);
         CHECK(chmod("alternate.json", 0600) == 0);
         CHECK(tired_text_list_append(&settings.profile_directories, path.data, path.length, 16,
                                      65536, &error));
         CHECK(!tired_profiles_discover_settings(argv[1], false, &settings, &local, &error));
+        CHECK(error.status == TIRED_INVALID && error.system_errno == ENOENT &&
+              strcmp(error.code, "profile-directory-missing") == 0);
         CHECK(local.count == bundled_count + 1);
     }
     else

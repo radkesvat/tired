@@ -1,10 +1,15 @@
 # Installation
 
-Use the [README quick installer](../README.md#quick-install) after release assets
+Use the [README installer](../README.md#install) after release assets
 are published, or install locally prepared artifacts using the
 [packaging guide](../docs/packaging.md). The frontend, helper, profiles and schemas
 come from the same payload. Direct installations use `/usr/local`; distribution
 packages use `/usr`. Mutable service state is stored separately.
+
+When moving tired to another server, install the complete archive or package.
+Copying only `tired` leaves its helper and application profiles behind. See
+[installing on another server](../docs/packaging.md#installing-on-another-server)
+for the required layout and missing-profile troubleshooting.
 
 Checksum verification, supported architecture/glibc and trusted helper ancestry
 matter. A user-owned custom prefix can support that user's workflows but cannot

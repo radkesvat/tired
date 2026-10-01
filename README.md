@@ -32,6 +32,11 @@ sh -c 'f=$(mktemp) || exit; curl -fsSL --proto "=https" https://raw.githubuserco
 The installer downloads tired over HTTPS, checks the downloads against their
 checksums, and installs it in `/usr/local`. It does not change existing services.
 
+Install the complete package. It includes application profiles and `tired-helper`,
+which handles service changes. Copying only the `tired` executable to another
+computer leaves these required files behind. See
+[installing on another server](docs/packaging.md#installing-on-another-server).
+
 tired supports **Linux on x86-64 and ARM64**, with systemd 249+ and glibc 2.35+.
 See [system requirements](docs/compatibility.md) for details and the
 [packaging guide](docs/packaging.md) for Debian, Ubuntu PPA, and Snap preparation.

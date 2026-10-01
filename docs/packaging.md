@@ -33,6 +33,40 @@ copying that complete tree into an administrator-owned prefix. Prefer the instal
 for recorded ownership and uninstall. A user-owned prefix cannot be trusted by the
 root helper; user scope is available under that account's own authority.
 
+### Installing on another server
+
+Copy the complete release archive or Debian package for the server's architecture.
+The `tired` executable on its own is not a complete installation. The direct
+archive includes these required paths under its `usr/local` directory:
+
+```text
+bin/tired
+libexec/tired/tired-helper
+share/tired/profiles.d/
+```
+
+Keep the full archive layout, including the other data files, when installing it.
+For an extracted archive installed at a custom prefix, run `PREFIX/bin/tired`.
+For the default installation, run `tired` from the application's working directory.
+Verify profile discovery with `tired profiles list` before creating a service.
+
+`profile-bundle-missing` means tired could not find its bundled profile directory.
+Older builds report `Cannot open a trusted profile directory component.
+[profile-open]` for this case. Install or reinstall the complete package from the
+same version. `--profile none` skips profile discovery but does not replace the
+helper needed for service changes.
+
+If you are building from source for another server, create a complete direct
+archive after building the matching Release preset. For x86-64:
+
+```sh
+cpack --config build/linux-clang-x64-release/CPackConfig.cmake -G TGZ -B build/packages
+```
+
+Use the `arm64` preset's build directory on an ARM64 build host. Copy the resulting
+archive and verify its checksum on the destination before following the manual
+installation steps above. Building an archive does not publish it.
+
 ## Debian binary and source packages
 
 Distribution builds use `/usr` and installed **shared** development/runtime

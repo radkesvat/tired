@@ -3,6 +3,7 @@
 #include "tired/io.h"
 #include "tired/plan_output.h"
 #include "tired/profile_frontend.h"
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -23,8 +24,18 @@ bool tired_profiles_discover_settings(const char *bundled_directory, bool user_s
     TiredBuffer path;
     tired_buffer_init(&path, TIRED_INPUT_LIMIT);
     if (!tired_catalog_add_directory(&loaded, bundled_directory, TIRED_PROFILE_BUNDLED, getuid(),
-                                     false, error) ||
-        !tired_catalog_add_directory(&loaded, "/etc/tired/profiles.d", TIRED_PROFILE_ADMIN, 0, true,
+                                     false, error))
+    {
+        if (error != NULL && error->code != NULL &&
+            strcmp(error->code, "profile-directory-missing") == 0)
+            tired_error_set(error, TIRED_INVALID, "profile-bundle-missing",
+                            "Bundled profiles are missing. Install the complete tired package, "
+                            "including tired-helper and share/tired/profiles.d. Copying only "
+                            "the tired executable is not a complete installation.",
+                            ENOENT);
+        goto fail;
+    }
+    if (!tired_catalog_add_directory(&loaded, "/etc/tired/profiles.d", TIRED_PROFILE_ADMIN, 0, true,
                                      error))
         goto fail;
     if (settings != NULL && settings->profile_directories.count != 0)

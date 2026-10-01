@@ -85,6 +85,14 @@ static int open_directory(const char *path, uid_t owner, bool optional, TiredErr
                 tired_error_clear(error);
                 return -2;
             }
+            if (saved_errno == ENOENT)
+            {
+                tired_error_set(error, TIRED_INVALID, "profile-directory-missing",
+                                "Required profile directory is missing. Check the installation "
+                                "and configured profile directories.",
+                                saved_errno);
+                return -1;
+            }
             tired_error_set(error, TIRED_INVALID, "profile-open",
                             "Cannot open a trusted profile directory component.", saved_errno);
             return -1;
