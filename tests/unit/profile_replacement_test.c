@@ -41,13 +41,23 @@ int main(int argc, char **argv)
     size_t count = 0;
     char bundled_digest[65], replacement_digest[65];
     CHECK(argc == 3 && (old_xdg == NULL || saved_xdg != NULL));
-    CHECK(tired_catalog_add_directory(&catalog, argv[1], TIRED_PROFILE_BUNDLED, getuid(), false,
-                                      &error));
+    bool builtin = strcmp(argv[1], "builtin:") == 0;
+    CHECK(builtin ? tired_catalog_add_embedded(&catalog, &error)
+                  : tired_catalog_add_directory(&catalog, argv[1], TIRED_PROFILE_BUNDLED, getuid(),
+                                                false, &error));
     CHECK(tired_text_set(&executable, "/opt/backhaul", 13, 256, &error));
     CHECK(tired_catalog_select(&catalog, &executable, "auto", true, &selected, &count, &error));
     CHECK(count == 1 && selected->origin == TIRED_PROFILE_BUNDLED);
     memcpy(bundled_digest, selected->digest, sizeof(bundled_digest));
-    CHECK(tired_read_file(selected->path.data, TIRED_PROFILE_LIMIT, &source, &error));
+    if (builtin)
+    {
+        const char *json =
+            json_object_to_json_string_ext(selected->profile.document, JSON_C_TO_STRING_PLAIN);
+        CHECK(json != NULL &&
+              tired_text_set(&source, json, strlen(json), TIRED_PROFILE_LIMIT, &error));
+    }
+    else
+        CHECK(tired_read_file(selected->path.data, TIRED_PROFILE_LIMIT, &source, &error));
     CHECK(tired_json_parse(source.data, source.length, TIRED_PROFILE_LIMIT, &document, &error));
     CHECK(json_object_object_get_ex(document, "recommendations", &recommendations));
     CHECK(json_object_object_add(json_object_array_get_idx(recommendations, 1), "value",
@@ -112,8 +122,9 @@ int main(int argc, char **argv)
         }
     }
     CHECK(backhaul_count == 1);
-    CHECK(tired_catalog_add_directory(&layered, argv[1], TIRED_PROFILE_BUNDLED, getuid(), false,
-                                      &error));
+    CHECK(builtin ? tired_catalog_add_embedded(&layered, &error)
+                  : tired_catalog_add_directory(&layered, argv[1], TIRED_PROFILE_BUNDLED, getuid(),
+                                                false, &error));
     size_t bundled_count = layered.count;
     CHECK(tired_catalog_add_directory(&layered, directory.data, TIRED_PROFILE_ADMIN, getuid(),
                                       false, &error));

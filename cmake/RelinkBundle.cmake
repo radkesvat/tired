@@ -1,11 +1,18 @@
 cmake_minimum_required(VERSION 3.22)
 set(_root "${BUILD_DIRECTORY}/tired-${VERSION}-relink-${ARCHITECTURE}")
 file(REMOVE_RECURSE "${_root}")
-file(MAKE_DIRECTORY "${_root}/objects" "${_root}/libraries" "${_root}/licenses")
+file(MAKE_DIRECTORY "${_root}/objects" "${_root}/libraries" "${_root}/licenses"
+    "${_root}/tools" "${_root}/include/tired")
 file(COPY_FILE "${BUILD_DIRECTORY}/CMakeFiles/tired.dir/src/main.c.o" "${_root}/objects/tired.o")
 file(COPY_FILE "${BUILD_DIRECTORY}/CMakeFiles/tired-helper.dir/src/helper_main.c.o"
     "${_root}/objects/tired-helper.o")
 file(COPY_FILE "${BUILD_DIRECTORY}/libtired_core.a" "${_root}/libraries/libtired_core.a")
+file(COPY_FILE "${BUILD_DIRECTORY}/libtired_portable.a" "${_root}/libraries/libtired_portable.a")
+file(COPY "${SOURCE_DIRECTORY}/tools/embed.c" "${SOURCE_DIRECTORY}/src/util/sha256.c"
+    "${SOURCE_DIRECTORY}/src/util/memory.c" DESTINATION "${_root}/tools")
+foreach(_header IN ITEMS embedded sha256 memory)
+    file(COPY "${SOURCE_DIRECTORY}/include/tired/${_header}.h" DESTINATION "${_root}/include/tired")
+endforeach()
 include("${BUILD_DIRECTORY}/relink-libraries.cmake")
 foreach(_archive IN LISTS TIRED_RELINK_ARCHIVES)
     file(COPY "${_archive}" DESTINATION "${_root}/libraries")

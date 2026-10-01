@@ -3,10 +3,14 @@
   "title": "Historical profile provenance",
   "type": "object", "additionalProperties": false,
   "required": ["schema_version", "profile", "source_path", "source_sha256", "source_origin", "explicit_selection", "decisions"],
+  "allOf": [
+    {"if": {"properties": {"source_path": {"pattern": "^builtin:"}}},
+     "then": {"properties": {"source_origin": {"const": "bundled"}}}}
+  ],
   "properties": {
     "schema_version": {"const": 1},
     "profile": {"$ref": "profile.schema.json"},
-    "source_path": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^/"},
+    "source_path": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^(?:/|builtin:[a-z0-9_-]+\\.json$)"},
     "source_sha256": {"type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}$"},
     "source_origin": {"enum": ["bundled", "administrator", "user"]},
     "explicit_selection": {"type": "boolean"},

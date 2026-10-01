@@ -6,41 +6,54 @@ tired helps you run a program in the background, start it when your computer boo
 and restart it if it fails. It is useful for servers, proxies, network tunnels, and
 other programs you want to keep running.
 
-Start with the command you already use:
-
-```sh
-tired ./program
-```
-
-tired shows the settings for you to review and approve, then writes the service
-file for you. **systemd**, the service manager used by many Linux systems, runs
-your program after setup. tired does not need to stay open.
+Give tired the command you already use, such as `tired ./program`. Review the
+settings and approve them. tired writes the service file for you, and **systemd**,
+the service manager used by many Linux systems, runs your program. tired does not
+need to stay open.
 
 ## Install
 
-**Version 0.1.0 is being prepared. Release downloads are not yet available.**
-For now, follow the [build from source instructions](CONTRIBUTING.md#build-and-test).
-Once the `v0.1.0` release is published, you can install it with this command:
+Copy this one-line command into your Linux terminal to install from the latest
+published GitHub release. You need `curl`; the installer asks for administrator
+permission if needed.
 
 ```sh
-sh -c 'f=$(mktemp) || exit; curl -fsSL --proto "=https" https://raw.githubusercontent.com/radkesvat/tired/v0.1.0/install.sh -o "$f" && sh "$f"; s=$?; rm -f "$f"; exit "$s"'
+sh -c 'f=$(mktemp) || exit; curl -fsSL --proto "=https" --proto-redir "=https" https://github.com/radkesvat/tired/releases/latest/download/install.sh -o "$f" && sh "$f"; s=$?; rm -f "$f"; exit "$s"'
 ```
 
 [Read the installer](install.sh)
+· [GitHub releases](https://github.com/radkesvat/tired/releases)
 · [Manual installation and uninstall](docs/packaging.md#direct-archives)
 
-The installer downloads tired over HTTPS, checks the downloads against their
-checksums, and installs it in `/usr/local`. It does not change existing services.
+The installer chooses the right download for your computer, verifies its checksum,
+and installs the complete package in `/usr/local`. It does not change existing
+services. Run the same command again to upgrade after a new release is published.
 
-Install the complete package. It includes application profiles and `tired-helper`,
-which handles service changes. Copying only the `tired` executable to another
-computer leaves these required files behind. See
-[installing on another server](docs/packaging.md#installing-on-another-server).
+Check that tired is installed:
+
+```sh
+tired --version
+```
+
+**Prefer a single file?** Download `tired-linux-amd64` or `tired-linux-arm64` from
+[GitHub releases](https://github.com/radkesvat/tired/releases), rename it to `tired`,
+and run:
+
+```sh
+chmod +x tired
+./tired ./program
+```
+
+The direct executable includes its default profiles and helper. If no matching
+helper is installed, tired sets one up when a system operation first needs it,
+asking for administrator permission if necessary. Your service settings and
+existing services are preserved. See [single-file setup](docs/packaging.md#installing-on-another-server)
+for details.
 
 tired supports **Linux on x86-64 and ARM64**, with systemd 249+ and glibc 2.35+.
-See [system requirements](docs/compatibility.md) for details and the
-[packaging guide](docs/packaging.md) for Debian, Ubuntu PPA, and Snap preparation.
-These packages are not yet published.
+See [system requirements](docs/compatibility.md) for details, or
+[build from source](CONTRIBUTING.md#build-and-test). The install command requires
+a published release; before the first release, use the source instructions.
 
 ## Create your first service
 

@@ -62,6 +62,15 @@ int main(int argc, char **argv)
     CHECK(json_object_array_add(decisions, json_object_new_string("applied")) == 0);
     bad = json_object_to_json_string_ext(document, JSON_C_TO_STRING_PLAIN);
     CHECK(!tired_profile_snapshot_parse(bad, strlen(bad), &parsed, &error));
+    CHECK(tired_text_set(&source.source_path, "builtin:backhaul.json", 21, 4096, &error));
+    CHECK(tired_profile_snapshot_encode(&source, &again, &error));
+    CHECK(tired_profile_snapshot_parse(again.data, again.length, &parsed, &error));
+    CHECK(strcmp(parsed.source_path.data, "builtin:backhaul.json") == 0);
+    source.source_origin = TIRED_PROFILE_ADMIN;
+    CHECK(!tired_profile_snapshot_encode(&source, &again, &error));
+    source.source_origin = TIRED_PROFILE_BUNDLED;
+    CHECK(tired_text_set(&source.source_path, "builtin:../bad.json", 19, 4096, &error));
+    CHECK(!tired_profile_snapshot_encode(&source, &again, &error));
     result = 0;
 cleanup:
     json_object_put(document);

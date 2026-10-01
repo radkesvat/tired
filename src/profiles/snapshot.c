@@ -20,9 +20,22 @@ void tired_profile_snapshot_destroy(TiredProfileSnapshot *snapshot)
 }
 static bool provenance(const TiredProfileSnapshot *snapshot, TiredError *error)
 {
+    bool builtin = false;
+    const TiredText *path = &snapshot->source_path;
+    if (snapshot->source_origin == TIRED_PROFILE_BUNDLED && path->data != NULL &&
+        path->length > 13 && path->length <= 4096 && strncmp(path->data, "builtin:", 8) == 0 &&
+        strcmp(path->data + path->length - 5, ".json") == 0)
+    {
+        builtin = true;
+        for (size_t i = 8; i < path->length - 5; ++i)
+            if (!((path->data[i] >= 'a' && path->data[i] <= 'z') ||
+                  (path->data[i] >= '0' && path->data[i] <= '9') || path->data[i] == '-' ||
+                  path->data[i] == '_'))
+                builtin = false;
+    }
     if ((unsigned)snapshot->source_origin > TIRED_PROFILE_USER ||
         snapshot->source_path.data == NULL || snapshot->source_path.length == 0 ||
-        snapshot->source_path.length > 4096 || snapshot->source_path.data[0] != '/' ||
+        snapshot->source_path.length > 4096 || (!builtin && snapshot->source_path.data[0] != '/') ||
         !tired_validate_text(snapshot->source_path.data, snapshot->source_path.length, true,
                              error) ||
         strnlen(snapshot->source_sha256, 65) != 64)

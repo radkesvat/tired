@@ -30,7 +30,7 @@ static void handle_signal(int number)
         announce = 0;
     }
 }
-static bool trusted(const char *path, bool sudo_tool, TiredError *error)
+bool tired_helper_path_trusted(const char *path, bool sudo_tool, TiredError *error)
 {
     char current[4096];
     size_t length = strlen(path);
@@ -67,7 +67,7 @@ static bool trusted(const char *path, bool sudo_tool, TiredError *error)
     if (resolved == NULL)
         return tired_error_set(error, TIRED_AUTHORIZATION, "helper-path-resolution",
                                "Cannot resolve the trusted helper path.", errno);
-    bool ok = strcmp(resolved, path) == 0 || trusted(resolved, sudo_tool, error);
+    bool ok = strcmp(resolved, path) == 0 || tired_helper_path_trusted(resolved, sudo_tool, error);
     free(resolved);
     return ok;
 }
@@ -75,10 +75,10 @@ static bool call_request(const TiredText *request, bool user, bool interactive, 
                          TiredStatus *status, TiredError *error)
 {
     TiredText helper_path = {0};
-    if (!tired_payload_path(true, &helper_path, error))
+    if (!user && !tired_payload_prepare_helper(interactive, &helper_path, error))
         return false;
-    if (!user && (!trusted(helper_path.data, false, error) ||
-                  (getuid() != 0 && !trusted("/usr/bin/sudo", true, error))))
+    if (!user && (!tired_helper_path_trusted(helper_path.data, false, error) ||
+                  (getuid() != 0 && !tired_helper_path_trusted("/usr/bin/sudo", true, error))))
     {
         tired_text_destroy(&helper_path);
         return false;
@@ -200,22 +200,8 @@ static bool call_request(const TiredText *request, bool user, bool interactive, 
             error->status = user ? TIRED_INTERNAL : TIRED_AUTHORIZATION;
         goto done;
     }
-    struct json_object *handshake = NULL, *version = NULL, *ready_value = NULL;
-    uint64_t protocol;
-    bool compatible = tired_json_parse(ready.data, ready.length, 128, &handshake, error) &&
-                      json_object_object_length(handshake) == 2 &&
-                      json_object_object_get_ex(handshake, "protocol_version", &version) &&
-                      tired_json_u64(version, 1, 1, &protocol, error) &&
-                      json_object_object_get_ex(handshake, "ready", &ready_value) &&
-                      json_object_is_type(ready_value, json_type_boolean) &&
-                      json_object_get_boolean(ready_value);
-    json_object_put(handshake);
-    if (!compatible)
-    {
-        tired_error_set(error, TIRED_UNSUPPORTED, "helper-version",
-                        "Install a matching binary and helper before applying operations.", 0);
+    if (!tired_protocol_check_ready(&ready, error))
         goto done;
-    }
     if (!tired_protocol_write_interruptible(input[1], request, 10000, &interrupted, error))
         goto done;
     submitted = 1;

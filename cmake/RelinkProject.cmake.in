@@ -10,13 +10,36 @@ set(_libraries @TIRED_RELINK_LIBRARIES@)
 foreach(_library IN LISTS _libraries)
     list(APPEND _archives "${CMAKE_CURRENT_SOURCE_DIR}/libraries/${_library}")
 endforeach()
-foreach(_program IN ITEMS tired tired-helper)
-    set(_object "${CMAKE_CURRENT_SOURCE_DIR}/objects/${_program}.o")
-    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${_program}"
-        COMMAND "${CMAKE_C_COMPILER}" "-fuse-ld=${RELINK_LLD}" -flto -static-libgcc -pie
-            "${_object}" "${CMAKE_CURRENT_SOURCE_DIR}/libraries/libtired_core.a"
-            ${_archives} -pthread -ldl -lrt -lm -o "${CMAKE_CURRENT_BINARY_DIR}/${_program}"
-        DEPENDS "${_object}" "${CMAKE_CURRENT_SOURCE_DIR}/libraries/libtired_core.a" ${_archives}
-        VERBATIM)
-    add_custom_target("${_program}-relink" ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/${_program}")
-endforeach()
+set(_core "${CMAKE_CURRENT_SOURCE_DIR}/libraries/libtired_core.a")
+set(_portable "${CMAKE_CURRENT_SOURCE_DIR}/libraries/libtired_portable.a")
+add_executable(tired_embed tools/embed.c tools/sha256.c tools/memory.c)
+set_target_properties(tired_embed PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+target_include_directories(tired_embed PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(tired_embed PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/libraries/libnettle.a")
+target_link_options(tired_embed PRIVATE "-fuse-ld=${RELINK_LLD}" -static-libgcc)
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/tired-helper"
+    COMMAND "${CMAKE_C_COMPILER}" "-fuse-ld=${RELINK_LLD}" -flto -static-libgcc -pie
+        "${CMAKE_CURRENT_SOURCE_DIR}/objects/tired-helper.o" "${_core}"
+        ${_archives} -pthread -ldl -lrt -lm -o "${CMAKE_CURRENT_BINARY_DIR}/tired-helper"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/objects/tired-helper.o" "${_core}" ${_archives}
+    VERBATIM)
+add_custom_target(tired-helper-relink ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/tired-helper")
+# Re-embed the newly linked helper, so modified libraries are used by both the
+# installed helper and first-use portable setup.
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/helper.c"
+    COMMAND tired_embed "${CMAKE_CURRENT_BINARY_DIR}/helper.c" tired_embedded_helper
+        "${CMAKE_CURRENT_BINARY_DIR}/tired-helper"
+    DEPENDS tired_embed "${CMAKE_CURRENT_BINARY_DIR}/tired-helper" VERBATIM)
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/helper.o"
+    COMMAND "${CMAKE_C_COMPILER}" -std=c17 -O2 -flto
+        "-I${CMAKE_CURRENT_SOURCE_DIR}/include" -c "${CMAKE_CURRENT_BINARY_DIR}/helper.c"
+        -o "${CMAKE_CURRENT_BINARY_DIR}/helper.o"
+    DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/helper.c" VERBATIM)
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/tired"
+    COMMAND "${CMAKE_C_COMPILER}" "-fuse-ld=${RELINK_LLD}" -flto -static-libgcc -pie
+        "${CMAKE_CURRENT_SOURCE_DIR}/objects/tired.o" "${CMAKE_CURRENT_BINARY_DIR}/helper.o"
+        "${_portable}" "${_core}" ${_archives} -pthread -ldl -lrt -lm
+        -o "${CMAKE_CURRENT_BINARY_DIR}/tired"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/objects/tired.o" "${CMAKE_CURRENT_BINARY_DIR}/helper.o"
+        "${_portable}" "${_core}" ${_archives} VERBATIM)
+add_custom_target(tired-relink ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/tired")

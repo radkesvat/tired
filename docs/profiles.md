@@ -254,8 +254,9 @@ local destination. Replacing an existing profile requires matching `replaces`
 metadata. `profiles remove ID --yes` removes that local override, revealing the
 next applicable profile, including the bundled profile. It cannot delete a
 package-owned bundled file. Existing services retain their snapshots until an
-explicit refresh. Frontend discovery uses the configured installation data
-directory, administrator directory, and user configuration directory in user scope.
+explicit refresh. Frontend discovery uses built-in profiles in direct builds or
+the installation data directory in distribution builds, then the administrator
+directory and user configuration directory in user scope.
 Offline output lists ambiguity candidates instead of selecting a winner.
 
 ## Read-only profile commands and plans
@@ -280,10 +281,14 @@ unless independently supplied by a validated context. Conditional advice stays v
 but is suppressed when its evidence is unknown. No manager queries or target probing
 are performed by this path.
 
-Development binaries use their configured install prefix for bundled data. Run
-`cmake --install build/<preset>` to stage the executable and profiles. No source-tree
-or current-directory fallback is compiled into production. `profiles validate FILE`
-and `plan --profile none` work without installed bundled data.
+Direct binaries read immutable default profiles embedded from the same JSON
+sources used by the package. Their provenance is recorded as
+`builtin:PROFILE.json`, with the SHA-256 of the original bytes and bundled origin.
+Historical absolute source paths remain readable. To customize a profile, install
+a local override; editing an exported bundled copy does not alter embedded advice.
+Distribution binaries use their configured install prefix for bundled data.
+Run `cmake --install build/<preset>` to stage a complete installation. Neither
+mode searches the source tree or current directory for profiles.
 
 A missing required directory reports `profile-directory-missing`. When the missing
 directory belongs to the bundled profiles, discovery reports `profile-bundle-missing`

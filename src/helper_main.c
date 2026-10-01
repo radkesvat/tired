@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include "tired/build_identity.h"
 #include "tired/helper.h"
 #include "tired/identity.h"
 #include "tired/limit.h"
@@ -10,8 +11,15 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-int main(void)
+int main(int argc, char **argv)
 {
+    if (argc == 2 && strcmp(argv[1], "--build-id") == 0)
+    {
+        puts(tired_build_identity);
+        return TIRED_OK;
+    }
+    if (argc != 1)
+        return TIRED_INVALID;
     closefrom(3);
     if (getuid() != 0 || geteuid() != 0 || getgid() != getegid())
     {

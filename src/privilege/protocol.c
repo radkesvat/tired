@@ -1,8 +1,12 @@
+#include "tired/build_identity.h"
 #include "tired/helper.h"
+#include "tired/json.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <poll.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 static bool transfer(int fd, void *bytes, size_t length, bool writing, uint64_t deadline,
                      const volatile sig_atomic_t *cancel, TiredError *error)
@@ -82,7 +86,37 @@ bool tired_protocol_write(int fd, const TiredText *bytes, unsigned timeout_ms, T
 }
 bool tired_protocol_ready(int fd, TiredError *error)
 {
-    const char bytes[] = "{\"protocol_version\":1,\"ready\":true}";
-    const TiredText frame = {.data = (char *)bytes, .length = sizeof(bytes) - 1};
+    char bytes[256];
+    int length = snprintf(bytes, sizeof(bytes),
+                          "{\"protocol_version\":1,\"ready\":true,\"build_id\":\"%s\"}",
+                          tired_build_identity);
+    if (length < 0 || (size_t)length >= sizeof(bytes))
+        return tired_error_set(error, TIRED_INTERNAL, "helper-identity",
+                               "Invalid helper build identity.", 0);
+    const TiredText frame = {.data = bytes, .length = (size_t)length};
     return tired_protocol_write(fd, &frame, 5000, error);
+}
+
+bool tired_protocol_check_ready(const TiredText *frame, TiredError *error)
+{
+    struct json_object *handshake = NULL, *version = NULL, *ready = NULL, *identity = NULL;
+    uint64_t protocol;
+    bool ok = tired_json_parse(frame->data, frame->length, 256, &handshake, error) &&
+              json_object_is_type(handshake, json_type_object) &&
+              json_object_object_length(handshake) == 3 &&
+              json_object_object_get_ex(handshake, "protocol_version", &version) &&
+              tired_json_u64(version, 1, 1, &protocol, error) &&
+              json_object_object_get_ex(handshake, "ready", &ready) &&
+              json_object_is_type(ready, json_type_boolean) && json_object_get_boolean(ready) &&
+              json_object_object_get_ex(handshake, "build_id", &identity) &&
+              json_object_is_type(identity, json_type_string) &&
+              (size_t)json_object_get_string_len(identity) == strlen(tired_build_identity) &&
+              strcmp(json_object_get_string(identity), tired_build_identity) == 0;
+    json_object_put(handshake);
+    if (!ok)
+        return tired_error_set(
+            error, TIRED_UNSUPPORTED, "helper-version",
+            "The frontend and helper builds do not match. Reinstall the matching package.", 0);
+    tired_error_clear(error);
+    return true;
 }

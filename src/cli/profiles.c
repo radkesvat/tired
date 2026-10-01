@@ -23,8 +23,11 @@ bool tired_profiles_discover_settings(const char *bundled_directory, bool user_s
     TiredText directory = {0};
     TiredBuffer path;
     tired_buffer_init(&path, TIRED_INPUT_LIMIT);
-    if (!tired_catalog_add_directory(&loaded, bundled_directory, TIRED_PROFILE_BUNDLED, getuid(),
-                                     false, error))
+    bool bundled = strcmp(bundled_directory, "builtin:") == 0
+                       ? tired_catalog_add_embedded(&loaded, error)
+                       : tired_catalog_add_directory(&loaded, bundled_directory,
+                                                     TIRED_PROFILE_BUNDLED, getuid(), false, error);
+    if (!bundled)
     {
         if (error != NULL && error->code != NULL &&
             strcmp(error->code, "profile-directory-missing") == 0)

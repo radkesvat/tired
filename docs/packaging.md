@@ -35,9 +35,33 @@ root helper; user scope is available under that account's own authority.
 
 ### Installing on another server
 
-Copy the complete release archive or Debian package for the server's architecture.
-The `tired` executable on its own is not a complete installation. The direct
-archive includes these required paths under its `usr/local` directory:
+Direct GitHub releases include standalone `tired-linux-amd64` and
+`tired-linux-arm64` executables as well as complete archives. Download the matching
+file and `SHA256SUMS` from the same release, verify its checksum, rename it to
+`tired`, make it executable with `chmod +x tired`, and run `./tired ./program`.
+Only the normal Linux/glibc/systemd requirements remain; there is no runtime
+download of profiles or helper code.
+
+The direct executable reads bundled profiles from its own embedded data. Local
+administrator/user profile overrides keep their usual precedence. A matching
+trusted installed helper is reused. Otherwise, the first system operation that
+needs administrator authority installs the embedded helper in
+`/var/cache/tired/helpers/SHA256/tired-helper`. Setup uses ordinary sudo
+authorization for nonroot callers; noninteractive use requires authorization
+already available without a password prompt. Read-only unprivileged commands and
+offline plans do not install a helper. User-scope operations use their existing
+unprivileged worker.
+
+The cache directories and helper belong to root and are not writable by other
+users. Setup verifies the helper bytes, publishes the file atomically and checks
+the build identity again before sending a service operation. A new helper build
+gets a different cache entry; existing package files, local overrides and service
+state are never replaced by setup. The cache location must permit execution.
+Older cache entries may be removed by an administrator when no tired operation
+is using them; missing entries are recreated on demand.
+
+For a regular installation, the installer still manages the complete archive,
+including these paths under its `usr/local` directory:
 
 ```text
 bin/tired
@@ -50,11 +74,13 @@ For an extracted archive installed at a custom prefix, run `PREFIX/bin/tired`.
 For the default installation, run `tired` from the application's working directory.
 Verify profile discovery with `tired profiles list` before creating a service.
 
-`profile-bundle-missing` means tired could not find its bundled profile directory.
-Older builds report `Cannot open a trusted profile directory component.
-[profile-open]` for this case. Install or reinstall the complete package from the
-same version. `--profile none` skips profile discovery but does not replace the
-helper needed for service changes.
+Debian/PPA builds continue to use package-installed profiles and helpers; they
+do not embed or extract a helper. Install the complete Debian package rather
+than copying its executable. In these builds, `profile-bundle-missing` means the
+installed profiles are missing. Older direct builds can report
+`Cannot open a trusted profile directory component. [profile-open]` after copying
+only their executable. Reinstall that complete package or use a current standalone
+direct build.
 
 If you are building from source for another server, create a complete direct
 archive after building the matching Release preset. For x86-64:

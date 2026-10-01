@@ -28,4 +28,7 @@ bool tired_protocol_read_interruptible(int fd, unsigned timeout_ms,
 bool tired_protocol_write_interruptible(int fd, const TiredText *bytes, unsigned timeout_ms,
                                         const volatile sig_atomic_t *cancel, TiredError *error);
 bool tired_protocol_ready(int fd, TiredError *error);
+bool tired_protocol_check_ready(const TiredText *frame, TiredError *error);
+/* Validate administrator-owned executable ancestry, including resolved aliases. */
+bool tired_helper_path_trusted(const char *path, bool sudo_tool, TiredError *error);
 #endif

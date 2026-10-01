@@ -11,6 +11,9 @@
 #include "tired/recover_frontend.h"
 #include "tired/show_frontend.h"
 #include "tired/status_frontend.h"
+#ifdef TIRED_PORTABLE
+#include "tired/portable.h"
+#endif
 #include <errno.h>
 #include <json-c/json.h>
 #include <signal.h>
@@ -161,6 +164,11 @@ static bool allowed(const TiredRequest *request, const char *risk)
 int main(int argc, char **argv)
 {
     (void)signal(SIGPIPE, SIG_IGN);
+#ifdef TIRED_PORTABLE
+    if (argc == 2 && strcmp(argv[1], "--internal-install-helper") == 0)
+        return tired_portable_setup();
+    tired_payload_set_helper_preparer(tired_portable_prepare_helper);
+#endif
     TiredRequest request = {0};
     TiredText profile_path = {0};
     const char *profiles = TIRED_BUNDLED_PROFILE_DIRECTORY;

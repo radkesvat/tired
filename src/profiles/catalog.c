@@ -1,10 +1,12 @@
 #include "tired/catalog.h"
+#include "tired/embedded.h"
 #include "tired/io.h"
 #include "tired/sha256.h"
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -120,6 +122,75 @@ static bool digest(const TiredText *contents, char output[65], TiredError *error
     return true;
 }
 
+static bool append_entry(TiredProfileCatalog *catalog, TiredProfileEntry *item, TiredError *error)
+{
+    if (catalog->count >= 256)
+        return tired_error_set(error, TIRED_INVALID, "profile-count",
+                               "Profile catalog exceeds 256 entries.", 0);
+    for (size_t j = 0; j < catalog->count; ++j)
+        if (strcmp(catalog->items[j].profile.id, item->profile.id) == 0)
+        {
+            const TiredProfileEntry *existing = &catalog->items[j];
+            const TiredProfile *replacement =
+                item->origin > existing->origin ? &item->profile : &existing->profile;
+            struct json_object *replaces = NULL;
+            if (item->origin == existing->origin ||
+                !json_object_object_get_ex(replacement->document, "replaces", &replaces) ||
+                strcmp(json_object_get_string(replaces), item->profile.id) != 0)
+                return tired_error_set(
+                    error, TIRED_CONFLICT, "profile-duplicate",
+                    "Duplicate profile IDs require matching replaces metadata in the local "
+                    "replacement; duplicates within one origin are not allowed.",
+                    0);
+        }
+    TiredProfileEntry *grown = realloc(catalog->items, (catalog->count + 1) * sizeof(*grown));
+    if (grown == NULL)
+        return tired_error_set(error, TIRED_INTERNAL, "allocation", "Cannot grow profile catalog.",
+                               errno);
+    catalog->items = grown;
+    catalog->items[catalog->count++] = *item;
+    *item = (TiredProfileEntry){0};
+    return true;
+}
+
+bool tired_catalog_add_embedded(TiredProfileCatalog *catalog, TiredError *error)
+{
+#ifdef TIRED_EMBEDDED_PROFILES
+    size_t original_count = catalog->count;
+    TiredProfileEntry item = {0};
+    for (size_t i = 0; i < tired_embedded_profiles_count; ++i)
+    {
+        const TiredEmbeddedFile *file = &tired_embedded_profiles[i];
+        char source[256];
+        int length = snprintf(source, sizeof(source), "builtin:%s", file->name);
+        if (length < 0 || (size_t)length >= sizeof(source))
+        {
+            tired_error_set(error, TIRED_INTERNAL, "profile-source",
+                            "Invalid built-in profile name.", 0);
+            goto fail;
+        }
+        if (!tired_profile_parse((const char *)file->data, file->length, &item.profile, error) ||
+            !tired_text_set(&item.path, source, (size_t)length, 4096, error))
+            goto fail;
+        memcpy(item.digest, file->sha256, sizeof(item.digest));
+        item.origin = TIRED_PROFILE_BUNDLED;
+        if (!append_entry(catalog, &item, error))
+            goto fail;
+    }
+    tired_error_clear(error);
+    return true;
+fail:
+    entry_destroy(&item);
+    while (catalog->count > original_count)
+        entry_destroy(&catalog->items[--catalog->count]);
+    return false;
+#else
+    (void)catalog;
+    return tired_error_set(error, TIRED_UNSUPPORTED, "profile-builtin-unavailable",
+                           "This distribution build uses package-installed profiles.", 0);
+#endif
+}
+
 bool tired_catalog_add_directory(TiredProfileCatalog *catalog, const char *path,
                                  TiredProfileOrigin origin, uid_t trusted_owner, bool optional,
                                  TiredError *error)
@@ -193,41 +264,14 @@ bool tired_catalog_add_directory(TiredProfileCatalog *catalog, const char *path,
         if (!ok || !tired_profile_parse(contents.data, contents.length, &item.profile, error) ||
             !digest(&contents, item.digest, error))
             goto fail;
-        for (size_t j = 0; j < catalog->count; ++j)
-            if (strcmp(catalog->items[j].profile.id, item.profile.id) == 0)
-            {
-                const TiredProfileEntry *existing = &catalog->items[j];
-                const TiredProfile *replacement =
-                    origin > existing->origin ? &item.profile : &existing->profile;
-                struct json_object *replaces = NULL;
-                if (origin == existing->origin ||
-                    !json_object_object_get_ex(replacement->document, "replaces", &replaces) ||
-                    strcmp(json_object_get_string(replaces), item.profile.id) != 0)
-                {
-                    tired_error_set(
-                        error, TIRED_CONFLICT, "profile-duplicate",
-                        "Duplicate profile IDs require matching replaces metadata in the local "
-                        "replacement; duplicates within one origin are not allowed.",
-                        0);
-                    goto fail;
-                }
-            }
         TiredText base = {.data = (char *)path, .length = strlen(path)};
         if (!tired_path_absolute(&base, names.items[i].data, names.items[i].length, &item.path,
                                  error))
             goto fail;
         item.origin = origin;
         item.trusted_owner = trusted_owner;
-        TiredProfileEntry *grown = realloc(catalog->items, (catalog->count + 1) * sizeof(*grown));
-        if (grown == NULL)
-        {
-            tired_error_set(error, TIRED_INTERNAL, "allocation", "Cannot grow profile catalog.",
-                            errno);
+        if (!append_entry(catalog, &item, error))
             goto fail;
-        }
-        catalog->items = grown;
-        catalog->items[catalog->count++] = item;
-        item = (TiredProfileEntry){0};
     }
     if (closedir(directory) != 0)
     {

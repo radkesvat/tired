@@ -41,4 +41,6 @@ bool tired_catalog_select(const TiredProfileCatalog *catalog, const TiredText *e
                           const char *selection, bool user_scope, const TiredProfileEntry **entry,
                           size_t *match_count, TiredError *error);
 void tired_catalog_destroy(TiredProfileCatalog *catalog);
+/* DIRECT builds carry the immutable bundled catalogue in the executable. */
+bool tired_catalog_add_embedded(TiredProfileCatalog *catalog, TiredError *error);
 #endif

@@ -81,6 +81,15 @@ int main(void)
     CHECK(tired_protocol_ready(pipefd[1], &error));
     CHECK(tired_protocol_read(pipefd[0], 100, &output, &error));
     CHECK(strstr(output.data, "\"protocol_version\":1") != NULL);
+    CHECK(tired_protocol_check_ready(&output, &error));
+    char *build = strstr(output.data, "\"build_id\":\"");
+    CHECK(build != NULL);
+    build[12] = build[12] == '0' ? '1' : '0';
+    CHECK(!tired_protocol_check_ready(&output, &error) &&
+          strcmp(error.code, "helper-version") == 0);
+    TiredText legacy = {.data = "{\"protocol_version\":1,\"ready\":true}", .length = 35};
+    legacy.length = strlen(legacy.data);
+    CHECK(!tired_protocol_check_ready(&legacy, &error));
     close(pipefd[0]);
     CHECK(!tired_protocol_write(pipefd[1], &output, 100, &error));
     CHECK(error.system_errno == EPIPE);

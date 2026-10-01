@@ -45,6 +45,8 @@ the inventory rather than inferred from an unrelated installed shared runtime.
 Copy compatible replacement archives into the architecture's relink bundle using
 its existing names, then follow that bundle's standalone CMake instructions. Check
 both resulting ELF files for the direct glibc-only shared dependency allowlist.
+The relink recipe rebuilds the helper first and regenerates the frontend's
+embedded helper from that result, so first-use setup also uses modified libraries.
 The helper need not be executed or installed to verify relinking. The companion
 MIT tired source permits rebuilding first-party objects as well. Release LTO
 objects require a compatible recorded Clang/LLD version.

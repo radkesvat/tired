@@ -1,0 +1,2 @@
+#include "tired/build_identity.h"
+const char tired_build_identity[] = "@PROJECT_VERSION@:@TIRED_BUILD_ID@";

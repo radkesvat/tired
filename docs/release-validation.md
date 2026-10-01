@@ -4,6 +4,42 @@ This report records local qualification of 0.1.0 on 30 September 2026. Packages
 and source uploads are unsigned. GitHub, PPA, Debian archive and Snap Store
 publication remain the maintainer's responsibility; none has been submitted.
 
+## Standalone direct executable — 1 October 2026
+
+Direct binaries now embed their default profiles and a separately built helper.
+Distribution builds retain package-managed profiles and helpers. Both check the
+frontend/helper build identity before transferring an administrative request.
+
+Native x86-64 DIRECT Debug and Release each passed 93/93 CTests. DISTRIBUTION
+Release passed its 88 applicable tests, with the direct installer skipped.
+Six focused ASan/UBSan tests passed for cache publication, embedded profile
+equivalence/replacement, provenance snapshots and the helper handshake. The
+isolated-filesystem integration test was extended after the full suites to cover
+matching installed helpers and incompatible installed executables; it passed again
+in Debug and Release.
+
+The cache tests exercise repeated and simultaneous installation, separate helper
+builds, content changes, writable paths, symlinks and hard links. The root-only
+integration test copies just the frontend and the required OS runtime into a
+private filesystem. It checks built-in profile discovery without extraction,
+automatic helper materialization, regular-user reuse, denied nonroot setup,
+matching installed-helper reuse and preservation of incompatible installed files.
+This test is skipped when the test runner is not root.
+
+In a disposable Ubuntu 22.04 x86-64 VM, only the direct executable was copied into
+a regular user's home directory. That user, with the guest's existing sudo
+authorization, created a running system service. First use extracted a root-owned
+0755 helper under its SHA-256 cache directory. Replacing the frontend with a new
+build and restarting the service installed a separate matching helper while
+preserving the previous entry and inode. Removal succeeded and left no test unit.
+The VM was stopped after these checks.
+
+The unstripped x86-64 Release frontend is 5,261,312 bytes (5.02 MiB), including the
+helper; the separate helper is 1,627,064 bytes. This is larger than the preceding
+frontend because it includes the bytes needed for standalone setup. ARM64
+validation remains stopped at the maintainer's request; these results apply to
+x86-64 only. No new Snap installation/confinement qualification is claimed.
+
 ## Crypto dependency reduction — 1 October 2026
 
 The direct build now uses Nettle for SHA-256 and glibc `explicit_bzero` for memory

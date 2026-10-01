@@ -50,6 +50,7 @@ jobs:
         run: |
           cpack --config build/linux-clang-${{ matrix.preset }}-release/CPackConfig.cmake -G TGZ -B build/package-stage
           cp build/package-stage/tired-*-linux-${{ matrix.arch }}.tar.gz build/assets/
+          cp build/linux-clang-${{ matrix.preset }}-release/tired build/assets/tired-linux-${{ matrix.arch }}
           cmake --build --preset linux-clang-${{ matrix.preset }}-release --target relink-bundle snap-package
           cp build/linux-clang-${{ matrix.preset }}-release/*-relink-*.tar.gz build/assets/
           cp build/linux-clang-${{ matrix.preset }}-release/tired_*.snap build/assets/

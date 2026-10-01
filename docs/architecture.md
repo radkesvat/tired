@@ -12,6 +12,12 @@ root-owned helper through ordinary sudo authorization. User operations use a
 bounded worker under the current UID. Neither endpoint accepts filesystem roots
 or an alternate manager from frontend data.
 
+Direct frontends embed immutable default profiles and a separately built helper.
+They can set up a matching helper cache entry when no matching trusted installed
+helper exists. Distribution frontends use only their package-installed helper and
+profile files. The helper is built before embedding to avoid recursive payloads;
+both executables share a source/configuration identity checked during IPC.
+
 The controller acquires the scope lock, independently validates the complete
 request, and derives every destination from the trusted layout and UUIDs. It
 prepares immutable candidates and rollback material, records durable intent before
@@ -32,6 +38,7 @@ initial state. A completed service is managed entirely by systemd.
 | `src/storage` | Trusted directory descriptors, fingerprints, records, immutable revisions and ledgers |
 | `src/transaction` | Digest-bound requests, preflight, commit, rollback and explicit recovery |
 | `src/privilege` | Bounded protocol, authorization handoff, helper and record retrieval |
+| `src/portable` | Direct-build helper setup, digest verification and atomic cache publication |
 | `src/ui` | Review, grouped editors, safe viewers, dashboard and plain fallback |
 | `src/util` | Owned buffers, JSON, subprocesses, payload lookup and errors |
 

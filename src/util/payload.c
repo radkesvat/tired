@@ -8,6 +8,10 @@
 #include <unistd.h>
 bool tired_payload_path(bool helper, TiredText *path, TiredError *error)
 {
+#ifdef TIRED_EMBEDDED_PROFILES
+    if (!helper)
+        return tired_text_set(path, "builtin:", 8, 4096, error);
+#endif
     char executable[4097];
     ssize_t length = readlink("/proc/self/exe", executable, sizeof(executable) - 1);
     const char *relative = helper ? TIRED_HELPER_RELATIVE : TIRED_PROFILES_RELATIVE;
@@ -55,4 +59,14 @@ bool tired_payload_path(bool helper, TiredText *path, TiredError *error)
         }
     }
     return tired_text_set(path, fallback, strlen(fallback), 4096, error);
+}
+
+static TiredHelperPreparer helper_preparer;
+
+void tired_payload_set_helper_preparer(TiredHelperPreparer prepare) { helper_preparer = prepare; }
+
+bool tired_payload_prepare_helper(bool interactive, TiredText *path, TiredError *error)
+{
+    return helper_preparer != NULL ? helper_preparer(interactive, path, error)
+                                   : tired_payload_path(true, path, error);
 }

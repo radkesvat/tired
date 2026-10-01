@@ -211,6 +211,7 @@ target_link_libraries(tired_core PRIVATE tired_build_options PUBLIC tired_json_c
 target_link_libraries(tired PRIVATE tired_core tired_build_options)
 add_executable(tired-helper src/helper_main.c)
 target_link_libraries(tired-helper PRIVATE tired_core tired_build_options)
+include(cmake/EmbeddedPayload.cmake)
 
 add_custom_command(TARGET tired POST_BUILD
     COMMAND "${CMAKE_COMMAND}"
@@ -234,6 +235,22 @@ if(TIRED_FUZZING)
 endif()
 
 if(BUILD_TESTING)
+    if(TIRED_DEPENDENCY_MODE STREQUAL "DIRECT")
+        add_executable(tired_embedded_profiles_test tests/unit/embedded_profiles_test.c)
+        target_link_libraries(tired_embedded_profiles_test PRIVATE tired_core tired_build_options)
+        add_test(NAME tired.embedded_profiles COMMAND tired_embedded_profiles_test "${PROJECT_SOURCE_DIR}/profiles")
+        add_executable(tired_portable_cache_test tests/unit/portable_cache_test.c)
+        target_link_libraries(tired_portable_cache_test PRIVATE tired_portable tired_core tired_build_options)
+        add_test(NAME tired.portable_cache COMMAND tired_portable_cache_test)
+        set_tests_properties(tired.embedded_profiles tired.portable_cache PROPERTIES LABELS "unit;security" TIMEOUT 30)
+        add_test(NAME tired.embedded_profile_replacement COMMAND tired_profile_replacement_test
+            "builtin:" "$<TARGET_FILE:tired>")
+        set_tests_properties(tired.embedded_profile_replacement PROPERTIES LABELS "unit;security" TIMEOUT 30)
+        add_executable(tired_portable_test tests/integration/portable_test.c)
+        target_link_libraries(tired_portable_test PRIVATE tired_portable tired_core tired_build_options)
+        add_test(NAME tired.portable COMMAND tired_portable_test "$<TARGET_FILE:tired>" "$<TARGET_FILE:tired-helper>")
+        set_tests_properties(tired.portable PROPERTIES LABELS "integration;security" TIMEOUT 30 SKIP_RETURN_CODE 77)
+    endif()
     add_executable(tired_sha256_test tests/unit/sha256_test.c)
     target_link_libraries(tired_sha256_test PRIVATE tired_core tired_build_options)
     add_test(NAME tired.sha256 COMMAND tired_sha256_test)

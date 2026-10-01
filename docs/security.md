@@ -25,6 +25,23 @@ administrative tools. Payload lookup honors the installation prefix while checki
 both original and resolved helper ancestry; an attacker-owned install tree cannot
 become a privileged helper through a symlink.
 
+Direct executables contain their default profiles and the exact helper payload.
+If no trusted installed helper has the matching build identity, first-use setup
+materializes that payload under `/var/cache/tired/helpers/SHA256/`. Setup receives
+ordinary administrator authorization and accepts no caller-selected paths or
+bytes. The sudo bootstrap addresses the currently running executable through
+`/proc/PID/exe`, so replacing its original filename cannot change what is elevated.
+This authorizes the downloaded executable itself; a narrowly restricted sudo rule
+for an already installed helper does not automatically authorize first-use setup.
+
+Cache ancestry is opened without following symlinks and must be root-owned and
+not writable by group/others. Helpers must be root-owned regular files with one
+link and mode 0755. Content hashes are checked on reuse; publication is atomic and
+does not replace an existing file. Different builds use separate entries. The
+frontend checks the helper's build identity before transferring any request.
+Distribution builds perform no automatic extraction. Neither setup nor profile
+discovery changes existing services or user configuration.
+
 ## Filesystem and race protections
 
 Mutation destinations derive from the selected scope, safe unit names and canonical
